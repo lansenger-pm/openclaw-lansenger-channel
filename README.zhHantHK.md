@@ -1,0 +1,286 @@
+[English](README.md) | [简体中文](README.zhHans.md) | [繁体中文](README.zhHant.md) | [繁体中文香港](README.zhHantHK.md) | [Français](README.fr.md)
+
+# @lansenger/openclaw-lansenger-channel
+
+> 💠 藍信 頻道插件，供 OpenClaw 使用 — WebSocket 入站，HTTP API 出站。
+
+透過 WebSocket 長連線接收即時訊息，並透過 HTTP API 發送訊息，將 OpenClaw 連接至 藍信 — 一個企業訊息平台。
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue)](https://www.typescriptlang.org/)
+
+## 功能特色
+
+- **即時訊息** — 透過 WebSocket 長連線實現
+- **多機械人支援** — 將多個藍信機械人綁定至不同的 OpenClaw 代理
+- **Markdown 支援** — 使用 `formatText` msgType（預設）
+- **檔案/圖片/語音附件** — 透過 `text` msgType 上傳媒體
+- **i18nAppCard** — 互動式審批流程卡片，支援雙語內容
+- **動態卡片更新** — 原地更新審批狀態（待審批 → 已批准/已拒絕）
+- **語言偵測** — 自動偵測使用者語言，提供本地化回應
+- **群組訊息路由** — 自動偵測並路由至群組/私聊 API
+- **@提及** — 支援群組聊天中 @所有人 和 @指定使用者
+- **入站媒體處理** — 下載圖片/檔案/語音，偵測副檔名，向代理提供檔案路徑
+- **零核心修改** — 純插件模式，`git diff HEAD` 保持 PRISTINE
+
+## 訊息類型能力矩陣
+
+| msgType     | Markdown | @提及 | 附件 |
+|-------------|----------|-------|------|
+| `text`      | ✗        | ✓     | ✓    |
+| `formatText`| ✓        | ✗     | ✗    |
+
+**預設策略**：優先使用 `formatText` 發送 Markdown 回覆。附件使用 `text` 回退。
+
+## 快速安裝
+
+### 透過 npm（推薦）
+
+```bash
+npm install -g @lansenger/openclaw-lansenger-channel
+openclaw plugins enable lansenger
+```
+
+### 手動安裝
+
+```bash
+cd ~/.openclaw/npm
+npm install @lansenger/openclaw-lansenger-channel
+openclaw plugins enable lansenger
+openclaw gateway restart
+```
+
+### 開發安裝（本地連結）
+
+```bash
+cd /path/to/openclaw-lansenger-channel
+npm install
+openclaw plugins install --link
+openclaw plugins enable lansenger
+openclaw gateway restart
+```
+
+## 設定
+
+### 必要環境變數
+
+將以下內容加入 `~/.openclaw/.env` 或環境變數：
+
+| 變數 | 說明 | 範例 |
+|------|------|------|
+| `LANSENGER_APP_ID` | 個人機械人 App ID | `2285568-10117376` |
+| `LANSENGER_APP_SECRET` | 個人機械人 App Secret | `57E718CA1CAC20F2...` |
+
+### 取得憑證
+
+**藍信桌面端** → **通訊錄** → **智能機械人** → **個人機械人** → 點擊 **ℹ️** 圖標
+
+> ⚠️ **行動端不支援查看憑證。** 請僅使用桌面端。
+
+### 可選設定
+
+```json
+{
+  "channels": {
+    "lansenger": {
+      "appId": "2285568-10117376",
+      "appSecret": "your-secret",
+      "apiGatewayUrl": "https://open.e.lanxin.cn/open/apigw",
+      "allowFrom": ["2285568-xxx"],
+      "dmSecurity": "allowlist",
+      "accounts": {
+        "2285568-10117376": {
+          "appId": "2285568-10117376",
+          "appSecret": "...",
+          "agentId": "main",
+          "apiGatewayUrl": "https://open.e.lanxin.cn/open/apigw"
+        }
+      }
+    }
+  }
+}
+```
+
+| 欄位 | 說明 | 預設值 |
+|------|------|--------|
+| `appId` | 個人機械人 App ID | — |
+| `appSecret` | 個人機械人 App Secret | — |
+| `apiGatewayUrl` | API 網關 URL | `https://open.e.lanxin.cn/open/apigw` |
+| `allowFrom` | 允許私聊的使用者 ID | `[]` |
+| `dmSecurity` | 私聊策略：`allowlist`、`open`、`paired` | `allowlist` |
+| `accounts` | 多機械人設定 | — |
+
+### 多機械人設定
+
+每個機械人可以綁定至不同的 OpenClaw 代理：
+
+```json
+{
+  "channels": {
+    "lansenger": {
+      "accounts": {
+        "bot1-appid": {
+          "appId": "2285568-xxx",
+          "appSecret": "...",
+          "agentId": "main-agent",
+          "apiGatewayUrl": "https://open.e.lanxin.cn/open/apigw"
+        },
+        "bot2-appid": {
+          "appId": "524288-yyy",
+          "appSecret": "...",
+          "agentId": "test-agent"
+        }
+      }
+    }
+  },
+  "bindings": [
+    { "match": { "channel": "lansenger", "accountId": "bot1-appid" }, "agentId": "main-agent" }
+  ]
+}
+```
+
+## 使用
+
+### 啟動網關
+
+```bash
+openclaw gateway call lansenger.start
+```
+
+### 查看狀態
+
+```bash
+openclaw channels status
+# 或
+openclaw gateway call lansenger.status
+```
+
+### 綁定機械人至代理（動態）
+
+```bash
+openclaw gateway call lansenger.bind '{"botId":"2285668-xxx","agentId":"main"}'
+```
+
+### 查看綁定列表
+
+```bash
+openclaw gateway call lansenger.bindings
+```
+
+### 解綁機械人
+
+```bash
+openclaw gateway call lansenger.unbind '{"botId":"2285568-xxx"}'
+```
+
+## 支援的訊息類型
+
+| 類型 | 說明 | API 方法 |
+|------|------|----------|
+| `text` | 純文字，支援可選 @提及與附件 | `sendText()` |
+| `formatText` | Markdown 格式文字（預設） | `sendFormatText()` |
+| `image` | 圖片，支援可選說明 | `sendFile()` |
+| `file` | 任意檔案附件 | `sendFile()` |
+| `video` | 影片附件 | `sendFile()` |
+| `voice` | 語音訊息 | `sendFile()` |
+| `linkCard` | 富連結預覽卡片 | `sendLinkCard()` |
+| `i18nAppCard` | 互動式審批卡片（雙語） | `sendI18nAppCard()` |
+| `appCard` | 動態應用卡片，支援狀態更新 | `sendAppCard()` |
+| `appArticles` | 多文章卡片 | `sendAppArticles()` |
+
+## 入站媒體處理
+
+當使用者發送圖片、影片、檔案或語音訊息時，插件會：
+
+1. 透過藍信媒體 API 下載所有 `mediaIds`
+2. 從 Content-Type/Content-Disposition 標頭偵測副檔名（回退：檔案魔數）
+3. 儲存至暫存檔案，將路徑附加至 `InboundEvent.mediaPaths[]`
+4. 在代理文字中加入提示：「附件已儲存至本地 — 使用讀取工具查看」
+
+## 審批流程
+
+OpenClaw 使用藍信的 **i18nAppCard** 進行審批流程：
+
+- 審批請求以互動式卡片呈現
+- 雙語內容（中文 + 英文 + 法語）
+- 動態狀態更新（待審批 → 已批准/已拒絕），使用 `appCard` msgType
+- 狀態使用 `headStatusInfo` 顯示彩色徽章
+- 語言感知：自動偵測使用者語言（CJK 比率 ≥ 0.6 → 中文）
+- 僅 `allowFrom` 中的使用者可以審批
+
+## 開發
+
+### 建置
+
+```bash
+npm install
+npx tsc
+```
+
+### 測試
+
+```bash
+npx vitest run
+```
+
+### 類型檢查
+
+```bash
+npx tsc --noEmit
+```
+
+### 專案結構
+
+```
+openclaw-lansenger-channel/
+├── src/
+│   ├── client.ts       # 藍信 API 客戶端（WS、HTTP、媒體）
+│   ├── channel.ts      # OpenClaw 頻道插件
+│   ├── runtime.ts      # 網關運行時（方法、入站處理器）
+│   └── bindings.ts     # 多機械人綁定管理器
+├── skills/
+│   └── lansenger-messaging/
+│       └── SKILL.md    # 代理訊息策略
+├── dist/               # 編譯後的 JavaScript
+├── index.ts            # 插件入口
+├── setup-entry.ts      # 設定精靈入口
+├── openclaw.plugin.json # 插件元資料與 GUI 設定
+├── package.json
+└── tsconfig.json
+```
+
+## 故障排除
+
+### "行動端不支援查看憑證"
+
+請僅使用**藍信桌面端**。行動端應用不顯示機械人憑證。
+
+### "No binding for botId"
+
+執行 `lansenger.bind` 將機械人綁定至代理，或在帳戶設定中設定 `agentId`。
+
+### WebSocket 斷線
+
+插件內建自動重連（指數退避：2s、5s、10s、30s、60s）與心跳（每 30s ping）。
+
+### formatText vs text
+
+- 使用 `formatText` 發送 Markdown 回覆（預設）
+- 使用 `text` 發送 @提及或附件
+- 兩者都需要時，發送兩條獨立訊息
+
+### 動態卡片更新失敗
+
+動態更新使用 `msgType="appCard"`（不是 i18nAppCard）。`updateCardStatus()` 方法使用 `appCardUpdateMsg` + `headStatusInfo`。
+
+## 授權條款
+
+MIT — 詳見 [LICENSE](LICENSE)。
+
+## 貢獻
+
+1. Fork 本 repo
+2. 建立功能分支
+3. 進行修改
+4. 執行測試：`npx vitest run`
+5. 提交 Pull Request

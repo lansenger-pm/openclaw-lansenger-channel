@@ -1,0 +1,286 @@
+[English](README.md) | [简体中文](README.zhHans.md) | [繁体中文](README.zhHant.md) | [繁体中文香港](README.zhHantHK.md) | [Français](README.fr.md)
+
+# @lansenger/openclaw-lansenger-channel
+
+> 💠 蓝信 频道插件，用于 OpenClaw — WebSocket 入站，HTTP API 出站。
+
+通过 WebSocket 长连接接收实时消息，通过 HTTP API 发送消息，将 OpenClaw 连接到 蓝信 —— 一个企业即时通讯平台。
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue)](https://www.typescriptlang.org/)
+
+## 功能特性
+
+- **实时消息** — 通过 WebSocket 长连接实现
+- **多机器人支持** — 将多个蓝信机器人绑定到不同的 OpenClaw 代理
+- **Markdown 支持** — 使用 `formatText` 消息类型（默认）
+- **文件/图片/语音附件** — 通过 `text` 消息类型上传媒体
+- **i18nAppCard** — 交互式审批流程卡片，支持双语内容
+- **动态卡片更新** — 原地更新审批状态（待审批 → 已批准/已拒绝）
+- **语言检测** — 自动检测用户语言，提供本地化响应
+- **群消息路由** — 自动检测并路由到群聊/私聊 API
+- **@提及** — 支持群聊中 @所有人 和 @指定用户
+- **入站媒体处理** — 下载图片/文件/语音，检测文件扩展名，向代理提供文件路径
+- **零核心修改** — 纯插件模式，`git diff HEAD` 保持纯净
+
+## 消息类型能力矩阵
+
+| msgType     | Markdown | @提及 | 附件 |
+|-------------|----------|-------|------|
+| `text`      | ✗        | ✓     | ✓    |
+| `formatText`| ✓        | ✗     | ✗    |
+
+**默认策略**：优先使用 `formatText` 发送 Markdown 回复。附件使用 `text` 回退。
+
+## 快速安装
+
+### 通过 npm 安装（推荐）
+
+```bash
+npm install -g @lansenger/openclaw-lansenger-channel
+openclaw plugins enable lansenger
+```
+
+### 手动安装
+
+```bash
+cd ~/.openclaw/npm
+npm install @lansenger/openclaw-lansenger-channel
+openclaw plugins enable lansenger
+openclaw gateway restart
+```
+
+### 开发安装（本地链接）
+
+```bash
+cd /path/to/openclaw-lansenger-channel
+npm install
+openclaw plugins install --link
+openclaw plugins enable lansenger
+openclaw gateway restart
+```
+
+## 配置
+
+### 必需环境变量
+
+将以下内容添加到 `~/.openclaw/.env` 或环境变量：
+
+| 变量 | 说明 | 示例 |
+|------|------|------|
+| `LANSENGER_APP_ID` | 个人机器人 App ID | `2285568-10117376` |
+| `LANSENGER_APP_SECRET` | 个人机器人 App Secret | `57E718CA1CAC20F2...` |
+
+### 获取凭证
+
+**蓝信桌面端** → **通讯录** → **智能机器人** → **个人机器人** → 点击 **ℹ️** 图标
+
+> ⚠️ **移动端不支持查看凭证。** 请仅使用桌面端。
+
+### 可选配置
+
+```json
+{
+  "channels": {
+    "lansenger": {
+      "appId": "2285568-10117376",
+      "appSecret": "your-secret",
+      "apiGatewayUrl": "https://open.e.lanxin.cn/open/apigw",
+      "allowFrom": ["2285568-xxx"],
+      "dmSecurity": "allowlist",
+      "accounts": {
+        "2285568-10117376": {
+          "appId": "2285568-10117376",
+          "appSecret": "...",
+          "agentId": "main",
+          "apiGatewayUrl": "https://open.e.lanxin.cn/open/apigw"
+        }
+      }
+    }
+  }
+}
+```
+
+| 字段 | 说明 | 默认值 |
+|------|------|--------|
+| `appId` | 个人机器人 App ID | — |
+| `appSecret` | 个人机器人 App Secret | — |
+| `apiGatewayUrl` | API 网关 URL | `https://open.e.lanxin.cn/open/apigw` |
+| `allowFrom` | 允许私聊的用户 ID | `[]` |
+| `dmSecurity` | 私聊策略：`allowlist`、`open`、`paired` | `allowlist` |
+| `accounts` | 多机器人配置 | — |
+
+### 多机器人配置
+
+每个机器人可以绑定到不同的 OpenClaw 代理：
+
+```json
+{
+  "channels": {
+    "lansenger": {
+      "accounts": {
+        "bot1-appid": {
+          "appId": "2285568-xxx",
+          "appSecret": "...",
+          "agentId": "main-agent",
+          "apiGatewayUrl": "https://open.e.lanxin.cn/open/apigw"
+        },
+        "bot2-appid": {
+          "appId": "524288-yyy",
+          "appSecret": "...",
+          "agentId": "test-agent"
+        }
+      }
+    }
+  },
+  "bindings": [
+    { "match": { "channel": "lansenger", "accountId": "bot1-appid" }, "agentId": "main-agent" }
+  ]
+}
+```
+
+## 使用
+
+### 启动网关
+
+```bash
+openclaw gateway call lansenger.start
+```
+
+### 查看状态
+
+```bash
+openclaw channels status
+# 或
+openclaw gateway call lansenger.status
+```
+
+### 绑定机器人到代理（动态）
+
+```bash
+openclaw gateway call lansenger.bind '{"botId":"2285668-xxx","agentId":"main"}'
+```
+
+### 查看绑定列表
+
+```bash
+openclaw gateway call lansenger.bindings
+```
+
+### 解绑机器人
+
+```bash
+openclaw gateway call lansenger.unbind '{"botId":"2285568-xxx"}'
+```
+
+## 支持的消息类型
+
+| 类型 | 说明 | API 方法 |
+|------|------|----------|
+| `text` | 纯文本，支持可选 @提及和附件 | `sendText()` |
+| `formatText` | Markdown 格式文本（默认） | `sendFormatText()` |
+| `image` | 图片，支持可选说明 | `sendFile()` |
+| `file` | 任意文件附件 | `sendFile()` |
+| `video` | 视频附件 | `sendFile()` |
+| `voice` | 语音消息 | `sendFile()` |
+| `linkCard` | 富链接预览卡片 | `sendLinkCard()` |
+| `i18nAppCard` | 交互式审批卡片（双语） | `sendI18nAppCard()` |
+| `appCard` | 动态应用卡片，支持状态更新 | `sendAppCard()` |
+| `appArticles` | 多文章卡片（图文卡片） | `sendAppArticles()` |
+
+## 入站媒体处理
+
+当用户发送图片、视频、文件或语音消息时，插件会：
+
+1. 通过蓝信媒体 API 下载所有 `mediaIds`
+2. 从 Content-Type/Content-Disposition 头检测文件扩展名（回退：文件魔数）
+3. 保存到临时文件，将路径附加到 `InboundEvent.mediaPaths[]`
+4. 在代理文本中添加提示："附件已保存到本地 — 使用读取工具查看"
+
+## 审批流程
+
+OpenClaw 使用蓝信的 **i18nAppCard** 进行审批流程：
+
+- 审批请求以交互式卡片展示
+- 双语内容（中文 + 英文 + 法语）
+- 动态状态更新（待审批 → 已批准/已拒绝），使用 `appCard` 消息类型
+- 状态使用 `headStatusInfo` 显示彩色徽章
+- 语言感知：自动检测用户语言（CJK 比率 ≥ 0.6 → 中文）
+- 仅 `allowFrom` 中的用户可以审批
+
+## 开发
+
+### 构建
+
+```bash
+npm install
+npx tsc
+```
+
+### 测试
+
+```bash
+npx vitest run
+```
+
+### 类型检查
+
+```bash
+npx tsc --noEmit
+```
+
+### 项目结构
+
+```
+openclaw-lansenger-channel/
+├── src/
+│   ├── client.ts       # 蓝信 API 客户端（WS、HTTP、媒体）
+│   ├── channel.ts      # OpenClaw 频道插件
+│   ├── runtime.ts      # 网关运行时（方法、入站处理器）
+│   └── bindings.ts     # 多机器人绑定管理器
+├── skills/
+│   └── lansenger-messaging/
+│       └── SKILL.md    # 代理消息策略
+├── dist/               # 编译后的 JavaScript
+├── index.ts            # 插件入口
+├── setup-entry.ts      # 设置向导入口
+├── openclaw.plugin.json # 插件元数据与 GUI 配置
+├── package.json
+└── tsconfig.json
+```
+
+## 故障排除
+
+### "移动端不支持查看凭证"
+
+请仅使用**蓝信桌面端**。移动端应用不显示机器人凭证。
+
+### "No binding for botId"
+
+运行 `lansenger.bind` 将机器人绑定到代理，或在账户配置中设置 `agentId`。
+
+### WebSocket 断连
+
+插件内置自动重连（指数退避：2s、5s、10s、30s、60s）和心跳（每 30s ping）。
+
+### formatText vs text
+
+- 使用 `formatText` 发送 Markdown 回复（默认）
+- 使用 `text` 发送 @提及或附件
+- 两者都需要时，发送两条独立消息
+
+### 动态卡片更新失败
+
+动态更新使用 `msgType="appCard"`（不是 i18nAppCard）。`updateCardStatus()` 方法使用 `appCardUpdateMsg` + `headStatusInfo`。
+
+## 许可证
+
+MIT — 详情见 [LICENSE](LICENSE)。
+
+## 贡献
+
+1. Fork 本仓库
+2. 创建功能分支
+3. 进行修改
+4. 运行测试：`npx vitest run`
+5. 提交 Pull Request
