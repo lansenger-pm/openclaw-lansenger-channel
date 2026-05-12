@@ -1,0 +1,144 @@
+{
+  "id": "lansenger",
+  "kind": "channel",
+  "channels": ["lansenger"],
+  "name": "Lansenger (蓝信)",
+  "description": "Lansenger enterprise messaging channel plugin for OpenClaw / 蓝信企业即时通讯频道插件",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  },
+  "skills": ["./skills"],
+  "channelConfigs": {
+    "lansenger": {
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "appId": {
+            "type": "string",
+            "description": "Lansenger bot App ID / 蓝信机器人 App ID（格式：2285568-xxx）"
+          },
+          "appSecret": {
+            "type": "string",
+            "description": "Lansenger bot App Secret / 蓝信机器人 App Secret"
+          },
+          "apiGatewayUrl": {
+            "type": "string",
+            "description": "Lansenger API Gateway URL / API 网关地址（默认：https://open.e.lanxin.cn/open/apigw）"
+          },
+          "allowFrom": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "List of Lansenger user IDs allowed to DM the bot / 允许私聊机器人的蓝信用户 ID 列表"
+          },
+          "dmSecurity": {
+            "type": "string",
+            "enum": ["allowlist", "open", "paired"],
+            "description": "DM security policy / 私聊安全策略：allowlist (仅列表用户), open (任何人), paired (已配对用户)"
+          },
+          "homeChannel": {
+            "type": "string",
+            "description": "Default chat ID for cron/notification delivery / 定时任务/通知的默认聊天 ID（自动从第一条私聊消息检测）"
+          },
+          "accounts": {
+            "type": "object",
+            "description": "Multi-bot configuration / 多机器人配置（key 为 AppId）",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "appId": { "type": "string", "description": "Bot App ID / 机器人 App ID" },
+                "appSecret": { "type": "string", "description": "Bot App Secret / 机器人 App Secret" },
+                "apiGatewayUrl": { "type": "string", "description": "API Gateway URL / API 网关地址" },
+                "agentId": { "type": "string", "description": "Bound OpenClaw agent ID / 绑定的 OpenClaw Agent ID" },
+                "allowFrom": { "type": "array", "items": { "type": "string" }, "description": "Allowed user IDs / 允许的用户 ID 列表" },
+                "dmSecurity": { "type": "string", "description": "DM security policy / 私聊安全策略" },
+                "enabled": { "type": "boolean", "description": "Whether this bot is enabled / 是否启用" }
+              }
+            }
+          }
+        }
+      },
+      "uiHints": {
+        "appId": {
+          "label": "App ID / 蓝信 App ID",
+          "placeholder": "e.g. 2285568-10117376",
+          "sensitive": false,
+          "help": "Lansenger Desktop → Contacts → Bots → Personal Bots → click ℹ️ icon to view credentials. Mobile client does NOT support viewing credentials. / 蓝信桌面端 → 通讯录 → 智能机器人 → 个人机器人 → 点击右侧 ℹ️ 图标查看凭证。移动端不支持查看凭证。"
+        },
+        "appSecret": {
+          "label": "App Secret / 蓝信 App Secret",
+          "placeholder": "e.g. 57E718CA1CAC20F2...",
+          "sensitive": true,
+          "help": "Lansenger Desktop → Contacts → Bots → Personal Bots → click ℹ️ icon to view credentials. Mobile client does NOT support viewing credentials. / 蓝信桌面端 → 通讯录 → 智能机器人 → 个人机器人 → 点击右侧 ℹ️ 图标查看凭证。移动端不支持查看凭证。"
+        },
+        "apiGatewayUrl": {
+          "label": "API Gateway URL / API 网关地址",
+          "placeholder": "https://open.e.lanxin.cn/open/apigw",
+          "sensitive": false,
+          "help": "Default: https://open.e.lanxin.cn/open/apigw (Lansenger public cloud). Custom gateway for enterprise deployments is also supported. / 默认：https://open.e.lanxin.cn/open/apigw（蓝信公有云）。也支持企业私有化部署的自定义网关地址。"
+        },
+        "allowFrom": {
+          "label": "Allow From / 允许的用户",
+          "placeholder": "Add user ID / 添加用户 ID",
+          "sensitive": false,
+          "help": "Lansenger user IDs allowed to send DMs to the bot (format: 2285568-xxx) / 允许向机器人发送私聊的蓝信用户 ID（格式：2285568-xxx）"
+        },
+        "dmSecurity": {
+          "label": "DM Security / 私聊安全策略",
+          "enumLabels": {
+            "allowlist": "Allowlist Only / 仅允许列表用户",
+            "open": "Open to All / 对所有人开放",
+            "paired": "Paired Users Only / 仅已配对用户"
+          },
+          "help": "Control who can send DMs to the bot / 控制谁可以向机器人发送私聊消息"
+        },
+        "homeChannel": {
+          "label": "Home Channel / 主聊天窗口",
+          "placeholder": "Auto-detected from first DM / 自动从第一条私聊消息检测",
+          "sensitive": false,
+          "help": "Default chat for cron/notifications. Auto-set from first p2p message / 定时任务/通知的默认聊天窗口，自动从第一条私聊消息设置"
+        },
+        "accounts": {
+          "label": "Multi-Bot Accounts / 多机器人账号",
+          "sensitive": false,
+          "help": "Configure multiple bots with independent App IDs. Each bot can bind to different agents / 配置多个机器人，每个机器人有独立的 App ID，可绑定不同 Agent"
+        },
+        "accounts.*.appId": {
+          "label": "App ID / 蓝信 App ID",
+          "sensitive": false
+        },
+        "accounts.*.appSecret": {
+          "label": "App Secret / 蓝信 App Secret",
+          "sensitive": true
+        },
+        "accounts.*.apiGatewayUrl": {
+          "label": "API Gateway URL / API 网关地址",
+          "sensitive": false
+        },
+        "accounts.*.agentId": {
+          "label": "Bound Agent / 绑定的 Agent",
+          "placeholder": "e.g. main, default / 例如：main, default",
+          "sensitive": false
+        },
+        "accounts.*.allowFrom": {
+          "label": "Allow From / 允许的用户",
+          "sensitive": false
+        },
+        "accounts.*.dmSecurity": {
+          "label": "DM Security / 私聊安全策略",
+          "enumLabels": {
+            "allowlist": "Allowlist Only / 仅允许列表用户",
+            "open": "Open to All / 对所有人开放",
+            "paired": "Paired Users Only / 仅已配对用户"
+          }
+        },
+        "accounts.*.enabled": {
+          "label": "Enabled / 启用",
+          "sensitive": false
+        }
+      }
+    }
+  }
+}

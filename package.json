@@ -1,0 +1,53 @@
+{
+  "name": "@lansenger/openclaw-lansenger-channel",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Lansenger (蓝信) channel plugin for OpenClaw — WebSocket inbound, HTTP API outbound, text/markdown/media/linkCard/i18nAppCard delivery",
+  "license": "MIT",
+  "keywords": [
+    "openclaw",
+    "channel",
+    "lansenger",
+    "蓝信",
+    "enterprise-chat",
+    "messaging"
+  ],
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "setupEntry": "./setup-entry.ts",
+    "channel": {
+      "id": "lansenger",
+      "label": "Lansenger (蓝信)",
+      "blurb": "Connect OpenClaw to Lansenger enterprise messaging platform."
+    },
+    "channelEnvVars": [
+      {
+        "name": "LANSENGER_APP_ID",
+        "description": "Lansenger bot App ID (from Contacts → Smart Bot → Personal Bot)",
+        "sensitive": false
+      },
+      {
+        "name": "LANSENGER_APP_SECRET",
+        "description": "Lansenger bot App Secret",
+        "sensitive": true
+      },
+      {
+        "name": "LANSENGER_API_GATEWAY_URL",
+        "description": "Lansenger API Gateway URL (default: https://open.e.lanxin.cn/open/apigw)",
+        "sensitive": false
+      }
+    ]
+  },
+  "devDependencies": {
+    "@types/node": "^25.7.0",
+    "@types/ws": "^8.18.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.6"
+  },
+  "dependencies": {
+    "openclaw": "^2026.5.7",
+    "ws": "^8.20.0"
+  }
+}
