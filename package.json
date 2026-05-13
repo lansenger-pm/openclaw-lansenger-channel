@@ -1,26 +1,58 @@
 {
-  "name": "@lansenger/openclaw-lansenger-channel",
+  "name": "@lansenger-pm/openclaw-lansenger-channel",
   "version": "1.0.0",
   "type": "module",
-  "description": "Lansenger (蓝信) channel plugin for OpenClaw — WebSocket inbound, HTTP API outbound, text/markdown/media/linkCard/i18nAppCard delivery",
+  "main": "dist/index.js",
+  "files": [
+    "dist/",
+    "skills/",
+    "openclaw.plugin.json",
+    "index.ts",
+    "setup-entry.ts",
+    "README.md",
+    "README.zhHans.md",
+    "README.zhHant.md",
+    "README.zhHantHK.md",
+    "README.fr.md",
+    "LICENSE"
+  ],
+  "description": "Lansenger (蓝信) channel plugin for OpenClaw — WebSocket inbound, HTTP API outbound, text/markdown/media/linkCard/appCard/approval delivery",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lansenger-pm/openclaw-lansenger-channel.git"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "prepublishOnly": "tsc && vitest run"
+  },
   "keywords": [
     "openclaw",
     "channel",
     "lansenger",
     "蓝信",
     "enterprise-chat",
-    "messaging"
+    "messaging",
+    "approval",
+    "appCard"
   ],
   "openclaw": {
     "extensions": [
-      "./index.ts"
+      "./dist/index.js"
     ],
-    "setupEntry": "./setup-entry.ts",
+    "setupEntry": "./dist/setup-entry.js",
     "channel": {
       "id": "lansenger",
       "label": "Lansenger (蓝信)",
-      "blurb": "Connect OpenClaw to Lansenger enterprise messaging platform."
+      "selectionLabel": "Lansenger (蓝信)",
+      "blurb": "Connect OpenClaw to Lansenger enterprise messaging platform. / 连接 OpenClaw 与蓝信企业即时通讯平台。",
+      "aliases": ["lx"]
+    },
+    "install": {
+      "npmSpec": "@lansenger-pm/openclaw-lansenger-channel",
+      "localPath": ".",
+      "defaultChoice": "npm"
     },
     "channelEnvVars": [
       {
