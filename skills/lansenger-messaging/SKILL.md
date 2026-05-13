@@ -123,6 +123,30 @@ openclaw pairing approve lansenger <code>
 
 This is the correct model for personal bots — they only receive DMs from approved users.
 
+## Sending Files to Users
+
+When you create a file (via `write` tool, code generation, data export, etc.) that you want the user to receive on Lansenger, **you MUST send it explicitly** — writing to the workspace alone does NOT deliver the file to the user.
+
+Use the `sendAttachment` action:
+
+```
+Action: sendAttachment
+Parameters:
+  to: <Lansenger user ID or chat ID>
+  filePath: <absolute path to the file on disk>
+  caption: <optional plain-text caption — NO Markdown>
+```
+
+Example flow:
+1. `write` tool → creates `/path/to/report.md`
+2. `sendAttachment` action → sends the file to the user on Lansenger
+
+**Rules:**
+- Always use absolute paths for `filePath`
+- `caption` is plain text only (Markdown will NOT render in attachment messages)
+- If you need both formatted explanation AND a file attachment, send the formatted text first (Markdown works), then `sendAttachment` separately for the file
+- Supported file types: images (.jpg/.png/.gif/.webp), videos (.mp4/.mov), documents (.pdf/.md/.txt/.zip), etc.
+
 ## Critical Pitfalls
 
 - **Markdown is default** — write normally, it renders automatically

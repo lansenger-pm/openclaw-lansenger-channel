@@ -256,62 +256,68 @@ async function handleInbound(
     agentText = `${event.text}\n\nAttached files saved locally — use the read tool to view:\n${event.mediaPaths.map((p, i) => `${i + 1}. ${p}`).join("\n")}`;
   }
 
-  await api.runtime.channel.turn.run({
-    channel: "lansenger",
-    accountId: account.accountId ?? undefined,
-    raw: event,
-    adapter: {
-      ingest: () => {
-        return {
-          id: event.messageId,
-          rawText: event.text,
-          textForAgent: agentText,
-          textForCommands: event.text,
-          raw: event.rawMessage,
-        };
-      },
-      resolveTurn: () => {
-        const storePath = api.runtime.channel.session.resolveStorePath(undefined, { agentId });
-        return {
-          cfg: api.config,
-          channel: "lansenger",
-          accountId: account.accountId ?? undefined,
-          agentId,
-          routeSessionKey: sessionKey,
-          storePath,
-          ctxPayload: {
-            Body: event.text,
-            BodyForAgent: agentText,
-            From: event.senderId,
-            FromName: event.userName,
-            SessionKey: sessionKey,
-            ChatType: chatType,
-            Channel: "lansenger",
-            To: replyTo,
-          },
-          recordInboundSession: api.runtime.channel.session.recordInboundSession,
-          dispatchReplyWithBufferedBlockDispatcher: api.runtime.channel.reply.dispatchReplyWithBufferedBlockDispatcher,
-          delivery: {
-            deliver: async (payload: any, info: any) => {
-              const text: string | undefined = payload.text;
-              const to: string = payload.to ?? replyTo;
-              if (!text) return { messageIds: [], visibleReplySent: false };
-
-              const entry = runningAccounts.get(runningKey);
-              const client = entry?.client ?? makeClient(account, sdkLogger());
-
-              const result = await deliverReply(client, to, text, event.isGroup);
-              return { messageIds: result.messageId ? [result.messageId] : [], visibleReplySent: result.success };
+  try {
+    log.info(`turn.run starting: sessionKey=${sessionKey} agentId=${agentId} accountId=${account.accountId}`);
+    await api.runtime.channel.turn.run({
+      channel: "lansenger",
+      accountId: account.accountId ?? undefined,
+      raw: event,
+      adapter: {
+        ingest: () => {
+          return {
+            id: event.messageId,
+            rawText: event.text,
+            textForAgent: agentText,
+            textForCommands: event.text,
+            raw: event.rawMessage,
+          };
+        },
+        resolveTurn: () => {
+          const storePath = api.runtime.channel.session.resolveStorePath(undefined, { agentId });
+          return {
+            cfg: api.config,
+            channel: "lansenger",
+            accountId: account.accountId ?? undefined,
+            agentId,
+            routeSessionKey: sessionKey,
+            storePath,
+            ctxPayload: {
+              Body: event.text,
+              BodyForAgent: agentText,
+              From: event.senderId,
+              FromName: event.userName,
+              SessionKey: sessionKey,
+              ChatType: chatType,
+              Channel: "lansenger",
+              To: replyTo,
             },
-            onError: (err: unknown, info: { kind: string }) => {
-              log.error(`delivery error: ${err instanceof Error ? err.message : String(err)} kind=${info.kind}`);
+            recordInboundSession: api.runtime.channel.session.recordInboundSession,
+            dispatchReplyWithBufferedBlockDispatcher: api.runtime.channel.reply.dispatchReplyWithBufferedBlockDispatcher,
+            delivery: {
+              deliver: async (payload: any, info: any) => {
+                const text: string | undefined = payload.text;
+                const to: string = payload.to ?? replyTo;
+                if (!text) return { messageIds: [], visibleReplySent: false };
+
+                const entry = runningAccounts.get(runningKey);
+                const client = entry?.client ?? makeClient(account, sdkLogger());
+
+                const result = await deliverReply(client, to, text, event.isGroup);
+                return { messageIds: result.messageId ? [result.messageId] : [], visibleReplySent: result.success };
+              },
+              onError: (err: unknown, info: { kind: string }) => {
+                log.error(`delivery error: ${err instanceof Error ? err.message : String(err)} kind=${info.kind}`);
+              },
             },
-          },
-          record: { onRecordError: (err: unknown) => log.error(`record error: ${err instanceof Error ? err.message : String(err)}`) },
-        };
+            record: { onRecordError: (err: unknown) => log.error(`record error: ${err instanceof Error ? err.message : String(err)}`) },
+          };
+        },
       },
-    },
-  } as any);
+    } as any);
+    log.info(`turn.run completed: sessionKey=${sessionKey}`);
+  } catch (e: unknown) {
+    log.error(`turn.run failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
 }
 
 async function deliverReply(client: LansengerClient, to: string, text: string, isGroup?: boolean): Promise<ApiResult> {

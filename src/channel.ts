@@ -554,7 +554,16 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount> = {
       const account = resolveAccount(ctx.cfg, ctx.accountId ?? undefined);
       const client = makeClient(account);
 
-      if (ctx.action === "send" || ctx.action === "sendAttachment") {
+      if (ctx.action === "sendAttachment") {
+        const filePath = ctx.args?.filePath ?? "";
+        const caption = ctx.args?.caption ?? ctx.args?.text ?? "";
+        const to = ctx.args?.to ?? "";
+        if (!filePath || !to) return { success: false, error: "filePath and to are required" };
+        const result = await client.sendFile(to, filePath, caption);
+        return { success: result.success, data: { messageId: result.messageId } };
+      }
+
+      if (ctx.action === "send") {
         const result = await client.sendFormatText(ctx.args?.to ?? "", ctx.args?.text ?? "");
         return { success: result.success, data: { messageId: result.messageId } };
       }
