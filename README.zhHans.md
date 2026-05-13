@@ -86,7 +86,7 @@ openclaw gateway restart
       "homeChannel": "lansenger",
       "enabled": true,
       "allowFrom": ["your-appid"],
-      "dmSecurity": "allowlist",
+      "dmSecurity": "paired",
       "accounts": {
         "your-appid": {
           "appId": "your-appid",

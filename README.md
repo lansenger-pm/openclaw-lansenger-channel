@@ -84,7 +84,7 @@ Add these to `~/.openclaw/.env` or your environment:
       "homeChannel": "lansenger",
       "enabled": true,
       "allowFrom": ["your-appid"],
-      "dmSecurity": "allowlist",
+      "dmSecurity": "paired",
       "accounts": {
         "your-appid": {
           "appId": "your-appid",
