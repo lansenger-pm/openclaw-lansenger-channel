@@ -1,212 +1,136 @@
 ---
 name: lansenger-messaging
-version: 1.1.0
+version: 2.0.0
 category: communication
-description: Lansenger (蓝信) messaging strategy — text/formatText boundaries, group routing, media handling, dynamic cards, multi-bot binding, @mentions, language detection, and approval workflows
-trigger: When you need to send any message, file, image, or notification via Lansenger, or when the current session channel is lansenger, or when handling inbound media files, approval cards, or group messages.
+description: How to communicate effectively on Lansenger (蓝信) — message types, formatting rules, media, cards, approvals, and pitfalls
+trigger: When the current session channel is lansenger, or when you need to send a message, file, image, card, or approval via Lansenger
 ---
 
-# Lansenger Messaging Strategy
+# Lansenger (蓝信) Messaging Guide for Agents
 
-Lansenger has two distinct outbound message types with different capabilities. Picking the wrong type causes feature loss (e.g., Markdown silently ignored, attachments dropped). The plugin also handles group vs DM routing, inbound media download, dynamic card updates, multi-bot binding, and language-aware card rendering.
+You are communicating on Lansenger, an enterprise messaging platform. Understanding its message type rules is critical — choosing the wrong type causes silent feature loss (Markdown ignored, attachments dropped, @mentions invisible).
 
-## Outbound Message Type Capability Matrix
+## The #1 Rule: Markdown Is Automatic
+
+When you write a reply in a Lansenger session, **your Markdown is automatically rendered**. You don't need to pick a message type or call any special function — just write normally with headings, bold, code blocks, lists, tables, links, etc. The plugin handles delivery.
+
+**However**, Markdown and other features are mutually exclusive. See below.
+
+## Message Type Rules (Critical)
+
+Lansenger has two outbound text types that cannot be combined:
 
 ```
 ┌──────────────┬──────────────┬──────────────┬──────────────┐
-│  msgType     │  Markdown    │  @mention    │  Attachments │
+│  Type        │  Markdown    │  @mention    │  Attachments │
 ├──────────────┼──────────────┼──────────────┤──────────────┤
+│  formatText  │  ✓ (default) │  ✗           │  ✗           │
 │  text        │  ✗           │  ✓           │  ✓           │
-│  formatText  │  ✓           │  ✗           │  ✗           │
 └──────────────┴──────────────┴──────────────┴──────────────┘
 ```
 
-## Default Strategy: formatText First, text Fallback
+### What this means for you
 
-The outbound `deliverReply` function uses this priority:
+- **Normal replies** → just write Markdown. It's automatically sent as formatText.
+- **Need @mention** → Markdown won't work. You must use plain text only. If you need both formatting AND @mention, send the formatted content first, then a separate plain-text message with the @mention.
+- **Need to attach a file/image/video** → Markdown won't work. Caption must be plain text. If you need both formatting AND an attachment, send the formatted content first, then a separate message with the file.
+- **Never put raw Markdown in a plain-text message** — it displays as ugly source code to the user.
 
-1. **formatText** (Markdown rendered) → sent first
-2. **text** (plain) → fallback if formatText fails
+## DM vs Group
 
-Group messages follow the same priority using `sendGroupFormatText` → `sendGroupText`.
+The plugin automatically routes to the right API:
+- **DM (1:1 chat)** → private message endpoint
+- **Group chat** → group message endpoint
+- You don't need to specify which — it's detected from the session
 
-### DM vs Group Routing
+## Rich Content Types
 
-The plugin automatically routes outbound replies:
-- **DM** → `sendFormatText` / `sendText` (private message API `/v1/bot/messages/create`)
-- **Group** → `sendGroupFormatText` / `sendGroupText` (group message API `/v1/messages/group/create`)
-- Chat type is cached per `chatId` on inbound events
-- `chatId` starting with `group:` is always treated as group
+Beyond plain text and Markdown, Lansenger supports these special message types:
 
-## Decision Tree
+### Link Card
+A rich link preview card. Requires `title` + `link`. Optional: description, icon_link, from_name.
 
-### 1. Markdown-formatted text (code, tables, lists, bold, etc.)
-→ **formatText (default)** — sent automatically by `deliverReply`
-- Supports: headings, bold, italic, code blocks, lists, links, tables
-- Does NOT support: @mentions, file/image/video attachments
+### AppCard (Approval / Interactive Card)
+Dynamic card with buttons (approve/deny). Used for the approval system.
+- Supports div-style HTML in body fields (color, font-size, text-align, text-indent)
+- ⚠️ **`text-indent` MUST have units** — bare `0` causes silent API failure; always use `0em`
+- ⚠️ **Dynamic cards (`isDynamic=true`) require `headStatusInfo`** — API rejects without it; plugin auto-fills "Active" default if omitted
+- Card content should be **single-language** based on the user's detected language (Chinese for CJK users, English otherwise) — appCard does NOT support i18n multi-locale rendering
 
-### 2. Plain text + file/image/video attachment
-→ **text (msgType=text)** with `mediaType` + `mediaIds`
-- caption = plain text only (Markdown NOT rendered)
-- mediaType: 1=video, 2=image, 3=file
-- Example: "Here is this week's report" + PDF file
+### i18nAppCard (Multi-language Card)
+For non-approval cards where you need 5-locale rendering (zhHans, zhHant, zhHantHK, en, fr). Does NOT support dynamic updates or headStatusInfo.
 
-### 3. Markdown text + attachment (need both)
-→ **Send TWO separate messages:**
-1. formatText for the formatted text
-2. text with media for the file
-- Reason: formatText cannot carry attachments
+### AppArticles
+Multi-article card with title, description, imgUrl, url per article. Optional: sourceName, sourceIcon.
 
-### 4. @mention someone in a group
-→ **text (msgType=text)** with `reminder` parameter
-- formatText does NOT support @mentions
-- `reminder: { all: true }` — @all members
-- `reminder: { userIds: ["id1", "id2"] }` — @specific users
-- If you need Markdown + @mention, send formatText first, then text with reminder
+## Approval Workflow
 
-### 5. Link card (rich link preview)
-→ **linkCard** — `title` + `link` required, optional: description, icon_link, from_name
+The plugin integrates with OpenClaw's approval system. When a high-risk action needs approval:
 
-### 6. Approval / interactive card
-→ **appCard** (with `isDynamic=true` + `headStatusInfo`) — dynamic approval card with /approve and /deny buttons
-- Supports: div-style HTML formatting (color, font-size, text-align, text-indent)
-- ⚠️ **`text-indent` values MUST have units** — bare `0` causes empty API response (content-length=0); use `0em` instead. Applies to all div-style fields.
-- Fields: headTitle, bodyTitle, bodySubTitle, bodyContent, signature, fields, buttons, headStatusInfo
-- **⚠️ `isDynamic=true` requires `headStatusInfo`** — API returns errCode 40060 without it. `sendAppCard()` auto-fills default "Active" status if missing.
-- Language: send single-language content based on getUserLang() detection (NOT bilingual text)
+1. **Pending card** sent to the user — with approve/deny buttons
+2. **User clicks a button** → approval/denial processed by OpenClaw runtime
+3. **Card updates in-place** — status badge changes (Pending → Approved/Denied), color changes, card locks on final decision
 
-### 7. i18nAppCard (reserved, not currently used for approval)
-→ **i18nAppCard** — multilingual card (5 locales: zhHans, zhHant, zhHantHK, en, fr)
-- Supports full i18n fields: i18nHeadTitle, i18nBodyTitle, i18nBodyContent, i18nSignature, i18nFields
-- Does NOT support: dynamic updates, headStatusInfo
-- Reserved for future use when per-locale rendering is needed
+Card status text is language-aware:
+- Chinese users see: 待审批 → 已批准 / 已拒绝
+- English users see: Pending → Approved / Denied
 
-### 8. Article list card
-→ **appArticles** — multi-article card, each with title, description, imgUrl, url
-- Optional: sourceName, sourceIcon
+Language is detected from the user's message content (CJK character ratio ≥ 0.6 = Chinese).
 
-## Inbound Media Handling
+## What You Receive (Inbound Messages)
 
-When users send images, videos, files, or voice messages, the plugin:
+When users message you on Lansenger, you receive:
 
-1. **Downloads all `mediaIds`** via `downloadAllMedia()` → saves to temp files
-2. **Detects file extension** from Content-Type/Content-Disposition headers (falls back to magic bytes: PDF `\x25\x50\x44\x46`, ZIP `PK\x03\x04`, WAV `RIFF....WAVE`, etc.)
-3. **Attaches file paths** to `InboundEvent.mediaPaths[]`
-4. **Adds hint text** to agent input: "Attached files saved locally — use the read tool to view"
+| Type | What you see |
+|------|-------------|
+| text | Plain text content |
+| formatText | Markdown text content |
+| image | `[Image]` or `[Image: 3 files]` + local file paths |
+| video | `[Video]` or `[Video: 2 files]` + local file paths |
+| file | `[File]` or `[File: 2 files]` + local file paths |
+| voice | `[Voice]` + local file path (AMR/WAV) |
+| position | `[Location] name address lat,long link` |
+| card | `[Contact Card] staffId` |
+| sticker | `[Sticker] stickerId` |
 
-### Inbound Message Types
+When files are attached, they're downloaded to local temp paths. Use the `read` tool to view images, the appropriate tool to process other files.
 
-```
-┌──────────────┬──────────────────────────────────────────────────────┐
-│  msgType     │  Agent receives                                      │
-├──────────────┼──────────────────────────────────────────────────────┤
-│  text        │  Plain text content                                  │
-│  formatText  │  Markdown text content                               │
-│  image       │  "[Image]" or "[Image: N files]" + media paths      │
-│  video       │  "[Video]" or "[Video: N files]" + media paths      │
-│  file        │  "[File]" or "[File: N files]" + media paths        │
-│  voice       │  "[Voice]" + media paths (AMR/WAV)                  │
-│  position    │  "[Location] name address lat,long link"             │
-│  card        │  "[Contact Card] staffId"                            │
-│  sticker     │  "[Sticker] stickerId"                               │
-└──────────────┴──────────────────────────────────────────────────────┘
-```
+## Multi-Bot / Agent Binding
 
-### Multi-image/file messages
+Multiple Lansenger bots can run simultaneously, each bound to a different OpenClaw agent:
 
-- A single inbound message can contain multiple `mediaIds` (e.g., 3 images in one message)
-- Label format: `[Image: 3 files]`, `[Video: 2 files]`, etc.
-- Each mediaId is downloaded separately, all paths listed in `mediaPaths`
-
-## Dynamic Card Updates (Approval Status)
-
-Three card types serve different purposes — **appCard is used for approval**:
-
-| Card Type | Multi-language | Dynamic Update | headStatusInfo | Current Usage |
-|-----------|---------------|---------------|---------------|---------------|
-| i18nAppCard | ✓ (5 locales) | ✗ | ✗ | Reserved for future |
-| appCard | ✗ | ✓ (isDynamic) | ✓ | Approval cards |
-| DynamicMsg appCard | ✗ | ✓ (appCardUpdateMsg) | ✓ | Approval status updates |
-
-### Initial Send (appCard)
-- `msgType: "appCard"` with `isDynamic=true` + `headStatusInfo` (pending status)
-- Uses `sendAppCard()` with full `AppCardData` fields (bodyTitle, bodyContent, signature, fields, etc.)
-- Content uses single-language text selected by getUserLang() since appCard does NOT support i18n per-locale rendering
-- **⚠️ `text-indent` values MUST have units** — bare `0` causes empty API response; use `0em`
-- **⚠️ `isDynamic=true` requires `headStatusInfo`** — auto-filled with "Active" default if omitted
-
-### Status Update (DynamicMsg appCard)
-- `msgType: "appCard"` with `appCardUpdateMsg` — NOT a new card, updates existing card in-place
-- Uses `updateCardStatus()` with `headStatusInfo`:
-  - `isLastUpdate: true` when approved/denied (locks the card, no further updates)
-  - `isLastUpdate: false` when still pending (allows future updates within 30 days)
-  - `headStatusInfo.description` — div-style HTML status badge (e.g. `<div style="color:#198754;text-align:left">已批准</div>`)
-  - `headStatusInfo.colour` — colored circle indicator
-
-### Language-Aware Updates
-
-The plugin detects user language from inbound text:
-- **CJK ratio ≥ 0.6** → "zh" (Chinese)
-- **CJK ratio < 0.6** → "en" (English)
-- Language cached per `senderId` in `userLangMap`
-- Status text uses detected language: "待审批/已批准/已拒绝" (zh) or "Pending/Approved/Denied" (en)
-
-## Multi-Bot Binding
-
-The plugin supports multiple Lansenger bots bound to different OpenClaw agents:
-
-### Configuration
 ```json
 {
   "channels": {
     "lansenger": {
       "accounts": {
-        "bot-alpha": { "appId": "xxx", "appSecret": "yyy", "agentId": "security-agent" },
-        "bot-beta":  { "appId": "aaa", "appSecret": "bbb", "agentId": "hr-agent" }
+        "bot-alpha": { "appId": "xxx", "agentId": "security-agent" },
+        "bot-beta":  { "appId": "aaa", "agentId": "hr-agent" }
       }
     }
   }
 }
 ```
-- Account key = `appId` (NOT `__default__` or custom names)
-- `accountId` in OpenClaw = the appId
 
-### Gateway Methods
+Binding is **config-based** — set `agentId` per account in config. OpenClaw's `bindings[]` route format also works for dynamic routing.
 
-| Method | Description |
-|--------|-------------|
-| `lansenger.start` | Connect WebSocket for a bot account (params: accountId) |
-| `lansenger.stop` | Disconnect a bot (params: accountId) |
-| `lansenger.bind` | Bind botId → agentId (params: botId, agentId) |
-| `lansenger.unbind` | Remove binding (params: botId) |
-| `lansenger.bindings` | List all bindings |
-| `lansenger.status` | Show running accounts |
-| `lansenger.sendCard` | Send test appCard (params: chatId, lang) |
-| `lansenger.updateCard` | Update card status (params: messageId, status, lang) |
+## DM Security
 
-### Binding Resolution
-- Inbound messages resolve `agentId` from: BindingManager → account config → "default"
-- Each inbound turn passes `agentId` to session store for correct agent routing
+Default policy is **paired** — the first DM from a new user triggers a pairing code. The user must get approval from the bot owner via:
+```
+openclaw pairing approve lansenger <code>
+```
 
-## Revocation
+This is the correct model for personal bots — they only receive DMs from approved users.
 
-- **Must use `chatType="bot"`** for revoking bot messages (NOT "staff")
-- "staff" chatType requires `senderId` and only works for staff-sent messages
-- Revocation shows a fixed system message — the text cannot be customized
+## Critical Pitfalls
 
-## Key Reminders
-
-- **formatText is the default** — you don't need to do anything special for Markdown output
-- **Never put Markdown in a text-type caption** — it will display as raw text
-- **Never put @mentions in a formatText message** — they will be silently ignored
-- **DM security default is pairing** — first DM triggers pairing code; approve with `openclaw pairing approve lansenger <code>`. Personal bots only receive DMs from their owner, so pairing is the correct model (not allowlist).
-- **File size limits** determined by organization's Lansenger configuration
-- **Message length limit** ~4000 characters for both text and formatText
-- **Revocation** always uses `chatType="bot"` for bot messages
-- **Dynamic card updates** use `updateCardStatus()` with `headStatusInfo` (NOT i18nAppCard)
-- **`text-indent` values MUST have units** — bare `0` causes empty API response; always use `0em`
-- **`isDynamic=true` requires `headStatusInfo`** — auto-filled with "Active" default if omitted
-- **Personal bots only** — organization bots are NOT supported
-- **Credentials path**: Lansenger Desktop → Contacts → Bots → Personal Bot → ℹ️ icon (mobile cannot view credentials)
-- **Default gateway**: `https://open.e.lanxin.cn/open/apigw` (Lansenger public cloud)
-- **Group API**: `/v1/messages/group/create` (different endpoint from DM `/v1/bot/messages/create`)
+- **Markdown is default** — write normally, it renders automatically
+- **Never put Markdown in a plain-text message** — displays as raw source code
+- **Never put @mentions in a Markdown message** — silently ignored
+- **`text-indent` MUST have units** — bare `0` causes empty API response; use `0em`
+- **Dynamic cards require `headStatusInfo`** — auto-filled if omitted, but explicit is better
+- **Personal bots only** — organization/enterprise bots are NOT supported by this plugin
+- **Message length limit** ~4000 characters
+- **File size limits** depend on the organization's Lansenger configuration
+- **Credentials** are found in Lansenger Desktop app → Contacts → Bots → Personal Bot → ℹ️ icon (mobile cannot view)
