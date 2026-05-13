@@ -559,6 +559,15 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount> = {
         const caption = ctx.args?.caption ?? ctx.args?.text ?? "";
         const to = ctx.args?.to ?? "";
         if (!filePath || !to) return { success: false, error: "filePath and to are required" };
+        const roots = ctx.mediaLocalRoots ?? [path.join(os.homedir(), ".openclaw", "workspace")];
+        const resolved = path.resolve(filePath);
+        const inRoot = roots.some((r: string) => resolved.startsWith(path.resolve(r) + path.sep) || resolved === path.resolve(r));
+        if (!inRoot) {
+          return {
+            success: false,
+            error: `File "${filePath}" is outside the workspace directory. Files must be inside one of: ${roots.join(", ")}. Copy the file to the workspace first (e.g. cp "${filePath}" ~/.openclaw/workspace/), then use sendAttachment with the workspace path.`,
+          };
+        }
         const result = await client.sendFile(to, filePath, caption);
         return { success: result.success, data: { messageId: result.messageId } };
       }
