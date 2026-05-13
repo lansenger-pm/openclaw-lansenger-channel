@@ -1,6 +1,6 @@
 ---
 name: lansenger-messaging
-version: 2.1.2
+version: 2.2.0
 category: communication
 description: How to communicate effectively on Lansenger (蓝信) — message types, formatting rules, media, cards, approvals, and pitfalls
 trigger: When the current session channel is lansenger, or when you need to send a message, file, image, card, or approval via Lansenger
@@ -32,9 +32,25 @@ Lansenger has two outbound text types that cannot be combined:
 ### What this means for you
 
 - **Normal replies** → just write Markdown. It's automatically sent as formatText.
-- **Need @mention** → Markdown won't work. You must use plain text only. If you need both formatting AND @mention, send the formatted content first, then a separate plain-text message with the @mention.
-- **Need to attach a file/image/video** → Markdown won't work. Caption must be plain text. If you need both formatting AND an attachment, send the formatted content first, then a separate message with the file.
+- **Need @mention** → Markdown won't work. You must use plain text only. If you need both formatting AND @mention, send the formatted content first, then use `lansenger_send_text` for the @mention.
+- **Need to attach a file/image/video** → Markdown won't work. Use `lansenger_send_file`. If you need both formatting AND a file, send the Markdown reply first, then call `lansenger_send_file` separately.
 - **Never put raw Markdown in a plain-text message** — it displays as ugly source code to the user.
+
+## Available Tools
+
+| Tool | Purpose | Message Type |
+|------|---------|-------------|
+| `lansenger_send_file` | Send a local file/image/video | text (with attachment) |
+| `lansenger_send_text` | Send plain text with optional attachment + @mentions | text |
+| `lansenger_send_image_url` | Send an image from a URL | text (with attachment) |
+| `lansenger_send_link_card` | Send a link preview card | linkCard |
+| `lansenger_send_app_articles` | Send a multi-article card (图文卡片) | appArticles |
+| `lansenger_send_app_card` | Send a rich formatted card (应用卡片) | appCard |
+| `lansenger_update_dynamic_card` | Update a dynamic card's status | dynamic update |
+| `lansenger_revoke_message` | Revoke previously sent messages | — |
+| `lansenger_query_groups` | List bot's group IDs | — |
+
+All tools accept an optional `to` parameter (chat ID). If omitted, the message goes to the current conversation automatically.
 
 ## DM vs Group
 
@@ -43,43 +59,84 @@ The plugin automatically routes to the right API:
 - **Group chat** → group message endpoint
 - You don't need to specify which — it's detected from the session
 
+## Sending Files (CRITICAL)
+
+When you need to send a file to the user, **use `lansenger_send_file`**. Do NOT use `MEDIA:` tags — they only work for workspace files and are silently dropped for any other path.
+
+```
+lansenger_send_file(filePath=<absolute local path>, caption=<optional plain-text>, to=<optional chatId>)
+```
+
+- Any local path works — workspace, Documents, Desktop, /tmp, etc.
+- `caption` is plain text only (Markdown will NOT render)
+- If you need both formatted explanation AND a file, send the Markdown reply first, then call `lansenger_send_file` separately
+- **NEVER use `MEDIA:` tags** — always use `lansenger_send_file`
+
+## Sending Text with Attachments or @Mentions
+
+When you need plain text + attachment or @mentions in group chat, use `lansenger_send_text`:
+
+```
+lansenger_send_text(content=<plain text>, filePath=<optional local path>, to=<optional chatId>,
+                    reminderAll=<bool>, reminderUserIds=<list>)
+```
+
+- **NO Markdown** — content is plain text only
+- `filePath` optional — if provided, content becomes caption for the attachment
+- `reminderAll` / `reminderUserIds` — @mention members (group/staff chat only, NOT DMs)
+
+## Sending Images from URLs
+
+```
+lansenger_send_image_url(imageUrl=<URL>, caption=<optional plain-text>, to=<optional chatId>)
+```
+
+Downloads the image first, then uploads and sends. For local files, use `lansenger_send_file` instead.
+
 ## Rich Content Types
 
-Beyond plain text and Markdown, Lansenger supports these special message types:
+### Link Card (`lansenger_send_link_card`)
+A rich link preview card. Requires `title` + `link`. Optional: `description`, `iconLink`.
 
-### Link Card
-A rich link preview card. Requires `title` + `link`. Optional: description, icon_link, from_name.
+### AppArticles (`lansenger_send_app_articles`)
+Multi-article card (图文卡片). Each article needs `imgUrl`, `title`, `url`. Optional: `summary`.
 
-### AppCard (Approval / Interactive Card)
-Dynamic card with buttons (approve/deny). Used for the approval system.
-- Supports div-style HTML in body fields (color, font-size, text-align, text-indent)
+### AppCard (`lansenger_send_app_card`)
+Rich formatted card (应用卡片). Supports div-style HTML in body fields (color, font-size, text-align, text-indent).
 - ⚠️ **`text-indent` MUST have units** — bare `0` causes silent API failure; always use `0em`
-- ⚠️ **Dynamic cards (`isDynamic=true`) require `headStatusInfo`** — API rejects without it; plugin auto-fills "Active" default if omitted
-- Card content should be **single-language** based on the user's detected language (Chinese for CJK users, English otherwise) — appCard does NOT support i18n multi-locale rendering
+- ⚠️ **Dynamic cards (`isDynamic=true`) require `headStatusInfo`** — plugin auto-fills "Active" default if omitted
+- Card content should be **single-language** based on user's detected language
 
 ### i18nAppCard (Multi-language Card)
-For non-approval cards where you need 5-locale rendering (zhHans, zhHant, zhHantHK, en, fr). Does NOT support dynamic updates or headStatusInfo.
-
-### AppArticles
-Multi-article card with title, description, imgUrl, url per article. Optional: sourceName, sourceIcon.
+For non-approval cards needing 5-locale rendering. Does NOT support dynamic updates.
 
 ## Approval Workflow
 
-The plugin integrates with OpenClaw's approval system. When a high-risk action needs approval:
+The plugin integrates with OpenClaw's approval system:
 
-1. **Pending card** sent to the user — with approve/deny buttons
-2. **User clicks a button** → approval/denial processed by OpenClaw runtime
-3. **Card updates in-place** — status badge changes (Pending → Approved/Denied), color changes, card locks on final decision
+1. **Pending card** sent via `lansenger_send_app_card` (isDynamic=true)
+2. **User clicks approve/deny** → approval processed by OpenClaw runtime
+3. **Card updates in-place** via `lansenger_update_dynamic_card` — status badge changes, card locks on final decision
 
-Card status text is language-aware:
-- Chinese users see: 待审批 → 已批准 / 已拒绝
-- English users see: Pending → Approved / Denied
+Card status text is language-aware (CJK ratio ≥ 0.6 = Chinese).
 
-Language is detected from the user's message content (CJK character ratio ≥ 0.6 = Chinese).
+## Revoking Messages
+
+```
+lansenger_revoke_message(messageIds=<list of IDs>, chatType=<bot|staff|group>, senderId=<optional>)
+```
+
+For staff/group chat, `senderId` is required.
+
+## Querying Groups
+
+```
+lansenger_query_groups(pageOffset=<1>, pageSize=<100>)
+```
+
+Returns `totalGroupIds` (count) and `groupIds` (list). Use to discover group chat IDs before sending messages to groups.
 
 ## What You Receive (Inbound Messages)
-
-When users message you on Lansenger, you receive:
 
 | Type | What you see |
 |------|-------------|
@@ -92,8 +149,6 @@ When users message you on Lansenger, you receive:
 | position | `[Location] name address lat,long link` |
 | card | `[Contact Card] staffId` |
 | sticker | `[Sticker] stickerId` |
-
-When files are attached, they're downloaded to local temp paths. Use the `read` tool to view images, the appropriate tool to process other files.
 
 ## Multi-Bot / Agent Binding
 
@@ -112,47 +167,14 @@ Multiple Lansenger bots can run simultaneously, each bound to a different OpenCl
 }
 ```
 
-Binding is **config-based** — set `agentId` per account in config. OpenClaw's `bindings[]` route format also works for dynamic routing.
+Binding is **config-based** — set `agentId` per account in config.
 
 ## DM Security
 
-Default policy is **paired** — the first DM from a new user triggers a pairing code. The user must get approval from the bot owner via:
+Default policy is **paired** — the first DM from a new user triggers a pairing code. The user must get approval via:
 ```
 openclaw pairing approve lansenger <code>
 ```
-
-This is the correct model for personal bots — they only receive DMs from approved users.
-
-## Sending Files to Users (CRITICAL)
-
-When you need to send a file to the user on Lansenger, **use the `lansenger_send_file` tool**. Do NOT use `MEDIA:` tags — they only work for workspace files and are silently dropped for any other path.
-
-### Use `lansenger_send_file`
-
-```
-lansenger_send_file(filePath=<absolute local path>, caption=<optional plain-text>, to=<optional chatId>)
-```
-
-- `filePath` (required) — absolute local path to the file to send
-- `caption` (optional) — plain-text caption (Markdown will NOT render)
-- `to` (optional) — target chat ID; if omitted, the file goes to the current conversation automatically
-
-### ⚠️ Do NOT use `MEDIA:` tags for file delivery
-
-`MEDIA:` tags only work for files inside `~/.openclaw/workspace/`. For files outside the workspace (e.g. `~/Documents/`, `~/Desktop/`), `MEDIA:` tags are **silently dropped** — the user will never receive the file. Always use `lansenger_send_file` instead.
-
-### Typical flow
-
-1. Agent reads or creates a file (any local path works)
-2. `lansenger_send_file(filePath=/path/to/file.pdf)` → delivers file to the user
-
-### Rules
-
-- Any local path works — workspace, Documents, Desktop, /tmp, etc.
-- `caption` is plain text only (Markdown will NOT render)
-- If you need both formatted explanation AND a file, send the formatted Markdown text first, then call `lansenger_send_file` separately
-- **NEVER use `MEDIA:` tags for file delivery on Lansenger** — always use `lansenger_send_file`
-- Supported file types: images (.jpg/.png/.gif/.webp), videos (.mp4/.mov), documents (.pdf/.md/.txt/.zip), etc.
 
 ## Critical Pitfalls
 
@@ -161,7 +183,7 @@ lansenger_send_file(filePath=<absolute local path>, caption=<optional plain-text
 - **Never put @mentions in a Markdown message** — silently ignored
 - **`text-indent` MUST have units** — bare `0` causes empty API response; use `0em`
 - **Dynamic cards require `headStatusInfo`** — auto-filled if omitted, but explicit is better
-- **Personal bots only** — organization/enterprise bots are NOT supported by this plugin
+- **Personal bots only** — organization/enterprise bots are NOT supported
 - **Message length limit** ~4000 characters
-- **File size limits** depend on the organization's Lansenger configuration
-- **Credentials** are found in Lansenger Desktop app → Contacts → Bots → Personal Bot → ℹ️ icon (mobile cannot view)
+- **File size limits** depend on organization's Lansenger configuration
+- **Credentials** in Lansenger Desktop → Contacts → Bots → Personal Bot → ℹ️ icon

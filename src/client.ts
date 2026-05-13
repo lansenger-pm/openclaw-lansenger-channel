@@ -370,6 +370,47 @@ export class LansengerClient {
     }
   }
 
+  async updateDynamicCard(msgId: string, headStatusInfo?: Record<string, string>, links?: Array<{ title: string; url: string }>, isLastUpdate?: boolean): Promise<ApiResult> {
+    const token = await this.getAppToken();
+    if (!token) return { success: false, error: "No access token" };
+    try {
+      const url = `${this.apiGatewayUrl}${API_ENDPOINTS.dynamicUpdate}?app_token=${token}`;
+      const appCardUpdateMsg: Record<string, unknown> = {};
+      if (isLastUpdate) appCardUpdateMsg.isLastUpdate = true;
+      if (headStatusInfo) appCardUpdateMsg.headStatusInfo = headStatusInfo;
+      if (links) appCardUpdateMsg.links = links;
+      const payload = {
+        msgId,
+        msgType: "appCard",
+        msgData: { appCardUpdateMsg },
+      };
+      const data = await this.postJson(url, payload);
+      if (data.errCode !== 0) return { success: false, error: data.errMsg ?? undefined };
+      return { success: true, rawResponse: data };
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
+  }
+
+  async queryGroups(pageOffset: number = 1, pageSize: number = 100): Promise<{ totalGroupIds: number; groupIds: string[] } | { error: string }> {
+    const token = await this.getAppToken();
+    if (!token) return { error: "No access token" };
+    try {
+      const url = `${this.apiGatewayUrl}/v2/groups/fetch?app_token=${token}&page_offset=${pageOffset}&page_size=${pageSize}`;
+      const resp = await fetch(url);
+      if (!resp.ok) return { error: `HTTP error: ${resp.status}` };
+      const data = (await resp.json()) as LansengerApiResponse;
+      if (data.errCode !== 0) return { error: data.errMsg ?? "API error" };
+      const result = data.data ?? {};
+      return {
+        totalGroupIds: (result as any).totalGroupIds ?? 0,
+        groupIds: (result as any).groupIds ?? [],
+      };
+    } catch (e: any) {
+      return { error: e.message };
+    }
+  }
+
   async sendGroupText(groupId: string, content: string, reminder?: ReminderParams): Promise<ApiResult> {
     const token = await this.getAppToken();
     if (!token) return { success: false, error: "No access token" };

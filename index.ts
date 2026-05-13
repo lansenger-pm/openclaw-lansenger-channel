@@ -1,7 +1,7 @@
 import { defineChannelPluginEntry } from "openclaw/plugin-sdk/channel-core";
 import { lansengerPlugin } from "./src/channel.js";
 import { startLansengerGateway } from "./src/runtime.js";
-import { registerLansengerSendFileTool } from "./src/send-file-tool.js";
+import { registerLansengerTools } from "./src/tools.js";
 
 export default defineChannelPluginEntry({
   id: "lansenger",
@@ -26,6 +26,6 @@ export default defineChannelPluginEntry({
   },
   registerFull(api) {
     startLansengerGateway(api);
-    registerLansengerSendFileTool(api);
+    registerLansengerTools(api);
   },
 });
