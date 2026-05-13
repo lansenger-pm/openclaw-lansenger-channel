@@ -1,27 +1,20 @@
 {
   "id": "lansenger",
-  "kind": "channel",
   "channels": ["lansenger"],
   "name": "Lansenger (蓝信)",
   "description": "Lansenger enterprise messaging channel plugin for OpenClaw / 蓝信企业即时通讯频道插件",
-  "openclaw.channel": {
-    "id": "Lansenger",
-    "selectionLabel": "Lansenger (蓝信)",
-    "detailLabel": "Lansenger Bot",
-    "docsPath": "https://open.e.lanxin.cn/docs",
-    "order": 80,
-    "aliases": ["lansenger", "lx"],
-    "markdownCapable": true,
-    "exposure": {
-      "configured": true,
-      "setup": true,
-      "docs": true
-    }
-  },
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
     "properties": {}
+  },
+  "channelEnvVars": {
+    "lansenger": ["LANSENGER_APP_ID", "LANSENGER_APP_SECRET", "LANSENGER_API_GATEWAY_URL"]
+  },
+  "activation": {
+    "onStartup": true,
+    "onChannels": ["lansenger"],
+    "onConfigPaths": ["channels.lansenger"]
   },
   "contracts": {
     "tools": [
@@ -68,6 +61,8 @@
   "skills": ["./skills"],
   "channelConfigs": {
     "lansenger": {
+      "label": "Lansenger (蓝信)",
+      "description": "Lansenger enterprise messaging channel / 蓝信企业即时通讯频道",
       "schema": {
         "type": "object",
         "additionalProperties": false,
