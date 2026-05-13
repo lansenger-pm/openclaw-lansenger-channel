@@ -1,6 +1,6 @@
 ---
 name: lansenger-messaging
-version: 2.0.0
+version: 2.0.5
 category: communication
 description: How to communicate effectively on Lansenger (蓝信) — message types, formatting rules, media, cards, approvals, and pitfalls
 trigger: When the current session channel is lansenger, or when you need to send a message, file, image, card, or approval via Lansenger
@@ -123,30 +123,40 @@ openclaw pairing approve lansenger <code>
 
 This is the correct model for personal bots — they only receive DMs from approved users.
 
-## Sending Files to Users
+## Sending Files to Users (CRITICAL)
 
-When you create a file (via `write` tool, code generation, data export, etc.) that you want the user to receive on Lansenger, **you MUST send it explicitly** — writing to the workspace alone does NOT deliver the file to the user.
+When you create or reference a file that the user should receive on Lansenger, **you MUST send it explicitly via `sendAttachment`** — writing or reading a file alone does NOT deliver it to the user.
 
-Use the `sendAttachment` action:
+### Use `sendAttachment` action
 
 ```
 Action: sendAttachment
 Parameters:
-  to: <Lansenger user ID or chat ID>
-  filePath: <absolute path to the file on disk>
+  to: <Lansenger user ID or chat ID>  (required)
+  filePath: <absolute path to the file>  (required)
   caption: <optional plain-text caption — NO Markdown>
 ```
 
-Example flow:
-1. `write` tool → creates file in workspace (e.g. `~/.openclaw/workspace/report.md`)
-2. `sendAttachment` action → sends the file to the user on Lansenger
+### ⚠️ Files MUST be in the workspace directory
 
-**Rules:**
+`sendAttachment` and `MEDIA:` tags only work for files inside `~/.openclaw/workspace/`. Files outside the workspace (e.g. `~/Documents/`, `~/Desktop/`, `/tmp/`) are **silently dropped** — the user will never receive them.
+
+**If the source file is outside the workspace**, you MUST copy it first:
+1. Use the `bash` tool to copy: `cp /path/to/source/file ~/.openclaw/workspace/file`
+2. Then use `sendAttachment` with the workspace path: `filePath: ~/.openclaw/workspace/file`
+
+### Typical flow
+
+1. `write` tool → creates file in workspace (e.g. `~/.openclaw/workspace/report.md`)
+2. `sendAttachment` action → delivers file to the user on Lansenger
+
+### Rules
+
 - Always use absolute paths for `filePath`
-- Files MUST be in the workspace directory (`~/.openclaw/workspace/`) — if the source file is elsewhere (e.g. `~/Documents/`), copy it to workspace first using the `bash` tool, then `sendAttachment` the workspace copy
 - `caption` is plain text only (Markdown will NOT render in attachment messages)
 - If you need both formatted explanation AND a file attachment, send the formatted text first (Markdown works), then `sendAttachment` separately for the file
-- `MEDIA:` tags in reply text also work for workspace files, but `sendAttachment` is more reliable for explicit file delivery
+- **NEVER use `MEDIA:` tags for files outside the workspace** — they are silently dropped without any error
+- For workspace files, `sendAttachment` is more reliable than `MEDIA:` tags
 - Supported file types: images (.jpg/.png/.gif/.webp), videos (.mp4/.mov), documents (.pdf/.md/.txt/.zip), etc.
 
 ## Critical Pitfalls
