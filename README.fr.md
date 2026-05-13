@@ -55,8 +55,9 @@ openclaw gateway restart
 ### Via npm
 
 ```bash
+# First install the npm package manually, then configure via CLI
 npm install -g @lansenger-pm/openclaw-lansenger-channel
-openclaw channels add --channel lansenger
+openclaw channels add --channel Lansenger --app-token "your-appid" --secret "your-appsecret"
 ```
 
 ### Installation de développement (lien local)
@@ -70,7 +71,7 @@ openclaw gateway restart
 
 ## Configuration rapide
 
-Après l'installation, configurez en une commande :
+Après l'installation, configurez les identifiants :
 
 ```bash
 openclaw channels add --channel Lansenger \
@@ -78,20 +79,10 @@ openclaw channels add --channel Lansenger \
   --secret "your-appsecret"
 ```
 
-Pour les déploiements d'entreprise, ajoutez `--base-url` :
+Pour les déploiements d'entreprise, définissez l'URL de passerelle personnalisée :
 
 ```bash
-openclaw channels add --channel Lansenger \
-  --app-token "your-appid" \
-  --secret "your-appsecret" \
-  --base-url "https://apigw.lx.qianxin.com"
-```
-
-Ou utilisez le format `--token` (AppID:AppSecret:APIGateway) :
-
-```bash
-openclaw channels add --channel Lansenger \
-  --token "your-appid:your-appsecret:https://apigw.lx.qianxin.com"
+openclaw config set channels.lansenger.apiGatewayUrl "https://apigw.lx.qianxin.com"
 ```
 
 Puis redémarrez :

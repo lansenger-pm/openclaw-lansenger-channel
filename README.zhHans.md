@@ -70,7 +70,7 @@ openclaw gateway restart
 
 ## 快速配置
 
-安装后，一条命令完成配置：
+安装后，配置凭证：
 
 ```bash
 openclaw channels add --channel Lansenger \
@@ -78,20 +78,10 @@ openclaw channels add --channel Lansenger \
   --secret "你的-appsecret"
 ```
 
-企业私有化部署加 `--base-url`：
+企业私有化部署，需设置自定义网关地址：
 
 ```bash
-openclaw channels add --channel Lansenger \
-  --app-token "你的-appid" \
-  --secret "你的-appsecret" \
-  --base-url "https://apigw.lx.qianxin.com"
-```
-
-或使用 `--token` 格式（AppID:AppSecret:APIGateway）：
-
-```bash
-openclaw channels add --channel Lansenger \
-  --token "你的-appid:你的-appsecret:https://apigw.lx.qianxin.com"
+openclaw config set channels.lansenger.apiGatewayUrl "https://apigw.lx.qianxin.com"
 ```
 
 然后重启：

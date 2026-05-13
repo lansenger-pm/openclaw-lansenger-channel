@@ -55,8 +55,9 @@ openclaw gateway restart
 ### 透過 npm
 
 ```bash
+# First install the npm package manually, then configure via CLI
 npm install -g @lansenger-pm/openclaw-lansenger-channel
-openclaw channels add --channel lansenger
+openclaw channels add --channel Lansenger --app-token "your-appid" --secret "your-appsecret"
 ```
 
 ### 開發安裝（本地連結）
@@ -70,7 +71,7 @@ openclaw gateway restart
 
 ## 快速配置
 
-安裝後，一條指令完成配置：
+安裝後，配置憑證：
 
 ```bash
 openclaw channels add --channel Lansenger \
@@ -78,20 +79,10 @@ openclaw channels add --channel Lansenger \
   --secret "你的-appsecret"
 ```
 
-企業私有化部署加 `--base-url`：
+企業私有化部署，需設定自訂閘道地址：
 
 ```bash
-openclaw channels add --channel Lansenger \
-  --app-token "你的-appid" \
-  --secret "你的-appsecret" \
-  --base-url "https://apigw.lx.qianxin.com"
-```
-
-或使用 `--token` 格式（AppID:AppSecret:APIGateway）：
-
-```bash
-openclaw channels add --channel Lansenger \
-  --token "你的-appid:你的-appsecret:https://apigw.lx.qianxin.com"
+openclaw config set channels.lansenger.apiGatewayUrl "https://apigw.lx.qianxin.com"
 ```
 
 然後重啟：

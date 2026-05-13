@@ -69,7 +69,7 @@ openclaw gateway restart
 
 ## Quick Start
 
-After installing, configure with one command:
+After installing, configure credentials:
 
 ```bash
 openclaw channels add --channel Lansenger \
@@ -77,20 +77,10 @@ openclaw channels add --channel Lansenger \
   --secret "your-appsecret"
 ```
 
-For enterprise deployments, add `--base-url`:
+For enterprise deployments, set the custom gateway URL:
 
 ```bash
-openclaw channels add --channel Lansenger \
-  --app-token "your-appid" \
-  --secret "your-appsecret" \
-  --base-url "https://apigw.lx.qianxin.com"
-```
-
-Or use `--token` format (AppID:AppSecret:APIGateway):
-
-```bash
-openclaw channels add --channel Lansenger \
-  --token "your-appid:your-appsecret:https://apigw.lx.qianxin.com"
+openclaw config set channels.lansenger.apiGatewayUrl "https://apigw.lx.qianxin.com"
 ```
 
 Then restart:
