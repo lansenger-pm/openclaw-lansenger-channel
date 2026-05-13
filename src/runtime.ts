@@ -26,46 +26,58 @@ type RunningAccount = {
 
 const runningAccounts = new Map<string, RunningAccount>();
 
+async function startAccount(api: OpenClawPluginApi, accountId?: string | null): Promise<boolean> {
+  const bindingManager = getBindingManager();
+  const account = resolveAccount(api.config, accountId);
+  if (!account.enabled) {
+    log.info(`skip auto-start: account not enabled (accountId=${accountId ?? "default"})`);
+    return false;
+  }
+
+  const key = account.appId || account.accountId || "__default__";
+  if (runningAccounts.has(key)) {
+    log.info(`skip auto-start: already running (key=${key})`);
+    return true;
+  }
+
+  const client = makeClient(account, sdkLogger());
+  client.setMessageHandler(async (event: InboundEvent) => {
+    await handleInbound(api, event, account, key, bindingManager);
+  });
+
+  const connected = await client.connect();
+  if (!connected) {
+    log.error(`auto-start failed: could not connect (key=${key})`);
+    return false;
+  }
+
+  runningAccounts.set(key, { accountId: account.accountId, account, client });
+  log.info(`auto-started: key=${key} (accountId=${account.accountId})`);
+  return true;
+}
+
 export function startLansengerGateway(api: OpenClawPluginApi): void {
   const bindingManager = getBindingManager();
-  
+
+  const section = (api.config.channels as Record<string, any>)?.["lansenger"];
+  const accounts = section?.accounts as Record<string, any> | undefined;
+  bindingManager.initializeFromConfig(accounts ?? {}, (api.config as any).bindings);
+  log.info(`Initialized ${bindingManager.getAllBindings().length} bot bindings`);
+
   api.registerGatewayMethod("lansenger.start", async (opts) => {
     log.info("lansenger.start called");
     
-    const section = (api.config.channels as Record<string, any>)?.["lansenger"];
-    const accounts = section?.accounts as Record<string, any> | undefined;
-    
-    bindingManager.initializeFromConfig(accounts ?? {}, (api.config as any).bindings);
-    log.info(`Initialized ${bindingManager.getAllBindings().length} bot bindings`);
-    
     const accountId = opts.params?.accountId as string | undefined;
-    const account = resolveAccount(api.config, accountId);
-    if (!account.enabled) {
-      opts.respond(false, undefined, errorShape("NOT_LINKED", "Lansenger not configured — missing appId/appSecret"));
+    const ok = await startAccount(api, accountId);
+    if (!ok) {
+      const account = resolveAccount(api.config, accountId);
+      if (!account.enabled) {
+        opts.respond(false, undefined, errorShape("NOT_LINKED", "Lansenger not configured — missing appId/appSecret"));
+      } else {
+        opts.respond(false, undefined, errorShape("UNAVAILABLE", "Failed to connect to Lansenger WebSocket"));
+      }
       return;
     }
-
-    const key = account.appId || account.accountId || "__default__";
-    if (runningAccounts.has(key)) {
-      opts.respond(true, { message: "Lansenger already running" });
-      return;
-    }
-
-    const client = makeClient(account, sdkLogger());
-    
-    client.setMessageHandler(async (event: InboundEvent) => {
-      await handleInbound(api, event, account, key, bindingManager);
-    });
-
-    const connected = await client.connect();
-    if (!connected) {
-      opts.respond(false, undefined, errorShape("UNAVAILABLE", "Failed to connect to Lansenger WebSocket"));
-      return;
-    }
-
-    const accountKey = account.appId || account.accountId || "__default__";
-    runningAccounts.set(accountKey, { accountId: account.accountId, account, client });
-    log.info(`lansenger.start: gateway started for key=${accountKey} (accountId=${account.accountId})`);
     opts.respond(true, { message: "Lansenger gateway started" });
   });
 
@@ -154,6 +166,22 @@ export function startLansengerGateway(api: OpenClawPluginApi): void {
       return true;
     },
   });
+
+  autoStart(api, accounts);
+}
+
+function autoStart(api: OpenClawPluginApi, accounts?: Record<string, any>): void {
+  const section = (api.config.channels as Record<string, any>)?.["lansenger"];
+
+  if (accounts && Object.keys(accounts).length > 0) {
+    for (const [accountId] of Object.entries(accounts)) {
+      startAccount(api, accountId).catch((e) => log.error(`auto-start error: ${e instanceof Error ? e.message : String(e)}`));
+    }
+  } else if (section?.appId && section?.appSecret) {
+    startAccount(api).catch((e) => log.error(`auto-start error: ${e instanceof Error ? e.message : String(e)}`));
+  } else {
+    log.info("auto-start: no configured accounts, skipping");
+  }
 }
 
 async function handleInbound(

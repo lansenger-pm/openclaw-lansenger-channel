@@ -344,7 +344,7 @@ export class LansengerClient {
     if (!token) return { success: false, error: "No access token" };
     const statusText = status === "pending" ? "待审批" : status === "approved" ? "已批准" : "已拒绝";
     const statusColor = status === "pending" ? "#FFB116" : status === "approved" ? "#198754" : "#dc3545";
-    const signature = lang === "zh" ? "Hermes 安全审批" : "Hermes Security";
+    const signature = lang === "zh" ? "OpenClaw 安全审批" : "OpenClaw Security";
     try {
       const url = `${this.apiGatewayUrl}${API_ENDPOINTS.dynamicUpdate}?app_token=${token}`;
       const payload = {

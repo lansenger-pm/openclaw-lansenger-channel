@@ -68,7 +68,7 @@ The plugin automatically routes outbound replies:
 → **linkCard** — `title` + `link` required, optional: description, icon_link, from_name
 
 ### 6. Approval / interactive card
-→ **i18nAppCard** — bilingual card with /approve and /deny buttons
+→ **i18nAppCard** — multilingual card (5 locales: zhHans, zhHant, zhHantHK, en, fr) with /approve and /deny buttons
 - Supports: zhHans, zhHant, zhHantHK, en, fr
 - Fields: i18nHeadTitle, i18nBodyTitle, i18nBodyContent, i18nSignature, i18nFields
 
@@ -118,15 +118,15 @@ When users send images, videos, files, or voice messages, the plugin:
 Approval cards use **i18nAppCard** for initial send, then **appCard msgType** for status updates:
 
 ### Initial Send
-- `msgType: "i18nAppCard"` — bilingual card with approve/deny buttons
+- `msgType: "i18nAppCard"` — multilingual card (5 locales) with approve/deny buttons
 
 ### Status Update
 - `msgType: "appCard"` — NOT i18nAppCard (dynamic updates require appCard format)
-- Uses `appCardUpdateMsg` with:
+- Uses `updateDynamicCardStatus()` with `appCardUpdateMsg`:
   - `isLastUpdate: true` when approved/denied (removes interactive buttons)
   - `isLastUpdate: false` when still pending
-  - `dynamicData` — HTML content for status display
-  - `headStatusInfo` — colored status badge (description + colour)
+  - `dynamicData` — HTML content for status display (`<div>` styled status + signature)
+  - Signature uses detected language: "OpenClaw 安全审批" (zh) or "OpenClaw Security" (en)
 
 ### Language-Aware Updates
 
@@ -185,7 +185,7 @@ The plugin supports multiple Lansenger bots bound to different OpenClaw agents:
 - **File size limits** determined by organization's Lansenger configuration
 - **Message length limit** ~4000 characters for both text and formatText
 - **Revocation** always uses `chatType="bot"` for bot messages
-- **Dynamic card updates** use `msgType="appCard"` (NOT i18nAppCard)
+- **Dynamic card updates** use `msgType="appCard"` via `updateDynamicCardStatus()` with `dynamicData` (NOT i18nAppCard, NOT `headStatusInfo`)
 - **Personal bots only** — organization bots are NOT supported
 - **Credentials path**: Lansenger Desktop → Contacts → Bots → Personal Bot → ℹ️ icon (mobile cannot view credentials)
 - **Default gateway**: `https://open.e.lanxin.cn/open/apigw` (Lansenger public cloud)

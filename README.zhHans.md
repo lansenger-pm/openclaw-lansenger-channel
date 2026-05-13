@@ -7,7 +7,7 @@
 通过 WebSocket 长连接接收实时消息，通过 HTTP API 发送消息，将 OpenClaw 连接到 蓝信 —— 一个企业即时通讯平台。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue)](https://www.typescriptlang.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-6.0-blue)](https://www.typescriptlang.org/)
 
 ## 功能特性
 
@@ -15,12 +15,14 @@
 - **多机器人支持** — 将多个蓝信机器人绑定到不同的 OpenClaw 代理
 - **Markdown 支持** — 使用 `formatText` 消息类型（默认）
 - **文件/图片/语音附件** — 通过 `text` 消息类型上传媒体
-- **i18nAppCard** — 交互式审批流程卡片，支持双语内容
+- **i18nAppCard** — 交互式审批流程卡片，支持多语言内容（zhHans、zhHant、zhHantHK、英语、法语）
 - **动态卡片更新** — 原地更新审批状态（待审批 → 已批准/已拒绝）
 - **语言检测** — 自动检测用户语言，提供本地化响应
 - **群消息路由** — 自动检测并路由到群聊/私聊 API
 - **@提及** — 支持群聊中 @所有人 和 @指定用户
 - **入站媒体处理** — 下载图片/文件/语音，检测文件扩展名，向代理提供文件路径
+- **消息撤回** — 撤回已发送的消息
+- **自动启动** — 网关启动时自动连接所有已配置的机器人账户
 - **零核心修改** — 纯插件模式，`git diff HEAD` 保持纯净
 
 ## 消息类型能力矩阵
@@ -70,6 +72,7 @@ openclaw gateway restart
 |------|------|------|
 | `LANSENGER_APP_ID` | 个人机器人 App ID | `2285568-10117376` |
 | `LANSENGER_APP_SECRET` | 个人机器人 App Secret | `57E718CA1CAC20F2...` |
+| `LANSENGER_API_GATEWAY_URL` | 蓝信 API 网关 URL 覆盖 | `https://open.e.lanxin.cn/open/apigw` |
 
 ### 获取凭证
 
@@ -86,6 +89,8 @@ openclaw gateway restart
       "appId": "2285568-10117376",
       "appSecret": "your-secret",
       "apiGatewayUrl": "https://open.e.lanxin.cn/open/apigw",
+      "homeChannel": "lansenger",
+      "enabled": true,
       "allowFrom": ["2285568-xxx"],
       "dmSecurity": "allowlist",
       "accounts": {
@@ -106,6 +111,8 @@ openclaw gateway restart
 | `appId` | 个人机器人 App ID | — |
 | `appSecret` | 个人机器人 App Secret | — |
 | `apiGatewayUrl` | API 网关 URL | `https://open.e.lanxin.cn/open/apigw` |
+| `homeChannel` | 代理路由的默认频道 | `lansenger` |
+| `enabled` | 启用/禁用频道 | `true` |
 | `allowFrom` | 允许私聊的用户 ID | `[]` |
 | `dmSecurity` | 私聊策略：`allowlist`、`open`、`paired` | `allowlist` |
 | `accounts` | 多机器人配置 | — |
@@ -141,10 +148,18 @@ openclaw gateway restart
 
 ## 使用
 
-### 启动网关
+网关启动时自动连接所有已配置的账户。`lansenger.start` 方法可用于动态启动额外账户。
+
+### 启动网关（动态）
 
 ```bash
 openclaw gateway call lansenger.start
+```
+
+### 停止网关
+
+```bash
+openclaw gateway call lansenger.stop
 ```
 
 ### 查看状态
@@ -175,18 +190,21 @@ openclaw gateway call lansenger.unbind '{"botId":"2285568-xxx"}'
 
 ## 支持的消息类型
 
-| 类型 | 说明 | API 方法 |
-|------|------|----------|
-| `text` | 纯文本，支持可选 @提及和附件 | `sendText()` |
-| `formatText` | Markdown 格式文本（默认） | `sendFormatText()` |
-| `image` | 图片，支持可选说明 | `sendFile()` |
-| `file` | 任意文件附件 | `sendFile()` |
-| `video` | 视频附件 | `sendFile()` |
-| `voice` | 语音消息 | `sendFile()` |
-| `linkCard` | 富链接预览卡片 | `sendLinkCard()` |
-| `i18nAppCard` | 交互式审批卡片（双语） | `sendI18nAppCard()` |
-| `appCard` | 动态应用卡片，支持状态更新 | `sendAppCard()` |
-| `appArticles` | 多文章卡片（图文卡片） | `sendAppArticles()` |
+| 类型 | 说明 | API 方法 | 方向 |
+|------|------|----------|------|
+| `text` | 纯文本，支持可选 @提及和附件 | `sendText()` | 出站 |
+| `formatText` | Markdown 格式文本（默认） | `sendFormatText()` | 出站 |
+| `image` | 图片，支持可选说明 | `sendFile()` | 出站 |
+| `file` | 任意文件附件 | `sendFile()` | 出站 |
+| `video` | 视频附件 | `sendFile()` | 出站 |
+| `voice` | 语音消息 | `sendFile()` | 出站 |
+| `linkCard` | 富链接预览卡片 | `sendLinkCard()` | 出站 |
+| `i18nAppCard` | 交互式审批卡片（多语言：zhHans、zhHant、zhHantHK、en、fr） | `sendI18nAppCard()` | 出站 |
+| `appCard` | 动态应用卡片，支持状态更新 | `sendAppCard()` | 出站 |
+| `appArticles` | 多文章卡片（图文卡片） | `sendAppArticles()` | 出站 |
+| `position` | 位置/定位消息 | — | 仅入站 |
+| `card` | 通用卡片消息 | — | 仅入站 |
+| `sticker` | 贴纸/表情消息 | — | 仅入站 |
 
 ## 入站媒体处理
 
@@ -201,10 +219,8 @@ openclaw gateway call lansenger.unbind '{"botId":"2285568-xxx"}'
 
 OpenClaw 使用蓝信的 **i18nAppCard** 进行审批流程：
 
-- 审批请求以交互式卡片展示
-- 双语内容（中文 + 英文 + 法语）
-- 动态状态更新（待审批 → 已批准/已拒绝），使用 `appCard` 消息类型
-- 状态使用 `headStatusInfo` 显示彩色徽章
+- 审批请求以 i18nAppCard 发送（5 语言：zhHans、zhHant、zhHantHK、英语、法语）
+- 动态状态更新使用 appCard 消息类型，通过 `updateDynamicCardStatus()` 方法，使用 `appCardUpdateMsg` + `dynamicData`（带样式的 HTML 状态/签名）
 - 语言感知：自动检测用户语言（CJK 比率 ≥ 0.6 → 中文）
 - 仅 `allowFrom` 中的用户可以审批
 
@@ -236,6 +252,7 @@ openclaw-lansenger-channel/
 ├── src/
 │   ├── client.ts       # 蓝信 API 客户端（WS、HTTP、媒体）
 │   ├── channel.ts      # OpenClaw 频道插件
+│   ├── channel.test.ts # 频道插件测试
 │   ├── runtime.ts      # 网关运行时（方法、入站处理器）
 │   └── bindings.ts     # 多机器人绑定管理器
 ├── skills/
@@ -271,7 +288,7 @@ openclaw-lansenger-channel/
 
 ### 动态卡片更新失败
 
-动态更新使用 `msgType="appCard"`（不是 i18nAppCard）。`updateCardStatus()` 方法使用 `appCardUpdateMsg` + `headStatusInfo`。
+动态更新使用 `msgType="appCard"`（不是 i18nAppCard）。`updateDynamicCardStatus()` 方法使用 `appCardUpdateMsg` + `dynamicData`。
 
 ## 许可证
 

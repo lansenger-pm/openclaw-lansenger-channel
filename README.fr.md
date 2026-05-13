@@ -7,7 +7,7 @@
 Connecte OpenClaw à Lansenger — une plateforme de messagerie d'entreprise — via une connexion longue WebSocket pour la réception de messages en temps réel et via l'API HTTP pour l'envoi de messages.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue)](https://www.typescriptlang.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-6.0-blue)](https://www.typescriptlang.org/)
 
 ## Fonctionnalités
 
@@ -15,12 +15,14 @@ Connecte OpenClaw à Lansenger — une plateforme de messagerie d'entreprise —
 - **Support multi-bot** — lier plusieurs bots Lansenger à différents agents OpenClaw
 - **Support Markdown** utilisant le msgType `formatText` (par défaut)
 - **Fichiers/Images/Vocaux** via le msgType `text` avec upload de médias
-- **i18nAppCard** — cartes interactives de flux d'approbation avec contenu bilingue
+- **i18nAppCard** — cartes interactives de flux d'approbation avec contenu multilingue (zhHans, zhHant, zhHantHK, anglais, français)
 - **Mises à jour dynamiques de cartes** — mise à jour du statut d'approbation en place (en attente → approuvé/refusé)
 - **Détection de langue** — détection automatique de la langue de l'utilisateur pour des réponses localisées
 - **Routage des messages de groupe** — détection automatique et routage vers les API groupe/privé
 - **@Mentions** — support @tout et @utilisateurs spécifiques dans les chats de groupe
 - **Traitement des médias entrants** — téléchargement d'images/fichiers/vocaux, détection d'extension, chemins de fichiers pour l'agent
+- **Révocation de messages** — révoquer les messages précédemment envoyés
+- **Démarrage automatique** — la passerelle connecte automatiquement tous les comptes de bots configurés au démarrage
 - **Zéro modification du core** — mode plugin pur, `git diff HEAD` reste INTACT
 
 ## Matrice de capacités des types de messages
@@ -70,6 +72,7 @@ Ajoutez ces variables à `~/.openclaw/.env` ou à votre environnement :
 |----------|-------------|---------|
 | `LANSENGER_APP_ID` | App ID du bot personnel | `2285568-10117376` |
 | `LANSENGER_APP_SECRET` | App Secret du bot personnel | `57E718CA1CAC20F2...` |
+| `LANSENGER_API_GATEWAY_URL` | URL de la passerelle API Lansenger (remplacement) | `https://open.e.lanxin.cn/open/apigw` |
 
 ### Obtenir les identifiants
 
@@ -86,6 +89,8 @@ Ajoutez ces variables à `~/.openclaw/.env` ou à votre environnement :
       "appId": "2285568-10117376",
       "appSecret": "your-secret",
       "apiGatewayUrl": "https://open.e.lanxin.cn/open/apigw",
+      "homeChannel": "lansenger",
+      "enabled": true,
       "allowFrom": ["2285568-xxx"],
       "dmSecurity": "allowlist",
       "accounts": {
@@ -106,6 +111,8 @@ Ajoutez ces variables à `~/.openclaw/.env` ou à votre environnement :
 | `appId` | App ID du bot personnel | — |
 | `appSecret` | App Secret du bot personnel | — |
 | `apiGatewayUrl` | URL de la passerelle API | `https://open.e.lanxin.cn/open/apigw` |
+| `homeChannel` | Canal par défaut pour le routage de l'agent | `lansenger` |
+| `enabled` | Activer/désactiver le canal | `true` |
 | `allowFrom` | IDs d'utilisateurs autorisés en DM | `[]` |
 | `dmSecurity` | Politique DM : `allowlist`, `open`, `paired` | `allowlist` |
 | `accounts` | Configuration multi-bot | — |
@@ -141,10 +148,18 @@ Chaque bot peut être lié à un agent OpenClaw différent :
 
 ## Utilisation
 
-### Démarrer la passerelle
+La passerelle démarre automatiquement tous les comptes configurés au démarrage. La méthode `lansenger.start` est disponible pour démarrer dynamiquement des comptes supplémentaires.
+
+### Démarrer la passerelle (dynamique)
 
 ```bash
 openclaw gateway call lansenger.start
+```
+
+### Arrêter la passerelle
+
+```bash
+openclaw gateway call lansenger.stop
 ```
 
 ### Vérifier le statut
@@ -175,18 +190,21 @@ openclaw gateway call lansenger.unbind '{"botId":"2285568-xxx"}'
 
 ## Types de messages supportés
 
-| Type | Description | Méthode API |
-|------|-------------|-------------|
-| `text` | Texte brut avec @mentions et pièces jointes optionnelles | `sendText()` |
-| `formatText` | Texte au format Markdown (par défaut) | `sendFormatText()` |
-| `image` | Image avec légende optionnelle | `sendFile()` |
-| `file` | Tout fichier joint | `sendFile()` |
-| `video` | Vidéo jointe | `sendFile()` |
-| `voice` | Message vocal | `sendFile()` |
-| `linkCard` | Carte de prévisualisation de lien enrichi | `sendLinkCard()` |
-| `i18nAppCard` | Carte d'approbation interactive (bilingue) | `sendI18nAppCard()` |
-| `appCard` | Carte d'application dynamique avec mises à jour de statut | `sendAppCard()` |
-| `appArticles` | Carte multi-articles | `sendAppArticles()` |
+| Type | Description | Méthode API | Direction |
+|------|-------------|-------------|-----------|
+| `text` | Texte brut avec @mentions et pièces jointes optionnelles | `sendText()` | Sortant |
+| `formatText` | Texte au format Markdown (par défaut) | `sendFormatText()` | Sortant |
+| `image` | Image avec légende optionnelle | `sendFile()` | Sortant |
+| `file` | Tout fichier joint | `sendFile()` | Sortant |
+| `video` | Vidéo jointe | `sendFile()` | Sortant |
+| `voice` | Message vocal | `sendFile()` | Sortant |
+| `linkCard` | Carte de prévisualisation de lien enrichi | `sendLinkCard()` | Sortant |
+| `i18nAppCard` | Carte d'approbation interactive (multilingue : zhHans, zhHant, zhHantHK, en, fr) | `sendI18nAppCard()` | Sortant |
+| `appCard` | Carte d'application dynamique avec mises à jour de statut | `sendAppCard()` | Sortant |
+| `appArticles` | Carte multi-articles | `sendAppArticles()` | Sortant |
+| `position` | Message de localisation/position | — | Entrant uniquement |
+| `card` | Message de carte générique | — | Entrant uniquement |
+| `sticker` | Message sticker/emoji | — | Entrant uniquement |
 
 ## Traitement des médias entrants
 
@@ -201,10 +219,8 @@ Lorsque les utilisateurs envoient des images, vidéos, fichiers ou messages voca
 
 OpenClaw utilise les **i18nAppCard** de Lansenger pour les flux d'approbation :
 
-- Les demandes d'approbation apparaissent sous forme de cartes interactives
-- Contenu bilingue (chinois + anglais + français)
-- Mises à jour dynamiques du statut (en attente → approuvé/refusé) via le msgType `appCard`
-- Le statut utilise `headStatusInfo` avec un badge coloré
+- Les demandes d'approbation sont envoyées sous forme de i18nAppCard (5 langues : zhHans, zhHant, zhHantHK, anglais, français)
+- Les mises à jour dynamiques du statut utilisent le msgType appCard via `updateDynamicCardStatus()` avec `appCardUpdateMsg` + `dynamicData` (statut/signature HTML stylisé)
 - Sensible à la langue : détection automatique (ratio CJK ≥ 0.6 → chinois)
 - Seuls les utilisateurs dans `allowFrom` peuvent approuver
 
@@ -236,6 +252,7 @@ openclaw-lansenger-channel/
 ├── src/
 │   ├── client.ts       # Client API Lansenger (WS, HTTP, médias)
 │   ├── channel.ts      # Plugin de canal OpenClaw
+│   ├── channel.test.ts # Tests du plugin de canal
 │   ├── runtime.ts      # Runtime passerelle (méthodes, handler entrant)
 │   └── bindings.ts     # Gestionnaire de liaisons multi-bot
 ├── skills/
@@ -271,7 +288,7 @@ Le plugin inclut une reconnexion automatique avec un backoff exponentiel (2s, 5s
 
 ### Échec de mise à jour dynamique de carte
 
-Les mises à jour dynamiques utilisent `msgType="appCard"` (PAS i18nAppCard). La méthode `updateCardStatus()` utilise `appCardUpdateMsg` + `headStatusInfo`.
+Les mises à jour dynamiques utilisent `msgType="appCard"` (PAS i18nAppCard). La méthode `updateDynamicCardStatus()` utilise `appCardUpdateMsg` + `dynamicData`.
 
 ## Licence
 

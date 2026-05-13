@@ -5,7 +5,7 @@
 Lansenger (蓝信) channel plugin for OpenClaw — WebSocket inbound, HTTP API outbound.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue)](https://www.typescriptlang.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-6.0-blue)](https://www.typescriptlang.org/)
 
 ## Features
 
@@ -13,12 +13,14 @@ Lansenger (蓝信) channel plugin for OpenClaw — WebSocket inbound, HTTP API o
 - **Multi-bot support** — bind multiple Lansenger bots to different OpenClaw agents
 - **Markdown support** using `formatText` msgType (default)
 - **File/Image/Voice attachments** via `text` msgType with media upload
-- **i18nAppCard** — interactive approval workflow cards with bilingual content
+- **i18nAppCard** — interactive approval workflow cards with multilingual content (zhHans, zhHant, zhHantHK, English, French)
 - **Dynamic card updates** — update approval status in-place (pending → approved/denied)
 - **Language detection** — auto-detect user language from messages for localized responses
 - **Group message routing** — auto-detect and route to group/private chat APIs
 - **@Mentions** — support @all and @specific users in group chats
 - **Inbound media processing** — download images/files/voice, detect extension, provide file paths to agent
+- **Message revocation** — revoke previously sent messages
+- **Auto-start** — gateway automatically connects all configured bot accounts on boot
 - **Zero core modification** — pure plugin mode, `git diff HEAD` stays PRISTINE
 
 ## Message Type Capability Matrix
@@ -68,6 +70,7 @@ Add these to `~/.openclaw/.env` or your environment:
 |----------|-------------|---------|
 | `LANSENGER_APP_ID` | Personal bot App ID | `2285568-10117376` |
 | `LANSENGER_APP_SECRET` | Personal bot App Secret | `57E718CA1CAC20F2...` |
+| `LANSENGER_API_GATEWAY_URL` | Lansenger API Gateway URL override | `https://open.e.lanxin.cn/open/apigw` |
 
 ### Get Credentials
 
@@ -84,6 +87,8 @@ Add these to `~/.openclaw/.env` or your environment:
       "appId": "2285568-10117376",
       "appSecret": "your-secret",
       "apiGatewayUrl": "https://open.e.lanxin.cn/open/apigw",
+      "homeChannel": "lansenger",
+      "enabled": true,
       "allowFrom": ["2285568-xxx"],
       "dmSecurity": "allowlist",
       "accounts": {
@@ -104,6 +109,8 @@ Add these to `~/.openclaw/.env` or your environment:
 | `appId` | Personal bot App ID | — |
 | `appSecret` | Personal bot App Secret | — |
 | `apiGatewayUrl` | API Gateway URL | `https://open.e.lanxin.cn/open/apigw` |
+| `homeChannel` | Default channel for agent routing | `lansenger` |
+| `enabled` | Enable/disable the channel | `true` |
 | `allowFrom` | User IDs allowed to DM the bot | `[]` |
 | `dmSecurity` | DM policy: `allowlist`, `open`, `paired` | `allowlist` |
 | `accounts` | Multi-bot configuration | — |
@@ -139,10 +146,18 @@ Each bot can be bound to a different OpenClaw agent:
 
 ## Usage
 
-### Start the gateway
+The gateway auto-starts all configured accounts on boot. The `lansenger.start` method is available for dynamic start of additional accounts.
+
+### Start the gateway (dynamic)
 
 ```bash
 openclaw gateway call lansenger.start
+```
+
+### Stop the gateway
+
+```bash
+openclaw gateway call lansenger.stop
 ```
 
 ### Check status
@@ -173,18 +188,21 @@ openclaw gateway call lansenger.unbind '{"botId":"2285568-xxx"}'
 
 ## Supported Message Types
 
-| Type | Description | API Method |
-|------|-------------|------------|
-| `text` | Plain text with optional @mentions and attachments | `sendText()` |
-| `formatText` | Markdown-formatted text (default) | `sendFormatText()` |
-| `image` | Image with optional caption | `sendFile()` |
-| `file` | Any file attachment | `sendFile()` |
-| `video` | Video attachment | `sendFile()` |
-| `voice` | Voice message | `sendFile()` |
-| `linkCard` | Rich link preview card | `sendLinkCard()` |
-| `i18nAppCard` | Interactive approval card (bilingual) | `sendI18nAppCard()` |
-| `appCard` | Dynamic app card with status updates | `sendAppCard()` |
-| `appArticles` | Multi-article card | `sendAppArticles()` |
+| Type | Description | API Method | Direction |
+|------|-------------|------------|-----------|
+| `text` | Plain text with optional @mentions and attachments | `sendText()` | Outbound |
+| `formatText` | Markdown-formatted text (default) | `sendFormatText()` | Outbound |
+| `image` | Image with optional caption | `sendFile()` | Outbound |
+| `file` | Any file attachment | `sendFile()` | Outbound |
+| `video` | Video attachment | `sendFile()` | Outbound |
+| `voice` | Voice message | `sendFile()` | Outbound |
+| `linkCard` | Rich link preview card | `sendLinkCard()` | Outbound |
+| `i18nAppCard` | Interactive approval card (multilingual: zhHans, zhHant, zhHantHK, en, fr) | `sendI18nAppCard()` | Outbound |
+| `appCard` | Dynamic app card with status updates | `sendAppCard()` | Outbound |
+| `appArticles` | Multi-article card | `sendAppArticles()` | Outbound |
+| `position` | Location/position message | — | Inbound-only |
+| `card` | Generic card message | — | Inbound-only |
+| `sticker` | Sticker/emoji message | — | Inbound-only |
 
 ## Inbound Media Handling
 
@@ -199,10 +217,8 @@ When users send images, videos, files, or voice messages, the plugin:
 
 OpenClaw uses Lansenger's **i18nAppCard** for approval workflows:
 
-- Approval requests appear as interactive cards
-- Bilingual content (Chinese + English + French)
-- Dynamic status updates (pending → approved/denied) via `appCard` msgType
-- Status uses `headStatusInfo` with colored badge
+- Approval requests are sent as i18nAppCard (5-language: zhHans, zhHant, zhHantHK, English, French)
+- Dynamic status updates use appCard msgType via `updateDynamicCardStatus()` with `appCardUpdateMsg` + `dynamicData` (styled HTML status/signature)
 - Language-aware: auto-detects user language (CJK ratio ≥ 0.6 → Chinese)
 - Only users in `allowFrom` can approve
 
@@ -234,6 +250,7 @@ openclaw-lansenger-channel/
 ├── src/
 │   ├── client.ts       # Lansenger API client (WS, HTTP, media)
 │   ├── channel.ts      # OpenClaw channel plugin
+│   ├── channel.test.ts # Channel plugin tests
 │   ├── runtime.ts      # Gateway runtime (methods, inbound handler)
 │   └── bindings.ts     # Multi-bot binding manager
 ├── skills/
@@ -269,7 +286,7 @@ The plugin includes automatic reconnection with exponential backoff (2s, 5s, 10s
 
 ### Dynamic card update fails
 
-Dynamic updates use `msgType="appCard"` (NOT i18nAppCard). The `updateCardStatus()` method uses `appCardUpdateMsg` + `headStatusInfo`.
+Dynamic updates use `msgType="appCard"` (NOT i18nAppCard). The `updateDynamicCardStatus()` method uses `appCardUpdateMsg` + `dynamicData`.
 
 ## License
 
