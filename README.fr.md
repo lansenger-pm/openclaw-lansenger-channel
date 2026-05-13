@@ -56,6 +56,28 @@ openclaw plugins install --link
 openclaw gateway restart
 ```
 
+## Configuration rapide
+
+Après l'installation, configurez en une commande :
+
+```bash
+openclaw channels add --channel lansenger \
+  --app-token "your-appid" \
+  --secret "your-appsecret" \
+  --base-url "https://open.e.lanxin.cn/open/apigw"
+openclaw gateway restart
+```
+
+> 💡 Pour les déploiements d'entreprise, remplacez `--base-url` par votre URL de passerelle privée (ex. `https://apigw.lx.qianxin.com`).
+
+Obtenir les identifiants : **Lansenger Desktop** → **Contacts** → **Bots** → **Personal Bots** → cliquer sur l'icône **ℹ️** (le client mobile ne permet pas de voir les identifiants).
+
+Après le redémarrage, le bot se connecte automatiquement via WebSocket. Envoyez un DM au bot — vous recevrez un code de pairage. Approuvez-le :
+
+```bash
+openclaw pairing approve lansenger <code>
+```
+
 ## Configuration
 
 ### Variables d'environnement requises
@@ -108,7 +130,7 @@ Ajoutez ces variables à `~/.openclaw/.env` ou à votre environnement :
 | `homeChannel` | Canal par défaut pour le routage de l'agent | `lansenger` |
 | `enabled` | Activer/désactiver le canal | `true` |
 | `allowFrom` | IDs d'utilisateurs autorisés en DM | `[]` |
-| `dmSecurity` | Politique DM : `allowlist`, `open`, `paired` | `allowlist` |
+| `dmSecurity` | Politique DM : `paired`, `allowlist`, `open` | `paired` |
 | `accounts` | Configuration multi-bot | — |
 
 ### Configuration multi-bot

@@ -230,7 +230,7 @@ describe("lansengerOnboarding", () => {
     expect(result.channels.lansenger.allowFrom).toEqual(["user-old"]);
   });
 
-  it("promptAllowFrom sets dmSecurity to allowlist when missing", async () => {
+  it("promptAllowFrom sets dmSecurity to paired when missing", async () => {
     const mockPrompter = {
       text: async () => "u1",
       confirm: async () => true,

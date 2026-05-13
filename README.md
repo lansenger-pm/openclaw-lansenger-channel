@@ -54,6 +54,28 @@ openclaw plugins install --link
 openclaw gateway restart
 ```
 
+## Quick Start
+
+After installing, configure with one command:
+
+```bash
+openclaw channels add --channel lansenger \
+  --app-token "your-appid" \
+  --secret "your-appsecret" \
+  --base-url "https://open.e.lanxin.cn/open/apigw"
+openclaw gateway restart
+```
+
+> 💡 For enterprise deployments, replace `--base-url` with your private gateway URL (e.g. `https://apigw.lx.qianxin.com`).
+
+Get credentials from **Lansenger Desktop** → **Contacts** → **Bots** → **Personal Bots** → click **ℹ️** icon (mobile client cannot view credentials).
+
+The bot will auto-connect via WebSocket on gateway restart. Send a DM to the bot — you'll receive a pairing code. Approve it:
+
+```bash
+openclaw pairing approve lansenger <code>
+```
+
 ## Configuration
 
 ### Required Environment Variables
@@ -106,7 +128,7 @@ Add these to `~/.openclaw/.env` or your environment:
 | `homeChannel` | Default channel for agent routing | `lansenger` |
 | `enabled` | Enable/disable the channel | `true` |
 | `allowFrom` | User IDs allowed to DM the bot | `[]` |
-| `dmSecurity` | DM policy: `allowlist`, `open`, `paired` | `allowlist` |
+| `dmSecurity` | DM policy: `paired`, `allowlist`, `open` | `paired` |
 | `accounts` | Multi-bot configuration | — |
 
 ### Multi-Bot Configuration

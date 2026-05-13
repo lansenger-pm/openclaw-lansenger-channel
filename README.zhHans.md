@@ -56,6 +56,28 @@ openclaw plugins install --link
 openclaw gateway restart
 ```
 
+## 快速配置
+
+安装后，一条命令完成配置：
+
+```bash
+openclaw channels add --channel lansenger \
+  --app-token "你的-appid" \
+  --secret "你的-appsecret" \
+  --base-url "https://open.e.lanxin.cn/open/apigw"
+openclaw gateway restart
+```
+
+> 💡 企业私有化部署请替换 `--base-url` 为你的私有网关地址（如 `https://apigw.lx.qianxin.com`）。
+
+获取凭证：**蓝信桌面端** → **通讯录** → **智能机器人** → **个人机器人** → 点击右侧 **ℹ️** 图标（移动端不支持查看凭证）。
+
+重启后机器人自动通过 WebSocket 连接。给机器人发私聊消息，会收到配对码，审批配对：
+
+```bash
+openclaw pairing approve lansenger <配对码>
+```
+
 ## 配置
 
 ### 必需环境变量
@@ -108,7 +130,7 @@ openclaw gateway restart
 | `homeChannel` | 代理路由的默认频道 | `lansenger` |
 | `enabled` | 启用/禁用频道 | `true` |
 | `allowFrom` | 允许私聊的用户 ID | `[]` |
-| `dmSecurity` | 私聊策略：`allowlist`、`open`、`paired` | `allowlist` |
+| `dmSecurity` | 私聊策略：`paired`、`allowlist`、`open` | `paired` |
 | `accounts` | 多机器人配置 | — |
 
 ### 多机器人配置
