@@ -431,9 +431,9 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount> = {
               description: '<div style="color:#FFB116;text-align:left">待审批</div>',
               colour: "#FFB116",
             },
-            bodyTitle: '<div style="color:#000;font-size:15pt;text-align:left">危险命令审批请求</div>',
+            bodyTitle: '<div style="color:#000;font-size:15pt;text-align:left;text-indent:0">危险命令审批请求</div>',
             bodyContent: `<div style="color:#000;font-size:13pt;text-align:left;text-indent:0">会话 ID: ${sessionKey.slice(0, 32)}\n命令:\n${commandPreview}</div>`,
-            signature: '<div style="color:rgba(0,0,0,.47)">OpenClaw 安全审批</div>',
+            signature: '<div style="color:rgba(0,0,0,.47);text-indent:0">OpenClaw 安全审批</div>',
             fields: [
               { key: "执行一次", value: "/approve" },
               { key: "本会话有效", value: "/approve session" },
@@ -449,9 +449,9 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount> = {
               description: '<div style="color:#FFB116;text-align:left">Pending</div>',
               colour: "#FFB116",
             },
-            bodyTitle: '<div style="color:#000;font-size:15pt;text-align:left">Dangerous Command Approval Request</div>',
+            bodyTitle: '<div style="color:#000;font-size:15pt;text-align:left;text-indent:0">Dangerous Command Approval Request</div>',
             bodyContent: `<div style="color:#000;font-size:13pt;text-align:left;text-indent:0">Session: ${sessionKey.slice(0, 32)}\nCommand:\n${commandPreview}</div>`,
-            signature: '<div style="color:rgba(0,0,0,.47)">OpenClaw Security</div>',
+            signature: '<div style="color:rgba(0,0,0,.47);text-indent:0">OpenClaw Security</div>',
             fields: [
               { key: "Approve Once", value: "/approve" },
               { key: "This Session", value: "/approve session" },
