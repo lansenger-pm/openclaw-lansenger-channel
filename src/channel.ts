@@ -5,6 +5,10 @@ import {
 import type { OpenClawConfig, ChannelPlugin } from "openclaw/plugin-sdk/channel-core";
 import { createChannelApprovalCapability } from "openclaw/plugin-sdk/approval-runtime";
 import { createResolvedApproverActionAuthAdapter } from "openclaw/plugin-sdk/approval-auth-runtime";
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
+import * as crypto from "node:crypto";
 import { LansengerClient, DEFAULT_API_GATEWAY_URL } from "./client.js";
 import type { AppCardData, I18nAppCardData, ClientLogger } from "./client.js";
 
@@ -206,10 +210,32 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
         const account = resolveAccount(ctx.cfg, ctx.accountId ?? undefined);
         const client = makeClient(account);
         const caption = ctx.text ?? "";
-        if (ctx.mediaUrl) {
+
+        if (ctx.mediaUrl && /^https?:\/\//i.test(ctx.mediaUrl)) {
           const result = await client.sendImageUrl(ctx.to, ctx.mediaUrl, caption);
           return { messageId: result.messageId ?? "" };
         }
+
+        if (ctx.mediaUrl) {
+          const readFile = ctx.mediaReadFile ?? ctx.mediaAccess?.readFile;
+          if (readFile) {
+            const buffer = await readFile(ctx.mediaUrl);
+            const srcExt = path.extname(ctx.mediaUrl).toLowerCase();
+            const ext = srcExt || (ctx.audioAsVoice ? ".amr" : ".dat");
+            const tmpPath = path.join(os.tmpdir(), `lansenger_media_${crypto.randomUUID()}${ext}`);
+            await fs.writeFile(tmpPath, buffer);
+            const mt = ctx.audioAsVoice ? 4 : undefined;
+            try {
+              const result = await client.sendFile(ctx.to, tmpPath, caption, mt);
+              return { messageId: result.messageId ?? "" };
+            } finally {
+              try { await fs.unlink(tmpPath); } catch {}
+            }
+          }
+          const result = await client.sendFile(ctx.to, ctx.mediaUrl, caption);
+          return { messageId: result.messageId ?? "" };
+        }
+
         return { messageId: "" };
       },
     },
