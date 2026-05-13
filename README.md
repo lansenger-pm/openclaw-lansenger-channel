@@ -1,6 +1,6 @@
 [English](README.md) | [简体中文](README.zhHans.md) | [繁体中文](README.zhHant.md) | [繁体中文香港](README.zhHantHK.md) | [Français](README.fr.md)
 
-# @lansenger/openclaw-lansenger-channel
+# @lansenger-pm/openclaw-lansenger-channel
 
 Lansenger (蓝信) channel plugin for OpenClaw — WebSocket inbound, HTTP API outbound.
 
@@ -33,20 +33,16 @@ Lansenger (蓝信) channel plugin for OpenClaw — WebSocket inbound, HTTP API o
 
 ## Quick Install
 
-### Via npm (recommended)
+### Via OpenClaw CLI (recommended)
 
 ```bash
-npm install -g @lansenger/openclaw-lansenger-channel
-openclaw plugins enable lansenger
+openclaw channels add lansenger
 ```
 
-### Manual install
+### Via npm
 
 ```bash
-cd ~/.openclaw/npm
-npm install @lansenger/openclaw-lansenger-channel
-openclaw plugins enable lansenger
-openclaw gateway restart
+openclaw channels add @lansenger-pm/openclaw-lansenger-channel
 ```
 
 ### Development install (linked)
@@ -55,7 +51,6 @@ openclaw gateway restart
 cd /path/to/openclaw-lansenger-channel
 npm install
 openclaw plugins install --link
-openclaw plugins enable lansenger
 openclaw gateway restart
 ```
 

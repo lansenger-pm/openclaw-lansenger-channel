@@ -1,6 +1,6 @@
 [English](README.md) | [简体中文](README.zhHans.md) | [繁体中文](README.zhHant.md) | [繁体中文香港](README.zhHantHK.md) | [Français](README.fr.md)
 
-# @lansenger/openclaw-lansenger-channel
+# @lansenger-pm/openclaw-lansenger-channel
 
 > 💠 蓝信 频道插件，用于 OpenClaw — WebSocket 入站，HTTP API 出站。
 
@@ -35,20 +35,16 @@
 
 ## 快速安装
 
-### 通过 npm 安装（推荐）
+### 通过 OpenClaw CLI（推荐）
 
 ```bash
-npm install -g @lansenger/openclaw-lansenger-channel
-openclaw plugins enable lansenger
+openclaw channels add lansenger
 ```
 
-### 手动安装
+### 通过 npm
 
 ```bash
-cd ~/.openclaw/npm
-npm install @lansenger/openclaw-lansenger-channel
-openclaw plugins enable lansenger
-openclaw gateway restart
+openclaw channels add @lansenger-pm/openclaw-lansenger-channel
 ```
 
 ### 开发安装（本地链接）
@@ -57,7 +53,6 @@ openclaw gateway restart
 cd /path/to/openclaw-lansenger-channel
 npm install
 openclaw plugins install --link
-openclaw plugins enable lansenger
 openclaw gateway restart
 ```
 
