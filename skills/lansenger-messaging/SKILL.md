@@ -199,6 +199,7 @@ The plugin supports multiple Lansenger bots bound to different OpenClaw agents:
 - **formatText is the default** — you don't need to do anything special for Markdown output
 - **Never put Markdown in a text-type caption** — it will display as raw text
 - **Never put @mentions in a formatText message** — they will be silently ignored
+- **DM security default is pairing** — first DM triggers pairing code; approve with `openclaw pairing approve lansenger <code>`. Personal bots only receive DMs from their owner, so pairing is the correct model (not allowlist).
 - **File size limits** determined by organization's Lansenger configuration
 - **Message length limit** ~4000 characters for both text and formatText
 - **Revocation** always uses `chatType="bot"` for bot messages

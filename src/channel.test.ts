@@ -198,10 +198,10 @@ describe("lansengerOnboarding", () => {
 
   it("setDmPolicy preserves existing fields", () => {
     const cfg = { channels: { lansenger: { appId: "id", appSecret: "secret", allowFrom: ["u1"] } } };
-    const result = lansengerOnboarding.setDmPolicy(cfg, "allowlist");
+    const result = lansengerOnboarding.setDmPolicy(cfg, "paired");
     expect(result.channels.lansenger.appId).toBe("id");
     expect(result.channels.lansenger.allowFrom).toEqual(["u1"]);
-    expect(result.channels.lansenger.dmSecurity).toBe("allowlist");
+    expect(result.channels.lansenger.dmSecurity).toBe("paired");
   });
 
   it("promptAllowFrom adds new ID with dedup", async () => {
@@ -215,7 +215,7 @@ describe("lansengerOnboarding", () => {
     const result = await lansengerOnboarding.promptAllowFrom({ cfg, prompter: mockPrompter, accountId: null });
     expect(result.channels.lansenger.allowFrom).toEqual(["user-old", "user-new"]);
     expect(result.channels.lansenger.enabled).toBe(true);
-    expect(result.channels.lansenger.dmSecurity).toBe("allowlist");
+    expect(result.channels.lansenger.dmSecurity).toBe("paired");
   });
 
   it("promptAllowFrom deduplicates existing entries", async () => {
@@ -239,7 +239,7 @@ describe("lansengerOnboarding", () => {
     };
     const cfg = { channels: { lansenger: { appId: "id", appSecret: "secret" } } };
     const result = await lansengerOnboarding.promptAllowFrom({ cfg, prompter: mockPrompter, accountId: null });
-    expect(result.channels.lansenger.dmSecurity).toBe("allowlist");
+    expect(result.channels.lansenger.dmSecurity).toBe("paired");
   });
 
   it("noteSetupHelp calls prompter.note", async () => {
@@ -266,7 +266,7 @@ describe("lansengerOnboarding", () => {
     expect(result.channels.lansenger.appId).toBe("my-app-id");
     expect(result.channels.lansenger.appSecret).toBe("my-secret");
     expect(result.channels.lansenger.enabled).toBe(true);
-    expect(result.channels.lansenger.dmSecurity).toBe("allowlist");
+    expect(result.channels.lansenger.dmSecurity).toBe("paired");
     expect(result.channels.lansenger.approval.enabled).toBe(true);
   });
 

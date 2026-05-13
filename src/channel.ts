@@ -173,20 +173,20 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
   security: {
     dm: {
       channelKey: "lansenger",
-      resolvePolicy: (account) => account.dmPolicy ?? "allowlist",
+      resolvePolicy: (account) => account.dmPolicy ?? "paired",
       resolveAllowFrom: (account) => account.allowFrom,
-      defaultPolicy: "allowlist",
+      defaultPolicy: "paired",
     },
   },
 
   pairing: {
     text: {
-      idLabel: "Lansenger user ID",
-      message: "Send this pairing code to verify your identity:",
-      notify: async ({ cfg, id, message }) => {
-        const account = resolveAccount(cfg);
+      idLabel: "Lansenger user ID (蓝信用户 ID)",
+      message: "Send this pairing code to verify your identity / 发送此配对码验证身份:",
+      notify: async ({ cfg, id, message, accountId }) => {
+        const account = resolveAccount(cfg, accountId ?? undefined);
         const client = makeClient(account);
-        await client.sendText(id, message);
+        await client.sendFormatText(id, message);
       },
     },
   },
@@ -263,7 +263,7 @@ const lansengerOnboarding = {
     } else {
       current.allowFrom = unique;
     }
-    channels.lansenger = { ...current, enabled: true, accounts: accountsCopy, dmSecurity: current.dmSecurity ?? "allowlist" };
+    channels.lansenger = { ...current, enabled: true, accounts: accountsCopy, dmSecurity: current.dmSecurity ?? "paired" };
     return { ...cfg, channels };
   },
   noteSetupHelp: async (params: any) => {
@@ -295,6 +295,12 @@ const lansengerOnboarding = {
       "📨 After Setup / 配置完成后:",
       "   - Bot receives messages via WebSocket long connection / 机器人通过 WebSocket 长连接接收消息",
       "   - Replies via formatText (Markdown) or text (plain text) / 通过 formatText (Markdown) 或 text (纯文本) 发送回复",
+      "",
+      "🔐 DM Security / 私聊安全:",
+      "   - Default: pairing mode / 默认：配对模式",
+      "   - First DM triggers a pairing code / 首次私聊会触发配对码",
+      "   - Approve with: openclaw pairing approve lansenger <code> / 审批：openclaw pairing approve lansenger <配对码>",
+      "   - Personal bots only receive DMs from their owner / 个人机器人仅接收归属人的私聊消息",
     ], "Lansenger Setup / 蓝信配置");
   },
   runSetupWizard: async (params: any) => {
@@ -359,7 +365,7 @@ const lansengerOnboarding = {
         appSecret,
         apiGatewayUrl: apiGatewayUrl || undefined,
         enabled: true,
-        dmSecurity: current.dmSecurity ?? "allowlist",
+        dmSecurity: current.dmSecurity ?? "paired",
         allowFrom: current.allowFrom ?? [],
         approval: { enabled: true, highRiskTools: "write,delete,trash,rm" },
       };

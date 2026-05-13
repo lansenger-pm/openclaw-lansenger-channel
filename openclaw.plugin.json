@@ -35,8 +35,9 @@
           },
           "dmSecurity": {
             "type": "string",
-            "enum": ["allowlist", "open", "paired"],
-            "description": "DM security policy / 私聊安全策略：allowlist (仅列表用户), open (任何人), paired (已配对用户)"
+            "enum": ["paired", "allowlist", "open"],
+            "default": "paired",
+            "description": "DM security policy / 私聊安全策略：paired (配对验证，推荐), allowlist (仅列表用户), open (任何人)"
           },
           "homeChannel": {
             "type": "string",
@@ -88,11 +89,11 @@
         "dmSecurity": {
           "label": "DM Security / 私聊安全策略",
           "enumLabels": {
+            "paired": "Paired (Recommended) / 配对验证（推荐）",
             "allowlist": "Allowlist Only / 仅允许列表用户",
-            "open": "Open to All / 对所有人开放",
-            "paired": "Paired Users Only / 仅已配对用户"
+            "open": "Open to All / 对所有人开放"
           },
-          "help": "Control who can send DMs to the bot / 控制谁可以向机器人发送私聊消息"
+          "help": "Recommended: paired — first DM triggers pairing code, approve with 'openclaw pairing approve lansenger <code>'. Personal bots only receive DMs from their owner. / 推荐：paired — 首次私聊触发配对码，用 'openclaw pairing approve lansenger <配对码>' 审批。个人机器人仅接收归属人的私聊消息。"
         },
         "homeChannel": {
           "label": "Home Channel / 主聊天窗口",
@@ -129,9 +130,9 @@
         "accounts.*.dmSecurity": {
           "label": "DM Security / 私聊安全策略",
           "enumLabels": {
+            "paired": "Paired (Recommended) / 配对验证（推荐）",
             "allowlist": "Allowlist Only / 仅允许列表用户",
-            "open": "Open to All / 对所有人开放",
-            "paired": "Paired Users Only / 仅已配对用户"
+            "open": "Open to All / 对所有人开放"
           }
         },
         "accounts.*.enabled": {
