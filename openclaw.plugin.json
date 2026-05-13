@@ -23,6 +23,48 @@
     "additionalProperties": false,
     "properties": {}
   },
+  "contracts": {
+    "tools": [
+      "lansenger_send_file",
+      "lansenger_send_text",
+      "lansenger_send_image_url",
+      "lansenger_revoke_message",
+      "lansenger_send_link_card",
+      "lansenger_send_app_articles",
+      "lansenger_send_app_card",
+      "lansenger_update_dynamic_card",
+      "lansenger_query_groups"
+    ]
+  },
+  "toolMetadata": {
+    "lansenger_send_file": {
+      "configSignals": [{ "rootPath": "channels.lansenger", "required": ["appId", "appSecret"] }]
+    },
+    "lansenger_send_text": {
+      "configSignals": [{ "rootPath": "channels.lansenger", "required": ["appId", "appSecret"] }]
+    },
+    "lansenger_send_image_url": {
+      "configSignals": [{ "rootPath": "channels.lansenger", "required": ["appId", "appSecret"] }]
+    },
+    "lansenger_revoke_message": {
+      "configSignals": [{ "rootPath": "channels.lansenger", "required": ["appId", "appSecret"] }]
+    },
+    "lansenger_send_link_card": {
+      "configSignals": [{ "rootPath": "channels.lansenger", "required": ["appId", "appSecret"] }]
+    },
+    "lansenger_send_app_articles": {
+      "configSignals": [{ "rootPath": "channels.lansenger", "required": ["appId", "appSecret"] }]
+    },
+    "lansenger_send_app_card": {
+      "configSignals": [{ "rootPath": "channels.lansenger", "required": ["appId", "appSecret"] }]
+    },
+    "lansenger_update_dynamic_card": {
+      "configSignals": [{ "rootPath": "channels.lansenger", "required": ["appId", "appSecret"] }]
+    },
+    "lansenger_query_groups": {
+      "configSignals": [{ "rootPath": "channels.lansenger", "required": ["appId", "appSecret"] }]
+    }
+  },
   "skills": ["./skills"],
   "channelConfigs": {
     "lansenger": {
