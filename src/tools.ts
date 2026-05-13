@@ -19,13 +19,20 @@ function resolveAccountFromApi(api: any): ResolvedAccount | null {
   return account;
 }
 
-function resolveSessionTarget(ctx: any): string {
-  if (ctx.to) return ctx.to;
-  if (ctx.sessionKey) {
-    const parts = String(ctx.sessionKey).split(":");
-    if (parts.length >= 3 && parts[2]) return parts[2];
+function resolveSessionTarget(ctx: any, explicitTo?: string): string {
+  const sessionChatId = ctx.sessionKey
+    ? (() => {
+        const parts = String(ctx.sessionKey).split(":");
+        if (parts.length >= 3 && parts[2]) return parts[2];
+        return "";
+      })()
+    : "";
+  if (explicitTo) {
+    if (explicitTo.toLowerCase() === sessionChatId.toLowerCase()) return sessionChatId;
+    return explicitTo;
   }
-  return String(ctx.requesterSenderId ?? "");
+  if (ctx.to) return ctx.to;
+  return sessionChatId || String(ctx.requesterSenderId ?? "");
 }
 
 function jsonResult(data: unknown) {
@@ -37,7 +44,7 @@ const SendFileSchema = {
   properties: {
     filePath: { type: "string", description: "Absolute local path to the file to send. Any path works — Documents, Desktop, workspace, /tmp, etc." },
     caption: { type: "string", description: "Plain-text caption for the file (Markdown will NOT render on Lansenger). Optional." },
-    to: { type: "string", description: "Lansenger target chat ID. Optional — if omitted, sent to current conversation." },
+    to: { type: "string", description: "LEAVE EMPTY — the current conversation target is auto-detected. Only fill this if you need to send to a different chat." },
   },
   required: ["filePath"],
 };
@@ -47,7 +54,7 @@ const SendTextSchema = {
   properties: {
     content: { type: "string", description: "Plain text content. No Markdown support — use lansenger_send_file for file delivery, Markdown renders automatically in normal replies." },
     filePath: { type: "string", description: "Optional local file/image/video to attach. If provided, content becomes the caption." },
-    to: { type: "string", description: "Lansenger target chat ID. Optional — if omitted, sent to current conversation." },
+    to: { type: "string", description: "LEAVE EMPTY — the current conversation target is auto-detected. Only fill this if you need to send to a different chat." },
     reminderAll: { type: "boolean", description: "@mention all members in a group (only works in group/staff chat, not DMs)." },
     reminderUserIds: { type: "array", items: { type: "string" }, description: "List of user IDs to @mention (only works in group/staff chat)." },
   },
@@ -59,7 +66,7 @@ const SendImageUrlSchema = {
   properties: {
     imageUrl: { type: "string", description: "URL of the image to download and send." },
     caption: { type: "string", description: "Optional plain-text caption (no Markdown)." },
-    to: { type: "string", description: "Lansenger target chat ID. Optional — if omitted, sent to current conversation." },
+    to: { type: "string", description: "LEAVE EMPTY — the current conversation target is auto-detected. Only fill this if you need to send to a different chat." },
   },
   required: ["imageUrl"],
 };
@@ -81,7 +88,7 @@ const SendLinkCardSchema = {
     link: { type: "string", description: "Card click-through link URL." },
     description: { type: "string", description: "Card description text." },
     iconLink: { type: "string", description: "Card icon image URL." },
-    to: { type: "string", description: "Lansenger target chat ID. Optional — if omitted, sent to current conversation." },
+    to: { type: "string", description: "LEAVE EMPTY — the current conversation target is auto-detected. Only fill this if you need to send to a different chat." },
   },
   required: ["title", "link"],
 };
@@ -104,7 +111,7 @@ const SendAppArticlesSchema = {
       },
       description: "List of article entries. Each must have imgUrl, title, url.",
     },
-    to: { type: "string", description: "Lansenger target chat ID. Optional — if omitted, sent to current conversation." },
+    to: { type: "string", description: "LEAVE EMPTY — the current conversation target is auto-detected. Only fill this if you need to send to a different chat." },
   },
   required: ["articles"],
 };
@@ -139,7 +146,7 @@ const SendAppCardSchema = {
     cardLink: { type: "string", description: "Card click-through link." },
     staffId: { type: "string", description: "Staff openId for showing sender avatar." },
     headIconUrl: { type: "string", description: "Header icon URL." },
-    to: { type: "string", description: "Lansenger target chat ID. Optional — if omitted, sent to current conversation." },
+    to: { type: "string", description: "LEAVE EMPTY — the current conversation target is auto-detected. Only fill this if you need to send to a different chat." },
   },
   required: ["bodyTitle"],
 };
@@ -186,7 +193,7 @@ export function registerLansengerTools(api: any) {
     async execute(_toolCallId: string, params: any) {
       const filePath = params.filePath;
       const caption = params.caption ?? "";
-      const to = resolveSessionTarget({ ...ctx, to: params.to });
+      const to = resolveSessionTarget(ctx, params.to);
       if (!filePath) return jsonResult({ error: "filePath is required" });
       if (!to) return jsonResult({ error: "No target specified and no active session context. Provide a 'to' parameter." });
       const resolved = path.resolve(filePath);
@@ -210,7 +217,7 @@ export function registerLansengerTools(api: any) {
     async execute(_toolCallId: string, params: any) {
       const content = params.content ?? "";
       const filePath = params.filePath ?? "";
-      const to = resolveSessionTarget({ ...ctx, to: params.to });
+      const to = resolveSessionTarget(ctx, params.to);
       if (!to) return jsonResult({ error: "No target specified and no active session context." });
       const client = makeClient(account);
       if (filePath) {
@@ -245,7 +252,7 @@ export function registerLansengerTools(api: any) {
     async execute(_toolCallId: string, params: any) {
       const imageUrl = params.imageUrl;
       const caption = params.caption ?? "";
-      const to = resolveSessionTarget({ ...ctx, to: params.to });
+      const to = resolveSessionTarget(ctx, params.to);
       if (!imageUrl) return jsonResult({ error: "imageUrl is required" });
       if (!to) return jsonResult({ error: "No target specified and no active session context." });
       const client = makeClient(account);
@@ -281,7 +288,7 @@ export function registerLansengerTools(api: any) {
     async execute(_toolCallId: string, params: any) {
       const title = params.title;
       const link = params.link;
-      const to = resolveSessionTarget({ ...ctx, to: params.to });
+      const to = resolveSessionTarget(ctx, params.to);
       if (!title || !link) return jsonResult({ error: "title and link are required" });
       if (!to) return jsonResult({ error: "No target specified and no active session context." });
       const client = makeClient(account);
@@ -300,7 +307,7 @@ export function registerLansengerTools(api: any) {
     parameters: SendAppArticlesSchema,
     async execute(_toolCallId: string, params: any) {
       const articles = params.articles;
-      const to = resolveSessionTarget({ ...ctx, to: params.to });
+      const to = resolveSessionTarget(ctx, params.to);
       if (!articles || articles.length === 0) return jsonResult({ error: "articles is required" });
       if (!to) return jsonResult({ error: "No target specified and no active session context." });
       const client = makeClient(account);
@@ -316,7 +323,7 @@ export function registerLansengerTools(api: any) {
     parameters: SendAppCardSchema,
     async execute(_toolCallId: string, params: any) {
       const bodyTitle = params.bodyTitle;
-      const to = resolveSessionTarget({ ...ctx, to: params.to });
+      const to = resolveSessionTarget(ctx, params.to);
       if (!bodyTitle) return jsonResult({ error: "bodyTitle is required" });
       if (!to) return jsonResult({ error: "No target specified and no active session context." });
       const client = makeClient(account);
