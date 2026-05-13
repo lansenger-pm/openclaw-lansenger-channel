@@ -424,27 +424,43 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount> = {
         buildPendingPayload: ({ cfg, request, target, nowMs }: any) => {
           const commandPreview = (request?.command ?? request?.summary ?? "").slice(0, 300);
           const sessionKey = request?.sessionKey ?? "unknown";
-          return {
-            type: "appCard",
-            appCard: {
-              headTitle: "⚠️ Command Approval / 命令审批",
-              isDynamic: true,
-              headStatusInfo: {
-                description: '<div style="color:#FFB116;text-align:left">Pending / 待审批</div>',
-                colour: "#FFB116",
-              },
-              bodyTitle: '<div style="color:#000;font-size:15pt;text-align:left">Dangerous Command Approval Request / 危险命令审批请求</div>',
-              bodyContent: `<div style="color:#000;font-size:13pt;text-align:left">Session: ${sessionKey.slice(0, 32)}\nCommand / 命令:\n${commandPreview}</div>`,
-              signature: '<div style="color:rgba(0,0,0,.47)">OpenClaw Security / OpenClaw 安全审批</div>',
-              fields: [
-                { key: "Approve Once / 执行一次", value: "/approve" },
-                { key: "This Session / 本会话有效", value: "/approve session" },
-                { key: "Deny / 拒绝执行", value: "/deny" },
-              ],
-              cardLink: "",
-              pcCardLink: "",
+          const zhCard: AppCardData = {
+            headTitle: "⚠️ 命令审批",
+            isDynamic: true,
+            headStatusInfo: {
+              description: '<div style="color:#FFB116;text-align:left">待审批</div>',
+              colour: "#FFB116",
             },
+            bodyTitle: '<div style="color:#000;font-size:15pt;text-align:left">危险命令审批请求</div>',
+            bodyContent: `<div style="color:#000;font-size:13pt;text-align:left;text-indent:0">会话 ID: ${sessionKey.slice(0, 32)}\n命令:\n${commandPreview}</div>`,
+            signature: '<div style="color:rgba(0,0,0,.47)">OpenClaw 安全审批</div>',
+            fields: [
+              { key: "执行一次", value: "/approve" },
+              { key: "本会话有效", value: "/approve session" },
+              { key: "拒绝执行", value: "/deny" },
+            ],
+            cardLink: "",
+            pcCardLink: "",
           };
+          const enCard: AppCardData = {
+            headTitle: "⚠️ Command Approval",
+            isDynamic: true,
+            headStatusInfo: {
+              description: '<div style="color:#FFB116;text-align:left">Pending</div>',
+              colour: "#FFB116",
+            },
+            bodyTitle: '<div style="color:#000;font-size:15pt;text-align:left">Dangerous Command Approval Request</div>',
+            bodyContent: `<div style="color:#000;font-size:13pt;text-align:left;text-indent:0">Session: ${sessionKey.slice(0, 32)}\nCommand:\n${commandPreview}</div>`,
+            signature: '<div style="color:rgba(0,0,0,.47)">OpenClaw Security</div>',
+            fields: [
+              { key: "Approve Once", value: "/approve" },
+              { key: "This Session", value: "/approve session" },
+              { key: "Deny", value: "/deny" },
+            ],
+            cardLink: "",
+            pcCardLink: "",
+          };
+          return { type: "appCard", zh: zhCard, en: enCard };
         },
         buildResolvedPayload: ({ cfg, resolved, target }: any) => {
           if (resolved?.kind === "approved") {
@@ -462,8 +478,10 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount> = {
         send: async ({ cfg, accountId, target, payload }: any) => {
           const account = resolveAccount(cfg, accountId);
           const client = makeClient(account);
-          if (payload?.type === "appCard" && payload?.appCard) {
-            const result = await client.sendAppCard(target.to, payload.appCard as AppCardData);
+          if (payload?.type === "appCard") {
+            const lang = client.getUserLang(target.to);
+            const appCard = (lang === "zh" ? payload.zh : payload.en) ?? payload.en;
+            const result = await client.sendAppCard(target.to, appCard as AppCardData);
             return { delivered: result.success, messageId: result.messageId ?? null };
           }
           if (payload?.type === "text" && payload?.text) {
