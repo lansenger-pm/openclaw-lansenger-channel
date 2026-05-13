@@ -69,7 +69,7 @@ Add these to `~/.openclaw/.env` or your environment:
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `LANSENGER_APP_ID` | Personal bot App ID | `2285568-10117376` |
+| `LANSENGER_APP_ID` | Personal bot App ID | `your-appid` |
 | `LANSENGER_APP_SECRET` | Personal bot App Secret | `57E718CA1CAC20F2...` |
 | `LANSENGER_API_GATEWAY_URL` | Lansenger API Gateway URL override | `https://open.e.lanxin.cn/open/apigw` |
 
@@ -85,16 +85,16 @@ Add these to `~/.openclaw/.env` or your environment:
 {
   "channels": {
     "lansenger": {
-      "appId": "2285568-10117376",
+      "appId": "your-appid",
       "appSecret": "your-secret",
       "apiGatewayUrl": "https://open.e.lanxin.cn/open/apigw",
       "homeChannel": "lansenger",
       "enabled": true,
-      "allowFrom": ["2285568-xxx"],
+      "allowFrom": ["your-appid"],
       "dmSecurity": "allowlist",
       "accounts": {
-        "2285568-10117376": {
-          "appId": "2285568-10117376",
+        "your-appid": {
+          "appId": "your-appid",
           "appSecret": "...",
           "agentId": "main",
           "apiGatewayUrl": "https://open.e.lanxin.cn/open/apigw"
@@ -126,13 +126,13 @@ Each bot can be bound to a different OpenClaw agent:
     "lansenger": {
       "accounts": {
         "bot1-appid": {
-          "appId": "2285568-xxx",
+          "appId": "your-appid",
           "appSecret": "...",
           "agentId": "main-agent",
           "apiGatewayUrl": "https://open.e.lanxin.cn/open/apigw"
         },
         "bot2-appid": {
-          "appId": "524288-yyy",
+          "appId": "your-other-appid",
           "appSecret": "...",
           "agentId": "test-agent"
         }
@@ -172,7 +172,7 @@ openclaw gateway call lansenger.status
 ### Bind a bot to an agent (dynamic)
 
 ```bash
-openclaw gateway call lansenger.bind '{"botId":"2285668-xxx","agentId":"main"}'
+openclaw gateway call lansenger.bind '{"botId":"your-appid","agentId":"main"}'
 ```
 
 ### List bindings
@@ -184,7 +184,7 @@ openclaw gateway call lansenger.bindings
 ### Unbind a bot
 
 ```bash
-openclaw gateway call lansenger.unbind '{"botId":"2285568-xxx"}'
+openclaw gateway call lansenger.unbind '{"botId":"your-appid"}'
 ```
 
 ## Supported Message Types
@@ -198,8 +198,8 @@ openclaw gateway call lansenger.unbind '{"botId":"2285568-xxx"}'
 | `video` | Video attachment | `sendFile()` | Outbound |
 | `voice` | Voice message | `sendFile()` | Outbound |
 | `linkCard` | Rich link preview card | `sendLinkCard()` | Outbound |
-| `i18nAppCard` | Reserved (not used for approval); 5 languages: zhHans, zhHant, zhHantHK, en, fr | `sendI18nAppCard()` | Outbound |
-| `appCard` | Approval cards with isDynamic + headStatusInfo | `sendAppCard()` | Outbound |
+| `i18nAppCard` | Reserved for future use; 5-language card | `sendI18nAppCard()` | Outbound |
+| `appCard` | Approval cards (isDynamic + headStatusInfo) | `sendAppCard()` | Outbound |
 | `appArticles` | Multi-article card | `sendAppArticles()` | Outbound |
 | `position` | Location/position message | — | Inbound-only |
 | `card` | Generic card message | — | Inbound-only |
@@ -216,19 +216,11 @@ When users send images, videos, files, or voice messages, the plugin:
 
 ## Approval Workflow
 
-Approval workflow uses **appCard** for initial send and **DynamicMsg appCard** for status updates:
-
-- **Initial send**: `msgType="appCard"` with `isDynamic=true` + `headStatusInfo` (showing pending status with amber color)
-- **Status update**: DynamicMsg appCard using `updateCardStatus()` with `appCardUpdateMsg` + `headStatusInfo`
-- Content uses bilingual text (e.g. "Pending / 待审批") since appCard does NOT support i18n per-locale rendering
-
-### Lansenger Card Types
-
-| Card Type | i18n | Dynamic Updates | headStatusInfo | Usage |
-|-----------|------|-----------------|----------------|-------|
-| `i18nAppCard` | ✓ (5 languages) | ✗ | ✗ | Reserved for future use |
-| `appCard` | ✗ | ✓ (`isDynamic=true`) | ✓ | Approval cards (initial send) |
-| DynamicMsg `appCard` | ✗ | ✓ (`appCardUpdateMsg`) | ✓ (`isLastUpdate`) | Approval status updates |
+The plugin supports approval workflow cards:
+- Approval requests are sent as **appCard** with `isDynamic=true`
+- Status updates (pending → approved/denied) update the card in-place via **DynamicMsg**
+- Language detection: the card is sent in the user's detected language (Chinese or English)
+- **i18nAppCard** (5-language) is reserved for future use but not currently used for approval
 
 ## Development
 

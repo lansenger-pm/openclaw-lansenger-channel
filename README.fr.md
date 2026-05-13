@@ -71,7 +71,7 @@ Ajoutez ces variables à `~/.openclaw/.env` ou à votre environnement :
 
 | Variable | Description | Exemple |
 |----------|-------------|---------|
-| `LANSENGER_APP_ID` | App ID du bot personnel | `2285568-10117376` |
+| `LANSENGER_APP_ID` | App ID du bot personnel | `your-appid` |
 | `LANSENGER_APP_SECRET` | App Secret du bot personnel | `57E718CA1CAC20F2...` |
 | `LANSENGER_API_GATEWAY_URL` | URL de la passerelle API Lansenger (remplacement) | `https://open.e.lanxin.cn/open/apigw` |
 
@@ -87,16 +87,16 @@ Ajoutez ces variables à `~/.openclaw/.env` ou à votre environnement :
 {
   "channels": {
     "lansenger": {
-      "appId": "2285568-10117376",
+      "appId": "your-appid",
       "appSecret": "your-secret",
       "apiGatewayUrl": "https://open.e.lanxin.cn/open/apigw",
       "homeChannel": "lansenger",
       "enabled": true,
-      "allowFrom": ["2285568-xxx"],
+      "allowFrom": ["your-appid"],
       "dmSecurity": "allowlist",
       "accounts": {
-        "2285568-10117376": {
-          "appId": "2285568-10117376",
+        "your-appid": {
+          "appId": "your-appid",
           "appSecret": "...",
           "agentId": "main",
           "apiGatewayUrl": "https://open.e.lanxin.cn/open/apigw"
@@ -128,13 +128,13 @@ Chaque bot peut être lié à un agent OpenClaw différent :
     "lansenger": {
       "accounts": {
         "bot1-appid": {
-          "appId": "2285568-xxx",
+          "appId": "your-appid",
           "appSecret": "...",
           "agentId": "main-agent",
           "apiGatewayUrl": "https://open.e.lanxin.cn/open/apigw"
         },
         "bot2-appid": {
-          "appId": "524288-yyy",
+          "appId": "your-other-appid",
           "appSecret": "...",
           "agentId": "test-agent"
         }
@@ -174,7 +174,7 @@ openclaw gateway call lansenger.status
 ### Lier un bot à un agent (dynamique)
 
 ```bash
-openclaw gateway call lansenger.bind '{"botId":"2285668-xxx","agentId":"main"}'
+openclaw gateway call lansenger.bind '{"botId":"your-appid","agentId":"main"}'
 ```
 
 ### Liste des liaisons
@@ -186,7 +186,7 @@ openclaw gateway call lansenger.bindings
 ### Délier un bot
 
 ```bash
-openclaw gateway call lansenger.unbind '{"botId":"2285568-xxx"}'
+openclaw gateway call lansenger.unbind '{"botId":"your-appid"}'
 ```
 
 ## Types de messages supportés
@@ -200,8 +200,8 @@ openclaw gateway call lansenger.unbind '{"botId":"2285568-xxx"}'
 | `video` | Vidéo jointe | `sendFile()` | Sortant |
 | `voice` | Message vocal | `sendFile()` | Sortant |
 | `linkCard` | Carte de prévisualisation de lien enrichi | `sendLinkCard()` | Sortant |
-| `i18nAppCard` | Réservé (non utilisé pour approbation) ; 5 langues : zhHans, zhHant, zhHantHK, en, fr | `sendI18nAppCard()` | Sortant |
-| `appCard` | Cartes d'approbation avec isDynamic + headStatusInfo | `sendAppCard()` | Sortant |
+| `i18nAppCard` | Réservé pour usage futur ; carte 5 langues | `sendI18nAppCard()` | Sortant |
+| `appCard` | Cartes d'approbation (isDynamic + headStatusInfo) | `sendAppCard()` | Sortant |
 | `appArticles` | Carte multi-articles | `sendAppArticles()` | Sortant |
 | `position` | Message de localisation/position | — | Entrant uniquement |
 | `card` | Message de carte générique | — | Entrant uniquement |
@@ -218,19 +218,11 @@ Lorsque les utilisateurs envoient des images, vidéos, fichiers ou messages voca
 
 ## Flux d'approbation
 
-Le flux d'approbation utilise **appCard** pour l'envoi initial et **DynamicMsg appCard** pour les mises à jour de statut :
-
-- **Envoi initial** : `msgType="appCard"` avec `isDynamic=true` + `headStatusInfo` (statut en attente, couleur ambre)
-- **Mise à jour de statut** : DynamicMsg appCard via `updateCardStatus()` avec `appCardUpdateMsg` + `headStatusInfo`
-- Le contenu utilise du texte bilingue (ex. "Pending / 待审批") car appCard ne supporte PAS le rendu i18n par langue
-
-### Types de cartes Lansenger
-
-| Type de carte | i18n | Mises à jour dynamiques | headStatusInfo | Utilisation |
-|---------------|------|-------------------------|----------------|-------------|
-| `i18nAppCard` | ✓ (5 langues) | ✗ | ✗ | Réservé pour usage futur |
-| `appCard` | ✗ | ✓ (`isDynamic=true`) | ✓ | Cartes d'approbation (envoi initial) |
-| DynamicMsg `appCard` | ✗ | ✓ (`appCardUpdateMsg`) | ✓ (`isLastUpdate`) | Mises à jour de statut d'approbation |
+Le plugin supporte les cartes d'approbation :
+- Les demandes d'approbation sont envoyées via **appCard** avec `isDynamic=true`
+- Les mises à jour de statut (en attente → approuvé/refusé) mettent à jour la carte en place via **DynamicMsg**
+- La langue détectée automatiquement détermine la langue de la carte (chinois ou anglais)
+- **i18nAppCard** (5 langues) est réservé pour un usage futur et n'est pas utilisé pour l'approbation
 
 ## Développement
 

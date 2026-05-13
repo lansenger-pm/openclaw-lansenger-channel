@@ -71,7 +71,7 @@ openclaw gateway restart
 
 | 變數 | 說明 | 範例 |
 |------|------|------|
-| `LANSENGER_APP_ID` | 個人機械人 App ID | `2285568-10117376` |
+| `LANSENGER_APP_ID` | 個人機械人 App ID | `your-appid` |
 | `LANSENGER_APP_SECRET` | 個人機械人 App Secret | `57E718CA1CAC20F2...` |
 | `LANSENGER_API_GATEWAY_URL` | 藍信 API 網關 URL 覆蓋 | `https://open.e.lanxin.cn/open/apigw` |
 
@@ -87,16 +87,16 @@ openclaw gateway restart
 {
   "channels": {
     "lansenger": {
-      "appId": "2285568-10117376",
+      "appId": "your-appid",
       "appSecret": "your-secret",
       "apiGatewayUrl": "https://open.e.lanxin.cn/open/apigw",
       "homeChannel": "lansenger",
       "enabled": true,
-      "allowFrom": ["2285568-xxx"],
+      "allowFrom": ["your-appid"],
       "dmSecurity": "allowlist",
       "accounts": {
-        "2285568-10117376": {
-          "appId": "2285568-10117376",
+        "your-appid": {
+          "appId": "your-appid",
           "appSecret": "...",
           "agentId": "main",
           "apiGatewayUrl": "https://open.e.lanxin.cn/open/apigw"
@@ -128,13 +128,13 @@ openclaw gateway restart
     "lansenger": {
       "accounts": {
         "bot1-appid": {
-          "appId": "2285568-xxx",
+          "appId": "your-appid",
           "appSecret": "...",
           "agentId": "main-agent",
           "apiGatewayUrl": "https://open.e.lanxin.cn/open/apigw"
         },
         "bot2-appid": {
-          "appId": "524288-yyy",
+          "appId": "your-other-appid",
           "appSecret": "...",
           "agentId": "test-agent"
         }
@@ -174,7 +174,7 @@ openclaw gateway call lansenger.status
 ### 綁定機械人至代理（動態）
 
 ```bash
-openclaw gateway call lansenger.bind '{"botId":"2285668-xxx","agentId":"main"}'
+openclaw gateway call lansenger.bind '{"botId":"your-appid","agentId":"main"}'
 ```
 
 ### 查看綁定列表
@@ -186,7 +186,7 @@ openclaw gateway call lansenger.bindings
 ### 解綁機械人
 
 ```bash
-openclaw gateway call lansenger.unbind '{"botId":"2285568-xxx"}'
+openclaw gateway call lansenger.unbind '{"botId":"your-appid"}'
 ```
 
 ## 支援的訊息類型
@@ -200,8 +200,8 @@ openclaw gateway call lansenger.unbind '{"botId":"2285568-xxx"}'
 | `video` | 影片附件 | `sendFile()` | 出站 |
 | `voice` | 語音訊息 | `sendFile()` | 出站 |
 | `linkCard` | 富連結預覽卡片 | `sendLinkCard()` | 出站 |
-| `i18nAppCard` | 保留（不用於審批）；5 語言：zhHans、zhHant、zhHantHK、en、fr | `sendI18nAppCard()` | 出站 |
-| `appCard` | 審批卡片，使用 isDynamic + headStatusInfo | `sendAppCard()` | 出站 |
+| `i18nAppCard` | 保留供未來使用；5 語言卡片 | `sendI18nAppCard()` | 出站 |
+| `appCard` | 審批卡片（isDynamic + headStatusInfo） | `sendAppCard()` | 出站 |
 | `appArticles` | 多文章卡片 | `sendAppArticles()` | 出站 |
 | `position` | 位置/定位訊息 | — | 僅入站 |
 | `card` | 通用卡片訊息 | — | 僅入站 |
@@ -218,19 +218,11 @@ openclaw gateway call lansenger.unbind '{"botId":"2285568-xxx"}'
 
 ## 審批流程
 
-審批流程使用 **appCard** 發送初始卡片，使用 **DynamicMsg appCard** 更新狀態：
-
-- **初始發送**：`msgType="appCard"`，使用 `isDynamic=true` + `headStatusInfo`（顯示待審批狀態，琥珀色）
-- **狀態更新**：DynamicMsg appCard，透過 `updateCardStatus()` 方法，使用 `appCardUpdateMsg` + `headStatusInfo`
-- 內容使用雙語文字（如"Pending / 待審批"），因為 appCard 不支援 i18n 按語言環境渲染
-
-### 藍信卡片類型
-
-| 卡片類型 | i18n | 動態更新 | headStatusInfo | 用途 |
-|----------|------|----------|----------------|------|
-| `i18nAppCard` | ✓（5 語言） | ✗ | ✗ | 保留供未來使用 |
-| `appCard` | ✗ | ✓（`isDynamic=true`） | ✓ | 審批卡片（初始發送） |
-| DynamicMsg `appCard` | ✗ | ✓（`appCardUpdateMsg`） | ✓（`isLastUpdate`） | 審批狀態更新 |
+支援審批卡片：
+- 審批請求透過 **appCard**（`isDynamic=true`）發送
+- 狀態更新（待審批 → 已通過/已拒絕）透過 **DynamicMsg** 原地更新卡片
+- 根據使用者偵測到的語言發送中文或英文卡片
+- **i18nAppCard**（5 語言）保留供未來使用，目前不用於審批
 
 ## 開發
 
