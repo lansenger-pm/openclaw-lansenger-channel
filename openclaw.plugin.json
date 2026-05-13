@@ -34,6 +34,10 @@
             "type": "string",
             "description": "Lansenger API Gateway URL / API 网关地址（默认：https://open.e.lanxin.cn/open/apigw）"
           },
+          "defaultAccount": {
+            "type": "string",
+            "description": "Default account ID for outbound routing when no accountId specified / 未指定 accountId 时的默认出站路由账号"
+          },
           "allowFrom": {
             "type": "array",
             "items": { "type": "string" },

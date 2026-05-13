@@ -7,7 +7,6 @@ import { createChannelApprovalCapability } from "openclaw/plugin-sdk/approval-ru
 import { createResolvedApproverActionAuthAdapter } from "openclaw/plugin-sdk/approval-auth-runtime";
 import { LansengerClient, DEFAULT_API_GATEWAY_URL } from "./client.js";
 import type { AppCardData, I18nAppCardData, ClientLogger } from "./client.js";
-import { getBindingManager } from "./bindings.js";
 
 type LansengerAccount = {
   appId?: string;
@@ -35,18 +34,19 @@ type ResolvedAccount = {
 function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): ResolvedAccount {
   const section = (cfg.channels as Record<string, any>)?.["lansenger"];
   const accounts = section?.accounts as Record<string, LansengerAccount> | undefined;
-  
+  const defaultAccount = section?.defaultAccount as string | undefined;
+
+  let resolvedAccountId: string | null = accountId ?? defaultAccount ?? null;
   let account: LansengerAccount | undefined;
-  let resolvedAccountId: string | null = accountId ?? null;
-  
-  if (accountId && accounts && accounts[accountId]) {
-    account = accounts[accountId];
-    resolvedAccountId = accountId;
+
+  if (resolvedAccountId && accounts && accounts[resolvedAccountId]) {
+    account = accounts[resolvedAccountId];
   } else if (section && section.appId) {
     account = section;
     resolvedAccountId = section.appId;
   } else {
     account = section ?? {};
+    resolvedAccountId = null;
   }
   
   const appId = account?.appId ?? process.env.LANSENGER_APP_ID ?? "";

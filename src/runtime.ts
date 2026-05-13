@@ -1,14 +1,11 @@
-import { execSync } from "node:child_process";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/channel-core";
 import { createSubsystemLogger } from "openclaw/plugin-sdk/logging-core";
 import { LansengerClient } from "./client.js";
 import type { InboundEvent, ClientLogger, ApiResult, AppCardData } from "./client.js";
 import { resolveAccount, makeClient } from "./channel.js";
 import type { ResolvedAccount } from "./channel.js";
-import { runInboundReplyTurn } from "openclaw/plugin-sdk/inbound-reply-dispatch";
 import { errorShape } from "openclaw/plugin-sdk/gateway-runtime";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { getBindingManager } from "./bindings.js";
 
 const log = createSubsystemLogger("lansenger");
 
@@ -28,7 +25,6 @@ type RunningAccount = {
 const runningAccounts = new Map<string, RunningAccount>();
 
 async function startAccount(api: OpenClawPluginApi, accountId?: string | null): Promise<boolean> {
-  const bindingManager = getBindingManager();
   const account = resolveAccount(api.config, accountId);
   if (!account.enabled) {
     log.info(`skip auto-start: account not enabled (accountId=${accountId ?? "default"})`);
@@ -43,7 +39,7 @@ async function startAccount(api: OpenClawPluginApi, accountId?: string | null): 
 
   const client = makeClient(account, sdkLogger());
   client.setMessageHandler(async (event: InboundEvent) => {
-    await handleInbound(api, event, account, key, bindingManager);
+    await handleInbound(api, event, account, key);
   });
 
   const connected = await client.connect();
@@ -58,16 +54,11 @@ async function startAccount(api: OpenClawPluginApi, accountId?: string | null): 
 }
 
 export function startLansengerGateway(api: OpenClawPluginApi): void {
-  const bindingManager = getBindingManager();
-
   const section = (api.config.channels as Record<string, any>)?.["lansenger"];
   const accounts = section?.accounts as Record<string, any> | undefined;
-  bindingManager.initializeFromConfig(accounts ?? {}, (api.config as any).bindings);
-  log.info(`Initialized ${bindingManager.getAllBindings().length} bot bindings`);
 
   api.registerGatewayMethod("lansenger.start", async (opts) => {
     log.info("lansenger.start called");
-    
     const accountId = opts.params?.accountId as string | undefined;
     const ok = await startAccount(api, accountId);
     if (!ok) {
@@ -80,47 +71,6 @@ export function startLansengerGateway(api: OpenClawPluginApi): void {
       return;
     }
     opts.respond(true, { message: "Lansenger gateway started" });
-  });
-
-  api.registerGatewayMethod("lansenger.bind", async (opts) => {
-    const { botId, agentId } = opts.params as { botId?: string; agentId?: string };
-    if (!botId || !agentId) {
-      opts.respond(false, undefined, errorShape("UNAVAILABLE", "botId and agentId required"));
-      return;
-    }
-    bindingManager.bindBotToAgent(botId, agentId);
-    try {
-      execSync(`openclaw config set channels.lansenger.accounts.${botId}.agentId "${agentId}"`, { stdio: "pipe" });
-      log.info(`Bound bot ${botId} to agent ${agentId} (persisted)`);
-    } catch (e) {
-      log.warn(`Bound bot ${botId} to agent ${agentId} (memory only, config write failed: ${e instanceof Error ? e.message : String(e)})`);
-    }
-    opts.respond(true, { message: `Bound ${botId} → ${agentId}` });
-  });
-
-  api.registerGatewayMethod("lansenger.unbind", async (opts) => {
-    const { botId } = opts.params as { botId?: string };
-    if (!botId) {
-      opts.respond(false, undefined, errorShape("UNAVAILABLE", "botId required"));
-      return;
-    }
-    const removed = bindingManager.removeBinding(botId);
-    if (removed) {
-      try {
-        execSync(`openclaw config unset channels.lansenger.accounts.${botId}.agentId`, { stdio: "pipe" });
-        log.info(`Unbound bot ${botId} (persisted)`);
-      } catch (e) {
-        log.warn(`Unbound bot ${botId} (memory only, config write failed: ${e instanceof Error ? e.message : String(e)})`);
-      }
-      opts.respond(true, { message: `Unbound ${botId}` });
-    } else {
-      opts.respond(false, undefined, errorShape("NOT_LINKED", `No binding for ${botId}`));
-    }
-  });
-
-  api.registerGatewayMethod("lansenger.bindings", async (opts) => {
-    const bindings = bindingManager.getAllBindings();
-    opts.respond(true, { bindings });
   });
 
   api.registerGatewayMethod("lansenger.stop", async (opts) => {
@@ -169,7 +119,7 @@ export function startLansengerGateway(api: OpenClawPluginApi): void {
       const events = await client.processRawMessage(body);
 
       for (const event of events) {
-        await handleInbound(api, event, account, key, bindingManager);
+        await handleInbound(api, event, account, key);
       }
 
       res.statusCode = 200;
@@ -293,49 +243,45 @@ async function handleInbound(
   event: InboundEvent,
   account: ResolvedAccount,
   runningKey: string,
-  bindingManager: ReturnType<typeof getBindingManager>,
 ): Promise<void> {
   const chatType = event.isGroup ? "group" : "dm";
-  const botId = account.appId;
-  
-  const binding = bindingManager.getAgentId(botId);
-  const agentId = binding ?? account.agentId ?? "default";
-  
-  log.info(`inbound: ${chatType} from=${event.senderId} bot=${botId.slice(0, 20)}... agent=${agentId}`);
+  const agentId = account.agentId ?? "default";
+  const sessionKey = `lansenger:${event.chatId}:${chatType}`;
+  const replyTo = event.chatId;
 
-  await runInboundReplyTurn({
+  log.info(`inbound: ${chatType} from=${event.senderId} bot=${account.appId.slice(0, 20)}... agent=${agentId}`);
+
+  let agentText = event.text;
+  if (event.mediaPaths?.length) {
+    agentText = `${event.text}\n\nAttached files saved locally — use the read tool to view:\n${event.mediaPaths.map((p, i) => `${i + 1}. ${p}`).join("\n")}`;
+  }
+
+  await api.runtime.channel.turn.run({
     channel: "lansenger",
     accountId: account.accountId ?? undefined,
     raw: event,
     adapter: {
       ingest: () => {
-        let agentText = event.text;
-        if (event.mediaPaths?.length) {
-          agentText = `${event.text}\n\nAttached files saved locally — use the read tool to view:\n${event.mediaPaths.map((p, i) => `${i + 1}. ${p}`).join("\n")}`;
-        }
         return {
           id: event.messageId,
           rawText: event.text,
           textForAgent: agentText,
           textForCommands: event.text,
           raw: event.rawMessage,
-          mediaUrls: event.mediaPaths?.length ? event.mediaPaths : undefined,
         };
       },
-      resolveTurn: (input: any, eventClass: any, preflight: any) => {
-        const sessionKey = `lansenger:${event.chatId}:${chatType}`;
+      resolveTurn: () => {
         const storePath = api.runtime.channel.session.resolveStorePath(undefined, { agentId });
-        const replyTo = event.chatId;
         return {
           cfg: api.config,
           channel: "lansenger",
           accountId: account.accountId ?? undefined,
-          agentId: "default",
+          agentId,
           routeSessionKey: sessionKey,
           storePath,
           ctxPayload: {
             Body: event.text,
-            BodyForAgent: event.text,
+            BodyForAgent: agentText,
             From: event.senderId,
             FromName: event.userName,
             SessionKey: sessionKey,
