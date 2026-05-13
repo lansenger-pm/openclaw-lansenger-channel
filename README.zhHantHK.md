@@ -227,23 +227,19 @@ openclaw channels status
 openclaw gateway call lansenger.status
 ```
 
-### 綁定機械人至代理（動態）
+### 綁定機械人至代理（配置方式）
+
+機械人與代理的綁定透過帳號設定的 `agentId` 或 OpenClaw `bindings[]` 實現：
 
 ```bash
-openclaw gateway call lansenger.bind '{"botId":"your-appid","agentId":"main"}'
+# 按帳號設定 agentId（建議）
+openclaw config set channels.lansenger.accounts.your-appid.agentId "main"
+
+# 或透過 OpenClaw bindings[]
+openclaw config set bindings '[{"agentId":"main","match":{"channel":"lansenger","peer":{"kind":"direct","id":"your-userid"}}}]'
 ```
 
-### 查看綁定列表
-
-```bash
-openclaw gateway call lansenger.bindings
-```
-
-### 解綁機械人
-
-```bash
-openclaw gateway call lansenger.unbind '{"botId":"your-appid"}'
-```
+> 多代理路由見[多機械人設定](#多機械人設定)。
 
 ## 支援的訊息類型
 
@@ -330,7 +326,7 @@ openclaw-lansenger-channel/
 
 ### "No binding for botId"
 
-執行 `lansenger.bind` 將機械人綁定至代理，或在帳戶設定中設定 `agentId`。
+在帳號設定中設定 `agentId`，或使用 OpenClaw `bindings[]` 設定多代理路由。
 
 ### WebSocket 斷線
 

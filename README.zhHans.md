@@ -226,23 +226,19 @@ openclaw channels status
 openclaw gateway call lansenger.status
 ```
 
-### 绑定机器人到代理（动态）
+### 绑定机器人至代理（配置方式）
+
+机器人与代理的绑定通过账户配置的 `agentId` 或 OpenClaw `bindings[]` 实现：
 
 ```bash
-openclaw gateway call lansenger.bind '{"botId":"your-appid","agentId":"main"}'
+# 按账号设置 agentId（推荐）
+openclaw config set channels.lansenger.accounts.your-appid.agentId "main"
+
+# 或通过 OpenClaw bindings[]
+openclaw config set bindings '[{"agentId":"main","match":{"channel":"lansenger","peer":{"kind":"direct","id":"your-userid"}}}]'
 ```
 
-### 查看绑定列表
-
-```bash
-openclaw gateway call lansenger.bindings
-```
-
-### 解绑机器人
-
-```bash
-openclaw gateway call lansenger.unbind '{"botId":"your-appid"}'
-```
+> 多代理路由见[多机器人配置](#多机器人配置)。
 
 ## 支持的消息类型
 
@@ -329,7 +325,7 @@ openclaw-lansenger-channel/
 
 ### "No binding for botId"
 
-运行 `lansenger.bind` 将机器人绑定到代理，或在账户配置中设置 `agentId`。
+在账户配置中设置 `agentId`，或使用 OpenClaw `bindings[]` 配置多代理路由。
 
 ### WebSocket 断连
 

@@ -226,23 +226,19 @@ openclaw channels status
 openclaw gateway call lansenger.status
 ```
 
-### Bind a bot to an agent (dynamic)
+### Bind a bot to an agent (config-based)
+
+Bot-to-agent binding uses `agentId` in the account config or OpenClaw `bindings[]`:
 
 ```bash
-openclaw gateway call lansenger.bind '{"botId":"your-appid","agentId":"main"}'
+# Per-account agentId (recommended)
+openclaw config set channels.lansenger.accounts.your-appid.agentId "main"
+
+# Or via OpenClaw bindings[]
+openclaw config set bindings '[{"agentId":"main","match":{"channel":"lansenger","peer":{"kind":"direct","id":"your-userid"}}}]'
 ```
 
-### List bindings
-
-```bash
-openclaw gateway call lansenger.bindings
-```
-
-### Unbind a bot
-
-```bash
-openclaw gateway call lansenger.unbind '{"botId":"your-appid"}'
-```
+> See [Multi-Bot Configuration](#multi-bot-configuration) for multi-agent routing.
 
 ## Supported Message Types
 
@@ -329,7 +325,7 @@ Use the **Lansenger Desktop** client only. The mobile app does not display bot c
 
 ### "No binding for botId"
 
-Run `lansenger.bind` to bind the bot to an agent, or configure `agentId` in the account config.
+Configure `agentId` in the account config, or use OpenClaw `bindings[]` for multi-agent routing.
 
 ### WebSocket disconnects
 
