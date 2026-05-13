@@ -38,13 +38,14 @@
 ### 透過 OpenClaw CLI（推薦）
 
 ```bash
-openclaw channels add lansenger
+openclaw channels add --channel lansenger
 ```
 
 ### 透過 npm
 
 ```bash
-openclaw channels add @lansenger-pm/openclaw-lansenger-channel
+npm install -g @lansenger-pm/openclaw-lansenger-channel
+openclaw channels add --channel lansenger
 ```
 
 ### 開發安裝（本地連結）
@@ -63,12 +64,22 @@ openclaw gateway restart
 ```bash
 openclaw channels add --channel lansenger \
   --app-token "你的-appid" \
-  --secret "你的-appsecret" \
-  --base-url "https://open.e.lanxin.cn/open/apigw"
-openclaw gateway restart
+  --secret "你的-appsecret"
 ```
 
-> 💡 企業私有化部署請替換 `--base-url` 為你的私有網關位址（如 `https://apigw.lx.qianxin.com`）。
+企業私有化部署加 `--base-url`：
+
+```bash
+openclaw channels add --channel lansenger \
+  --app-token "你的-appid" \
+  --secret "你的-appsecret" \
+  --base-url "https://apigw.lx.qianxin.com"
+```
+
+然後重啟：
+```bash
+openclaw gateway restart
+```
 
 取得憑證：**藍信桌面端** → **通訊錄** → **智能機器人** → **個人機械人** → 點擊右側 **ℹ️** 圖標（行動端不支援查看憑證）。
 

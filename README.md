@@ -36,13 +36,15 @@ Lansenger (蓝信) channel plugin for OpenClaw — WebSocket inbound, HTTP API o
 ### Via OpenClaw CLI (recommended)
 
 ```bash
-openclaw channels add lansenger
+openclaw channels add --channel lansenger
 ```
 
 ### Via npm
 
 ```bash
-openclaw channels add @lansenger-pm/openclaw-lansenger-channel
+# First install the npm package manually, then configure via CLI
+npm install -g @lansenger-pm/openclaw-lansenger-channel
+openclaw channels add --channel lansenger
 ```
 
 ### Development install (linked)
@@ -61,12 +63,22 @@ After installing, configure with one command:
 ```bash
 openclaw channels add --channel lansenger \
   --app-token "your-appid" \
-  --secret "your-appsecret" \
-  --base-url "https://open.e.lanxin.cn/open/apigw"
-openclaw gateway restart
+  --secret "your-appsecret"
 ```
 
-> 💡 For enterprise deployments, replace `--base-url` with your private gateway URL (e.g. `https://apigw.lx.qianxin.com`).
+For enterprise deployments, add `--base-url`:
+
+```bash
+openclaw channels add --channel lansenger \
+  --app-token "your-appid" \
+  --secret "your-appsecret" \
+  --base-url "https://apigw.lx.qianxin.com"
+```
+
+Then restart:
+```bash
+openclaw gateway restart
+```
 
 Get credentials from **Lansenger Desktop** → **Contacts** → **Bots** → **Personal Bots** → click **ℹ️** icon (mobile client cannot view credentials).
 

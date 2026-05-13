@@ -38,13 +38,14 @@ Connecte OpenClaw à Lansenger — une plateforme de messagerie d'entreprise —
 ### Via OpenClaw CLI (recommandé)
 
 ```bash
-openclaw channels add lansenger
+openclaw channels add --channel lansenger
 ```
 
 ### Via npm
 
 ```bash
-openclaw channels add @lansenger-pm/openclaw-lansenger-channel
+npm install -g @lansenger-pm/openclaw-lansenger-channel
+openclaw channels add --channel lansenger
 ```
 
 ### Installation de développement (lien local)
@@ -63,12 +64,22 @@ Après l'installation, configurez en une commande :
 ```bash
 openclaw channels add --channel lansenger \
   --app-token "your-appid" \
-  --secret "your-appsecret" \
-  --base-url "https://open.e.lanxin.cn/open/apigw"
-openclaw gateway restart
+  --secret "your-appsecret"
 ```
 
-> 💡 Pour les déploiements d'entreprise, remplacez `--base-url` par votre URL de passerelle privée (ex. `https://apigw.lx.qianxin.com`).
+Pour les déploiements d'entreprise, ajoutez `--base-url` :
+
+```bash
+openclaw channels add --channel lansenger \
+  --app-token "your-appid" \
+  --secret "your-appsecret" \
+  --base-url "https://apigw.lx.qianxin.com"
+```
+
+Puis redémarrez :
+```bash
+openclaw gateway restart
+```
 
 Obtenir les identifiants : **Lansenger Desktop** → **Contacts** → **Bots** → **Personal Bots** → cliquer sur l'icône **ℹ️** (le client mobile ne permet pas de voir les identifiants).
 
