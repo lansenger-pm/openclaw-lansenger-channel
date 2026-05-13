@@ -75,15 +75,16 @@ openclaw gateway restart
 > **单账号**：`channels add` 仅创建一个账号。如需多个机器人，见下方[多机器人配置](#多机器人配置)。
 
 ```bash
+# 标准安装（使用默认网关 https://open.e.lanxin.cn/open/apigw）
 openclaw channels add --channel Lansenger \
   --app-token "你的-appid" \
   --secret "你的-appsecret"
-```
 
-企业私有化部署，需设置自定义网关地址：
-
-```bash
-openclaw config set channels.lansenger.apiGatewayUrl "https://apigw.lx.qianxin.com"
+# 企业私有化部署（自定义网关地址）
+openclaw channels add --channel Lansenger \
+  --app-token "你的-appid" \
+  --secret "你的-appsecret" \
+  --base-url "https://apigw.lx.qianxin.com"
 ```
 
 然后重启：

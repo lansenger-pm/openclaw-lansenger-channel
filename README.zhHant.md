@@ -76,15 +76,16 @@ openclaw gateway restart
 > **單帳號**：`channels add` 仅建立一個帳號。如需多個機器人，見下方[多機器人設定](#多機器人設定)。
 
 ```bash
+# 標準安裝（使用預設閘道 https://open.e.lanxin.cn/open/apigw）
 openclaw channels add --channel Lansenger \
   --app-token "你的-appid" \
   --secret "你的-appsecret"
-```
 
-企業私有化部署，需設定自訂閘道地址：
-
-```bash
-openclaw config set channels.lansenger.apiGatewayUrl "https://apigw.lx.qianxin.com"
+# 企業私有化部署（自訂閘道地址）
+openclaw channels add --channel Lansenger \
+  --app-token "你的-appid" \
+  --secret "你的-appsecret" \
+  --base-url "https://apigw.lx.qianxin.com"
 ```
 
 然後重啟：

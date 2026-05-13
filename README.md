@@ -74,15 +74,16 @@ After installing, configure credentials:
 > **Single account**: `channels add` creates one account. For multiple bots, see [Multi-Bot Configuration](#multi-bot-configuration) below.
 
 ```bash
+# Standard (uses default gateway https://open.e.lanxin.cn/open/apigw)
 openclaw channels add --channel Lansenger \
   --app-token "your-appid" \
   --secret "your-appsecret"
-```
 
-For enterprise deployments, set the custom gateway URL:
-
-```bash
-openclaw config set channels.lansenger.apiGatewayUrl "https://apigw.lx.qianxin.com"
+# Enterprise deployment (custom gateway URL)
+openclaw channels add --channel Lansenger \
+  --app-token "your-appid" \
+  --secret "your-appsecret" \
+  --base-url "https://apigw.lx.qianxin.com"
 ```
 
 Then restart:
