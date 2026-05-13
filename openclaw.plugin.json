@@ -7,8 +7,16 @@
   "openclaw.channel": {
     "id": "Lansenger",
     "selectionLabel": "Lansenger (蓝信)",
+    "detailLabel": "Lansenger Bot",
+    "docsPath": "https://open.e.lanxin.cn/docs",
     "order": 80,
-    "aliases": ["lansenger", "lx"]
+    "aliases": ["lansenger", "lx"],
+    "markdownCapable": true,
+    "exposure": {
+      "configured": true,
+      "setup": true,
+      "docs": true
+    }
   },
   "configSchema": {
     "type": "object",

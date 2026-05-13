@@ -50,10 +50,18 @@
       "id": "lansenger",
       "label": "Lansenger (蓝信)",
       "selectionLabel": "Lansenger (蓝信)",
+      "detailLabel": "Lansenger Bot",
+      "docsPath": "https://open.e.lanxin.cn/docs",
       "blurb": "Connect OpenClaw to Lansenger enterprise messaging platform. / 连接 OpenClaw 与蓝信企业即时通讯平台。",
-      "aliases": [
-        "lx"
-      ]
+      "order": 80,
+      "aliases": ["lansenger", "lx"],
+      "markdownCapable": true,
+      "exposure": {
+        "configured": true,
+        "setup": true,
+        "docs": true
+      },
+      "quickstartAllowFrom": true
     },
     "install": {
       "npmSpec": "@lansenger-pm/openclaw-lansenger-channel",
