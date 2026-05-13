@@ -550,8 +550,8 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount> = {
         capabilities: ["presentation"],
         schema: {
           properties: {
-            action: { const: "sendAttachment", description: "Send a local file as an attachment. The file must be in the workspace directory (~/.openclaw/workspace/). If the file is elsewhere, copy it to workspace first using bash, then sendAttachment the workspace copy. Do NOT use MEDIA: tags for files outside workspace — they are silently dropped by OpenClaw." },
-            filePath: { type: "string", description: "Absolute path to the file inside ~/.openclaw/workspace/." },
+            action: { const: "sendAttachment", description: "Send a local file as an attachment to the user on Lansenger. Prefer files in ~/.openclaw/workspace/ but any absolute local path works. Do NOT use MEDIA: tags for file delivery — MEDIA: tags only work for workspace files and are silently dropped for other paths; sendAttachment is the reliable way to send files." },
+            filePath: { type: "string", description: "Absolute path to the file on disk (e.g. ~/.openclaw/workspace/report.md or ~/Documents/file.pdf)." },
             caption: { type: "string", description: "Optional plain-text caption (Markdown will NOT render)." },
             to: { type: "string", description: "Lansenger user ID or chat ID to send the file to." },
           },
@@ -570,16 +570,14 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount> = {
         const caption = ctx.args?.caption ?? ctx.args?.text ?? "";
         const to = ctx.args?.to ?? "";
         if (!filePath || !to) return { success: false, error: "filePath and to are required" };
-        const roots = ctx.mediaLocalRoots ?? [path.join(os.homedir(), ".openclaw", "workspace")];
         const resolved = path.resolve(filePath);
-        const inRoot = roots.some((r: string) => resolved.startsWith(path.resolve(r) + path.sep) || resolved === path.resolve(r));
-        if (!inRoot) {
-          return {
-            success: false,
-            error: `File "${filePath}" is outside the workspace directory. Files must be inside one of: ${roots.join(", ")}. Copy the file to the workspace first (e.g. cp "${filePath}" ~/.openclaw/workspace/), then use sendAttachment with the workspace path.`,
-          };
+        try {
+          const stat = await fs.stat(resolved);
+          if (!stat.isFile()) return { success: false, error: `Not a file: ${filePath}` };
+        } catch {
+          return { success: false, error: `File not found: ${filePath}` };
         }
-        const result = await client.sendFile(to, filePath, caption);
+        const result = await client.sendFile(to, resolved, caption);
         return { success: result.success, data: { messageId: result.messageId } };
       }
 
