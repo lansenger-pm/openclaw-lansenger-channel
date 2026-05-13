@@ -162,13 +162,13 @@ openclaw pairing approve lansenger <配对码>
 
 ```bash
 # 添加第二个机器人（替换 appid/appsecret/gateway 为你的值）
-openclaw config set channels.lansenger.accounts.2285568-6349056.appId "2285568-6349056"
-openclaw config set channels.lansenger.accounts.2285568-6349056.appSecret "your-appsecret"
-openclaw config set channels.lansenger.accounts.2285568-6349056.apiGatewayUrl "https://apigw.lx.qianxin.com"
+openclaw config set channels.lansenger.accounts.your-appid-2.appId "your-appid-2"
+openclaw config set channels.lansenger.accounts.your-appid-2.appSecret "your-appsecret"
+openclaw config set channels.lansenger.accounts.your-appid-2.apiGatewayUrl "https://apigw.lx.qianxin.com"
 
 # 将不同机器人绑定到不同代理
-openclaw config set channels.lansenger.accounts.2285568-6349056.agentId "main"
-openclaw config set channels.lansenger.accounts.2285568-10117376.agentId "test"
+openclaw config set channels.lansenger.accounts.your-appid-2.agentId "main"
+openclaw config set channels.lansenger.accounts.your-appid-1.agentId "test"
 
 # 重启生效
 openclaw gateway restart
@@ -180,18 +180,18 @@ openclaw gateway restart
 {
   "channels": {
     "lansenger": {
-      "appId": "2285568-6349056",
+      "appId": "your-appid-2",
       "appSecret": "...",
       "dmSecurity": "paired",
       "accounts": {
-        "2285568-6349056": {
-          "appId": "2285568-6349056",
+        "your-appid-2": {
+          "appId": "your-appid-2",
           "appSecret": "...",
           "agentId": "main",
           "apiGatewayUrl": "https://apigw.lx.qianxin.com"
         },
-        "2285568-10117376": {
-          "appId": "2285568-10117376",
+        "your-appid-1": {
+          "appId": "your-appid-1",
           "appSecret": "...",
           "agentId": "test",
           "apiGatewayUrl": "https://apigw.lx.qianxin.com"
