@@ -73,6 +73,8 @@ openclaw gateway restart
 
 安裝後，配置憑證：
 
+> **單帳號**：`channels add` 僅建立一個帳號。如需多個機械人，見下方[多機械人設定](#多機械人設定)。
+
 ```bash
 openclaw channels add --channel Lansenger \
   --app-token "你的-appid" \
@@ -155,32 +157,50 @@ openclaw pairing approve lansenger <配對碼>
 
 ### 多機械人設定
 
-每個機械人可以綁定至不同的 OpenClaw 代理：
+> ⚠️ `openclaw channels add` 僅支援單帳號，每次執行會**覆蓋**之前的帳號。新增多個機械人需使用 `openclaw config set` 配置 `accounts` 結構。
+
+透過 `channels add` 新增第一個帳號後，用 `openclaw config set` 新增更多機械人：
+
+```bash
+# 新增第二個機械人（替換 appid/appsecret/gateway 為你的值）
+openclaw config set channels.lansenger.accounts.2285568-6349056.appId "2285568-6349056"
+openclaw config set channels.lansenger.accounts.2285568-6349056.appSecret "your-appsecret"
+openclaw config set channels.lansenger.accounts.2285568-6349056.apiGatewayUrl "https://apigw.lx.qianxin.com"
+
+# 將不同機械人綁定至不同代理
+openclaw config set channels.lansenger.accounts.2285568-6349056.agentId "main"
+openclaw config set channels.lansenger.accounts.2285568-10117376.agentId "test"
+
+# 重啟生效
+openclaw gateway restart
+```
+
+最終設定結構：
 
 ```json
 {
   "channels": {
     "lansenger": {
+      "appId": "2285568-6349056",
+      "appSecret": "...",
+      "dmSecurity": "paired",
       "accounts": {
-        "bot1-appid": {
-          "appId": "your-appid",
+        "2285568-6349056": {
+          "appId": "2285568-6349056",
           "appSecret": "...",
-          "agentId": "main-agent",
-          "apiGatewayUrl": "https://open.e.lanxin.cn/open/apigw"
+          "agentId": "main",
+          "apiGatewayUrl": "https://apigw.lx.qianxin.com"
         },
-        "bot2-appid": {
-          "appId": "your-other-appid",
+        "2285568-10117376": {
+          "appId": "2285568-10117376",
           "appSecret": "...",
-          "agentId": "test-agent"
+          "agentId": "test",
+          "apiGatewayUrl": "https://apigw.lx.qianxin.com"
         }
       }
     }
-  },
-  "bindings": [
-    { "match": { "channel": "lansenger", "accountId": "bot1-appid" }, "agentId": "main-agent" }
-  ]
+  }
 }
-```
 
 ## 使用
 

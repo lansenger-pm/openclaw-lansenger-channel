@@ -71,6 +71,8 @@ openclaw gateway restart
 
 After installing, configure credentials:
 
+> **Single account**: `channels add` creates one account. For multiple bots, see [Multi-Bot Configuration](#multi-bot-configuration) below.
+
 ```bash
 openclaw channels add --channel Lansenger \
   --app-token "your-appid" \
@@ -153,30 +155,49 @@ Add these to `~/.openclaw/.env` or your environment:
 
 ### Multi-Bot Configuration
 
-Each bot can be bound to a different OpenClaw agent:
+> ⚠️ `openclaw channels add` only supports a single account and **overwrites** the previous one each time. For multiple bots, use `openclaw config set` with the `accounts` structure below.
+
+After adding the first account via `channels add`, add additional bots using `openclaw config set`:
+
+```bash
+# Add a second bot (replace appid/appsecret/gateway with your values)
+openclaw config set channels.lansenger.accounts.2285568-6349056.appId "2285568-6349056"
+openclaw config set channels.lansenger.accounts.2285568-6349056.appSecret "your-appsecret"
+openclaw config set channels.lansenger.accounts.2285568-6349056.apiGatewayUrl "https://apigw.lx.qianxin.com"
+
+# Bind each bot to a different agent
+openclaw config set channels.lansenger.accounts.2285568-6349056.agentId "main"
+openclaw config set channels.lansenger.accounts.2285568-10117376.agentId "test"
+
+# Restart to apply
+openclaw gateway restart
+```
+
+The resulting config structure:
 
 ```json
 {
   "channels": {
     "lansenger": {
+      "appId": "2285568-6349056",
+      "appSecret": "...",
+      "dmSecurity": "paired",
       "accounts": {
-        "bot1-appid": {
-          "appId": "your-appid",
+        "2285568-6349056": {
+          "appId": "2285568-6349056",
           "appSecret": "...",
-          "agentId": "main-agent",
-          "apiGatewayUrl": "https://open.e.lanxin.cn/open/apigw"
+          "agentId": "main",
+          "apiGatewayUrl": "https://apigw.lx.qianxin.com"
         },
-        "bot2-appid": {
-          "appId": "your-other-appid",
+        "2285568-10117376": {
+          "appId": "2285568-10117376",
           "appSecret": "...",
-          "agentId": "test-agent"
+          "agentId": "test",
+          "apiGatewayUrl": "https://apigw.lx.qianxin.com"
         }
       }
     }
-  },
-  "bindings": [
-    { "match": { "channel": "lansenger", "accountId": "bot1-appid" }, "agentId": "main-agent" }
-  ]
+  }
 }
 ```
 
