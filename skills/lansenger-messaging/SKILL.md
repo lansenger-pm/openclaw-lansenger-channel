@@ -1,6 +1,6 @@
 ---
 name: lansenger-messaging
-version: 1.0.0
+version: 1.1.0
 category: communication
 description: Lansenger (蓝信) messaging strategy — text/formatText boundaries, group routing, media handling, dynamic cards, multi-bot binding, @mentions, language detection, and approval workflows
 trigger: When you need to send any message, file, image, or notification via Lansenger, or when the current session channel is lansenger, or when handling inbound media files, approval cards, or group messages.
@@ -70,8 +70,10 @@ The plugin automatically routes outbound replies:
 ### 6. Approval / interactive card
 → **appCard** (with `isDynamic=true` + `headStatusInfo`) — dynamic approval card with /approve and /deny buttons
 - Supports: div-style HTML formatting (color, font-size, text-align, text-indent)
+- ⚠️ **`text-indent` values MUST have units** — bare `0` causes empty API response (content-length=0); use `0em` instead. Applies to all div-style fields.
 - Fields: headTitle, bodyTitle, bodySubTitle, bodyContent, signature, fields, buttons, headStatusInfo
-- Language: content uses bilingual text (e.g. "Pending / 待审批") since appCard does NOT support i18n
+- **⚠️ `isDynamic=true` requires `headStatusInfo`** — API returns errCode 40060 without it. `sendAppCard()` auto-fills default "Active" status if missing.
+- Language: send single-language content based on getUserLang() detection (NOT bilingual text)
 
 ### 7. i18nAppCard (reserved, not currently used for approval)
 → **i18nAppCard** — multilingual card (5 locales: zhHans, zhHant, zhHantHK, en, fr)
@@ -129,14 +131,16 @@ Three card types serve different purposes — **appCard is used for approval**:
 ### Initial Send (appCard)
 - `msgType: "appCard"` with `isDynamic=true` + `headStatusInfo` (pending status)
 - Uses `sendAppCard()` with full `AppCardData` fields (bodyTitle, bodyContent, signature, fields, etc.)
-- Content uses bilingual text since appCard does NOT support i18n per-locale rendering
+- Content uses single-language text selected by getUserLang() since appCard does NOT support i18n per-locale rendering
+- **⚠️ `text-indent` values MUST have units** — bare `0` causes empty API response; use `0em`
+- **⚠️ `isDynamic=true` requires `headStatusInfo`** — auto-filled with "Active" default if omitted
 
 ### Status Update (DynamicMsg appCard)
 - `msgType: "appCard"` with `appCardUpdateMsg` — NOT a new card, updates existing card in-place
 - Uses `updateCardStatus()` with `headStatusInfo`:
   - `isLastUpdate: true` when approved/denied (locks the card, no further updates)
   - `isLastUpdate: false` when still pending (allows future updates within 30 days)
-  - `headStatusInfo.description` — div-style HTML status badge (e.g. `<div style="color:#198754">已批准</div>`)
+  - `headStatusInfo.description` — div-style HTML status badge (e.g. `<div style="color:#198754;text-align:left">已批准</div>`)
   - `headStatusInfo.colour` — colored circle indicator
 
 ### Language-Aware Updates
@@ -177,6 +181,8 @@ The plugin supports multiple Lansenger bots bound to different OpenClaw agents:
 | `lansenger.unbind` | Remove binding (params: botId) |
 | `lansenger.bindings` | List all bindings |
 | `lansenger.status` | Show running accounts |
+| `lansenger.sendCard` | Send test appCard (params: chatId, lang) |
+| `lansenger.updateCard` | Update card status (params: messageId, status, lang) |
 
 ### Binding Resolution
 - Inbound messages resolve `agentId` from: BindingManager → account config → "default"
@@ -196,7 +202,9 @@ The plugin supports multiple Lansenger bots bound to different OpenClaw agents:
 - **File size limits** determined by organization's Lansenger configuration
 - **Message length limit** ~4000 characters for both text and formatText
 - **Revocation** always uses `chatType="bot"` for bot messages
-- **Dynamic card updates** use `msgType="appCard"` via `updateDynamicCardStatus()` with `dynamicData` (NOT i18nAppCard, NOT `headStatusInfo`)
+- **Dynamic card updates** use `updateCardStatus()` with `headStatusInfo` (NOT i18nAppCard)
+- **`text-indent` values MUST have units** — bare `0` causes empty API response; always use `0em`
+- **`isDynamic=true` requires `headStatusInfo`** — auto-filled with "Active" default if omitted
 - **Personal bots only** — organization bots are NOT supported
 - **Credentials path**: Lansenger Desktop → Contacts → Bots → Personal Bot → ℹ️ icon (mobile cannot view credentials)
 - **Default gateway**: `https://open.e.lanxin.cn/open/apigw` (Lansenger public cloud)

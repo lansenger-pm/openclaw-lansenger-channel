@@ -285,11 +285,18 @@ export class LansengerClient {
     const token = await this.getAppToken();
     if (!token) return { success: false, error: "No access token" };
     try {
+      const resolvedCard: AppCardData = { ...cardData };
+      if (resolvedCard.isDynamic && !resolvedCard.headStatusInfo) {
+        resolvedCard.headStatusInfo = {
+          description: '<div style="color:rgba(0,0,0,.47);text-align:left">Active</div>',
+          colour: "rgba(0,0,0,.47)",
+        };
+      }
       const url = `${this.apiGatewayUrl}${API_ENDPOINTS.privateMessage}?app_token=${token}`;
       const payload = {
         userIdList: [chatId],
         msgType: "appCard",
-        msgData: { appCard: cardData },
+        msgData: { appCard: resolvedCard },
       };
       const data = await this.postJson(url, payload);
       if (data.errCode !== 0) return { success: false, error: data.errMsg ?? undefined };
@@ -693,11 +700,17 @@ export class LansengerClient {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    if (!resp.ok) return { errCode: -1, errMsg: `HTTP ${resp.status}` };
+    const rawBody = await resp.text();
+    if (!resp.ok) return { errCode: -1, errMsg: `HTTP ${resp.status}: ${rawBody.slice(0, 200)}` };
+    if (!rawBody || rawBody.trim().length === 0) {
+      this.log.error(`postJson: empty body (HTTP ${resp.status}) for ${url.slice(0, 80)}`);
+      return { errCode: -1, errMsg: `Empty API response (HTTP ${resp.status})` };
+    }
     try {
-      return (await resp.json()) as LansengerApiResponse;
+      return JSON.parse(rawBody) as LansengerApiResponse;
     } catch {
-      return { errCode: -1, errMsg: `HTTP ${resp.status}` };
+      this.log.error(`postJson: JSON parse error body=${rawBody.slice(0, 200)}`);
+      return { errCode: -1, errMsg: `JSON parse error (HTTP ${resp.status}): ${rawBody.slice(0, 100)}` };
     }
   }
 }
