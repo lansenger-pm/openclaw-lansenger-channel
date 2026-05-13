@@ -138,13 +138,15 @@ Parameters:
 ```
 
 Example flow:
-1. `write` tool → creates `/path/to/report.md`
+1. `write` tool → creates file in workspace (e.g. `~/.openclaw/workspace/report.md`)
 2. `sendAttachment` action → sends the file to the user on Lansenger
 
 **Rules:**
 - Always use absolute paths for `filePath`
+- Files MUST be in the workspace directory (`~/.openclaw/workspace/`) — if the source file is elsewhere (e.g. `~/Documents/`), copy it to workspace first using the `bash` tool, then `sendAttachment` the workspace copy
 - `caption` is plain text only (Markdown will NOT render in attachment messages)
 - If you need both formatted explanation AND a file attachment, send the formatted text first (Markdown works), then `sendAttachment` separately for the file
+- `MEDIA:` tags in reply text also work for workspace files, but `sendAttachment` is more reliable for explicit file delivery
 - Supported file types: images (.jpg/.png/.gif/.webp), videos (.mp4/.mov), documents (.pdf/.md/.txt/.zip), etc.
 
 ## Critical Pitfalls
