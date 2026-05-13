@@ -39,9 +39,13 @@
   ],
   "openclaw": {
     "extensions": [
+      "./src/index.ts"
+    ],
+    "runtimeExtensions": [
       "./dist/index.js"
     ],
-    "setupEntry": "./dist/setup-entry.js",
+    "setupEntry": "./src/setup-entry.ts",
+    "runtimeSetupEntry": "./dist/setup-entry.js",
     "channel": {
       "id": "lansenger",
       "label": "Lansenger (蓝信)",
