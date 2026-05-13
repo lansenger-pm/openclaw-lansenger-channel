@@ -1,6 +1,6 @@
 ---
 name: lansenger-messaging
-version: 2.0.9
+version: 2.1.0
 category: communication
 description: How to communicate effectively on Lansenger (蓝信) — message types, formatting rules, media, cards, approvals, and pitfalls
 trigger: When the current session channel is lansenger, or when you need to send a message, file, image, card, or approval via Lansenger
@@ -125,34 +125,32 @@ This is the correct model for personal bots — they only receive DMs from appro
 
 ## Sending Files to Users (CRITICAL)
 
-When you create or reference a file that the user should receive on Lansenger, **you MUST send it explicitly via `sendAttachment`** — writing or reading a file alone does NOT deliver it to the user. **Do NOT use `MEDIA:` tags** — they are silently dropped for files outside the workspace directory.
+When you need to send a file to the user on Lansenger, **use the `message` tool with `action=send` and a `filePath` parameter**. Do NOT use `MEDIA:` tags — they only work for workspace files and are silently dropped for any other path.
 
-### Use `sendAttachment` action
+### Use `message(action=send, filePath=...)`
 
 ```
-Action: sendAttachment
-Parameters:
-  to: <Lansenger user ID or chat ID>  (required)
-  filePath: <absolute path to the file on disk>  (required — any local path works)
-  caption: <optional plain-text caption — NO Markdown>
+message(action=send, to=<Lansenger user ID>, filePath=<absolute local path>, caption=<optional plain-text>)
 ```
+
+- If `filePath` is provided → file is sent as an attachment, `caption` is plain text only (no Markdown)
+- If `filePath` is omitted → `text`/`message` is sent as Markdown (default behavior)
 
 ### ⚠️ Do NOT use `MEDIA:` tags for file delivery
 
-`MEDIA:` tags only work for files inside `~/.openclaw/workspace/`. For files outside the workspace (e.g. `~/Documents/`, `~/Desktop/`, `/tmp/`), `MEDIA:` tags are **silently dropped** — the user will never receive the file and you will see no error. Always use `sendAttachment` instead.
+`MEDIA:` tags only work for files inside `~/.openclaw/workspace/`. For files outside the workspace (e.g. `~/Documents/`, `~/Desktop/`), `MEDIA:` tags are **silently dropped** — the user will never receive the file. Always use `message(action=send, filePath=...)` instead.
 
 ### Typical flow
 
-1. `write` tool → creates file (e.g. `~/.openclaw/workspace/report.md` or `~/Desktop/README.md`)
-2. `sendAttachment` action → delivers file to the user on Lansenger
+1. Agent reads or creates a file (any local path works)
+2. `message(action=send, to=<chatId>, filePath=~/Documents/README.md)` → delivers file to the user
 
 ### Rules
 
-- Always use absolute paths for `filePath`
-- Any local path works — workspace, Documents, Desktop, etc.
-- `caption` is plain text only (Markdown will NOT render in attachment messages)
-- If you need both formatted explanation AND a file attachment, send the formatted text first (Markdown works), then `sendAttachment` separately for the file
-- **NEVER use `MEDIA:` tags for file delivery on Lansenger** — use `sendAttachment` instead
+- Any local path works for `filePath` — workspace, Documents, Desktop, etc.
+- `caption` is plain text only (Markdown will NOT render)
+- If you need both formatted explanation AND a file, send the formatted Markdown text first, then `message(action=send, filePath=...)` separately
+- **NEVER use `MEDIA:` tags for file delivery on Lansenger** — always use `message(action=send, filePath=...)`
 - Supported file types: images (.jpg/.png/.gif/.webp), videos (.mp4/.mov), documents (.pdf/.md/.txt/.zip), etc.
 
 ## Critical Pitfalls

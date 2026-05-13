@@ -546,43 +546,42 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount> = {
       const account = resolveAccount(cfg, accountId);
       if (!account.enabled) return null;
       return {
-        actions: ["send", "delete", "sendAttachment"],
+        actions: ["send", "delete"],
         capabilities: ["presentation"],
-        schema: {
+        schema: [{
           properties: {
-            action: { const: "sendAttachment", description: "Send a local file as an attachment to the user on Lansenger. Prefer files in ~/.openclaw/workspace/ but any absolute local path works. Do NOT use MEDIA: tags for file delivery — MEDIA: tags only work for workspace files and are silently dropped for other paths; sendAttachment is the reliable way to send files." },
-            filePath: { type: "string", description: "Absolute path to the file on disk (e.g. ~/.openclaw/workspace/report.md or ~/Documents/file.pdf)." },
-            caption: { type: "string", description: "Optional plain-text caption (Markdown will NOT render)." },
-            to: { type: "string", description: "Lansenger user ID or chat ID to send the file to." },
+            action: { const: "send", description: "Send a message, optionally with a file attachment. If filePath is provided, the file is delivered as an attachment (caption must be plain text — no Markdown). If filePath is omitted, the message text is sent as Markdown. Do NOT use MEDIA: tags for file delivery on Lansenger — use this send action with filePath instead." },
+            filePath: { type: "string", description: "Absolute local path to a file to send as attachment (e.g. ~/Documents/report.pdf). Optional — omit for plain text/Markdown messages." },
+            caption: { type: "string", description: "Plain-text caption for the file attachment (Markdown will NOT render). Only used when filePath is provided." },
           },
-          actions: ["sendAttachment"],
+          actions: ["send"],
           visibility: "current-channel",
-        },
-        mediaSourceParams: { sendAttachment: ["filePath"] },
+        }],
+        mediaSourceParams: { send: ["filePath"] },
       };
     },
     handleAction: async (ctx: any) => {
       const account = resolveAccount(ctx.cfg, ctx.accountId ?? undefined);
       const client = makeClient(account);
 
-      if (ctx.action === "sendAttachment") {
-        const filePath = ctx.args?.filePath ?? "";
-        const caption = ctx.args?.caption ?? ctx.args?.text ?? "";
-        const to = ctx.args?.to ?? "";
-        if (!filePath || !to) return { success: false, error: "filePath and to are required" };
-        const resolved = path.resolve(filePath);
-        try {
-          const stat = await fs.stat(resolved);
-          if (!stat.isFile()) return { success: false, error: `Not a file: ${filePath}` };
-        } catch {
-          return { success: false, error: `File not found: ${filePath}` };
-        }
-        const result = await client.sendFile(to, resolved, caption);
-        return { success: result.success, data: { messageId: result.messageId } };
-      }
-
       if (ctx.action === "send") {
-        const result = await client.sendFormatText(ctx.args?.to ?? "", ctx.args?.text ?? "");
+        const to = ctx.args?.to ?? "";
+        const filePath = ctx.args?.filePath ?? ctx.args?.mediaUrl ?? ctx.args?.media ?? "";
+        const caption = ctx.args?.caption ?? ctx.args?.text ?? "";
+        const text = ctx.args?.text ?? ctx.args?.content ?? ctx.args?.message ?? "";
+        if (filePath) {
+          const resolved = path.resolve(filePath);
+          try {
+            const stat = await fs.stat(resolved);
+            if (!stat.isFile()) return { success: false, error: `Not a file: ${filePath}` };
+          } catch {
+            return { success: false, error: `File not found: ${filePath}` };
+          }
+          const result = await client.sendFile(to, resolved, caption);
+          return { success: result.success, data: { messageId: result.messageId } };
+        }
+        if (!to || !text) return { success: false, error: "to and text are required for text messages" };
+        const result = await client.sendFormatText(to, text);
         return { success: result.success, data: { messageId: result.messageId } };
       }
 
