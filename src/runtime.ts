@@ -260,13 +260,19 @@ export function startLansengerGateway(api: OpenClawPluginApi): void {
 function autoStart(api: OpenClawPluginApi, accounts?: Record<string, any>): void {
   const section = (api.config.channels as Record<string, any>)?.["lansenger"];
 
+  const accountIds = new Set<string>();
   if (accounts && Object.keys(accounts).length > 0) {
     for (const [accountId] of Object.entries(accounts)) {
+      accountIds.add(accountId);
       startAccount(api, accountId).catch((e) => log.error(`auto-start error: ${e instanceof Error ? e.message : String(e)}`));
     }
-  } else if (section?.appId && section?.appSecret) {
+  }
+
+  if (section?.appId && section?.appSecret && !accountIds.has(section.appId)) {
     startAccount(api).catch((e) => log.error(`auto-start error: ${e instanceof Error ? e.message : String(e)}`));
-  } else {
+  }
+
+  if (accountIds.size === 0 && !(section?.appId && section?.appSecret)) {
     log.info("auto-start: no configured accounts, skipping");
   }
 }

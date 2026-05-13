@@ -18,6 +18,43 @@ describe("lansenger plugin", () => {
     expect(account.enabled).toBe(true);
   });
 
+  it("resolves account from accounts by accountId", () => {
+    const cfg = {
+      channels: {
+        lansenger: {
+          appId: "default-id",
+          appSecret: "default-secret",
+          accounts: {
+            "bot1-id": { appId: "bot1-id", appSecret: "bot1-secret" },
+            "bot2-id": { appId: "bot2-id", appSecret: "bot2-secret" },
+          },
+        },
+      },
+    } as any;
+    const account = resolveAccount(cfg, "bot2-id");
+    expect(account.appId).toBe("bot2-id");
+    expect(account.appSecret).toBe("bot2-secret");
+    expect(account.accountId).toBe("bot2-id");
+  });
+
+  it("falls back to top-level when accountId not in accounts", () => {
+    const cfg = {
+      channels: {
+        lansenger: {
+          appId: "default-id",
+          appSecret: "default-secret",
+          accounts: {
+            "bot1-id": { appId: "bot1-id", appSecret: "bot1-secret" },
+          },
+        },
+      },
+    } as any;
+    const account = resolveAccount(cfg, undefined);
+    expect(account.appId).toBe("default-id");
+    expect(account.appSecret).toBe("default-secret");
+    expect(account.accountId).toBe("default-id");
+  });
+
   it("falls back to env vars", () => {
     const origId = process.env.LANSENGER_APP_ID;
     const origSecret = process.env.LANSENGER_APP_SECRET;
