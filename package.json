@@ -1,6 +1,6 @@
 {
   "name": "@lansenger-pm/openclaw-lansenger-channel",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "type": "module",
   "main": "dist/index.js",
   "files": [
@@ -54,7 +54,10 @@
       "docsPath": "https://open.e.lanxin.cn/docs",
       "blurb": "Connect OpenClaw to Lansenger enterprise messaging platform. / 连接 OpenClaw 与蓝信企业即时通讯平台。",
       "order": 80,
-      "aliases": ["lansenger", "lx"],
+      "aliases": [
+        "lansenger",
+        "lx"
+      ],
       "markdownCapable": true,
       "exposure": {
         "configured": true,
