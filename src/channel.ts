@@ -550,9 +550,10 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount> = {
         capabilities: ["presentation"],
         schema: [{
           properties: {
-            action: { const: "send", description: "Send a message, optionally with a file attachment. If filePath is provided, the file is delivered as an attachment (caption must be plain text — no Markdown). If filePath is omitted, the message text is sent as Markdown. Do NOT use MEDIA: tags for file delivery on Lansenger — use this send action with filePath instead." },
-            filePath: { type: "string", description: "Absolute local path to a file to send as attachment (e.g. ~/Documents/report.pdf). Optional — omit for plain text/Markdown messages." },
+            action: { const: "send", description: "Send a message, optionally with a file attachment. If filePath is provided, the file is delivered as an attachment (caption must be plain text — no Markdown). If filePath is omitted, the message text is sent as Markdown. The `to` parameter is optional — omit it to send to the current conversation target automatically. Do NOT use MEDIA: tags for file delivery on Lansenger — use this send action with filePath instead." },
+            filePath: { type: "string", description: "Absolute local path to a file to send as attachment. Any local path works. Optional — omit for plain text/Markdown messages." },
             caption: { type: "string", description: "Plain-text caption for the file attachment (Markdown will NOT render). Only used when filePath is provided." },
+            to: { type: "string", description: "Lansenger target chat ID. Optional — defaults to the current conversation if omitted." },
           },
           actions: ["send"],
           visibility: "current-channel",
@@ -563,9 +564,16 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount> = {
     handleAction: async (ctx: any) => {
       const account = resolveAccount(ctx.cfg, ctx.accountId ?? undefined);
       const client = makeClient(account);
+      const sessionTarget = (() => {
+        if (ctx.sessionKey) {
+          const parts = String(ctx.sessionKey).split(":");
+          if (parts.length >= 3) return parts[2];
+        }
+        return ctx.requesterSenderId ?? "";
+      })();
+      const to = ctx.args?.to ?? sessionTarget;
 
       if (ctx.action === "send") {
-        const to = ctx.args?.to ?? "";
         const filePath = ctx.args?.filePath ?? ctx.args?.mediaUrl ?? ctx.args?.media ?? "";
         const caption = ctx.args?.caption ?? ctx.args?.text ?? "";
         const text = ctx.args?.text ?? ctx.args?.content ?? ctx.args?.message ?? "";
@@ -577,6 +585,7 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount> = {
           } catch {
             return { success: false, error: `File not found: ${filePath}` };
           }
+          if (!to) return { success: false, error: "No target specified and no active session context. Provide a 'to' parameter." };
           const result = await client.sendFile(to, resolved, caption);
           return { success: result.success, data: { messageId: result.messageId } };
         }

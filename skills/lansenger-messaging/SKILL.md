@@ -1,6 +1,6 @@
 ---
 name: lansenger-messaging
-version: 2.1.0
+version: 2.1.1
 category: communication
 description: How to communicate effectively on Lansenger (蓝信) — message types, formatting rules, media, cards, approvals, and pitfalls
 trigger: When the current session channel is lansenger, or when you need to send a message, file, image, card, or approval via Lansenger
@@ -130,11 +130,12 @@ When you need to send a file to the user on Lansenger, **use the `message` tool 
 ### Use `message(action=send, filePath=...)`
 
 ```
-message(action=send, to=<Lansenger user ID>, filePath=<absolute local path>, caption=<optional plain-text>)
+message(action=send, filePath=<absolute local path>, caption=<optional plain-text>)
 ```
 
 - If `filePath` is provided → file is sent as an attachment, `caption` is plain text only (no Markdown)
 - If `filePath` is omitted → `text`/`message` is sent as Markdown (default behavior)
+- `to` is optional — if omitted, the file/message goes to the current conversation target automatically
 
 ### ⚠️ Do NOT use `MEDIA:` tags for file delivery
 

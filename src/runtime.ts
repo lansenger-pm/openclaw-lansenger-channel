@@ -321,6 +321,11 @@ async function handleInbound(
 }
 
 async function deliverReply(client: LansengerClient, to: string, text: string, isGroup?: boolean): Promise<ApiResult> {
+  log.info(`deliverReply: to=${to} textLen=${text.length} preview="${text.slice(0, 100)}"`);
+  if (!text.trim()) {
+    log.warn(`deliverReply: empty text after OpenClaw MEDIA processing, skipping delivery`);
+    return { success: true, messageId: undefined };
+  }
   if (isGroup || client.isGroupChat(to)) {
     const fmtResult = await client.sendGroupFormatText(to, text);
     if (fmtResult.success) return fmtResult;
