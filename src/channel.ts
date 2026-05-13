@@ -548,6 +548,17 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount> = {
       return {
         actions: ["send", "delete", "sendAttachment"],
         capabilities: ["presentation"],
+        schema: {
+          properties: {
+            action: { const: "sendAttachment", description: "Send a local file as an attachment. The file must be in the workspace directory (~/.openclaw/workspace/). If the file is elsewhere, copy it to workspace first using bash, then sendAttachment the workspace copy. Do NOT use MEDIA: tags for files outside workspace — they are silently dropped by OpenClaw." },
+            filePath: { type: "string", description: "Absolute path to the file inside ~/.openclaw/workspace/." },
+            caption: { type: "string", description: "Optional plain-text caption (Markdown will NOT render)." },
+            to: { type: "string", description: "Lansenger user ID or chat ID to send the file to." },
+          },
+          actions: ["sendAttachment"],
+          visibility: "current-channel",
+        },
+        mediaSourceParams: { sendAttachment: ["filePath"] },
       };
     },
     handleAction: async (ctx: any) => {

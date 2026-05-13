@@ -6,9 +6,6 @@ import { resolveAccount, makeClient } from "./channel.js";
 import type { ResolvedAccount } from "./channel.js";
 import { errorShape } from "openclaw/plugin-sdk/gateway-runtime";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import * as path from "node:path";
-import * as os from "node:os";
-import * as fs from "node:fs/promises";
 
 const log = createSubsystemLogger("lansenger");
 
@@ -324,46 +321,14 @@ async function handleInbound(
 }
 
 async function deliverReply(client: LansengerClient, to: string, text: string, isGroup?: boolean): Promise<ApiResult> {
-  const mediaRegex = /^MEDIA:\s*(.+)\s*$/gm;
-  const localPaths: string[] = [];
-  let m: RegExpExecArray | null;
-  while ((m = mediaRegex.exec(text)) !== null) {
-    const ref = (m[1] ?? "").trim();
-    if (!/^https?:\/\//i.test(ref) && !ref.startsWith("/")) {
-      localPaths.push(path.resolve(os.homedir(), ref));
-    } else if (ref.startsWith("/")) {
-      localPaths.push(ref);
-    }
-  }
-
-  const strippedText = localPaths.length > 0 ? text.replace(mediaRegex, "").trim() : text;
-
-  for (const filePath of localPaths) {
-    try {
-      const stat = await fs.stat(filePath);
-      if (stat.isFile()) {
-        log.info(`deliverReply: sending MEDIA file via sendFile: ${filePath}`);
-        await client.sendFile(to, filePath, "");
-      } else {
-        log.warn(`deliverReply: MEDIA path not a file, skipping: ${filePath}`);
-      }
-    } catch (e: unknown) {
-      log.warn(`deliverReply: MEDIA file not found or unreadable, skipping: ${filePath} (${e instanceof Error ? e.message : String(e)})`);
-    }
-  }
-
-  if (!strippedText) {
-    return { success: localPaths.length > 0, messageId: undefined };
-  }
-
   if (isGroup || client.isGroupChat(to)) {
-    const fmtResult = await client.sendGroupFormatText(to, strippedText);
+    const fmtResult = await client.sendGroupFormatText(to, text);
     if (fmtResult.success) return fmtResult;
     log.info(`group formatText failed (${fmtResult.error ?? "unknown"}), falling back to text`);
-    return client.sendGroupText(to, strippedText);
+    return client.sendGroupText(to, text);
   }
-  const fmtResult = await client.sendFormatText(to, strippedText);
+  const fmtResult = await client.sendFormatText(to, text);
   if (fmtResult.success) return fmtResult;
   log.info(`formatText failed (${fmtResult.error ?? "unknown"}), falling back to text`);
-  return client.sendText(to, strippedText);
+  return client.sendText(to, text);
 }

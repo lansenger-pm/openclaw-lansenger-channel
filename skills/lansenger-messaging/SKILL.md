@@ -1,6 +1,6 @@
 ---
 name: lansenger-messaging
-version: 2.0.7
+version: 2.0.8
 category: communication
 description: How to communicate effectively on Lansenger (蓝信) — message types, formatting rules, media, cards, approvals, and pitfalls
 trigger: When the current session channel is lansenger, or when you need to send a message, file, image, card, or approval via Lansenger
