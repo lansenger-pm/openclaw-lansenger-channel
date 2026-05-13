@@ -36,8 +36,19 @@ Lansenger (蓝信) channel plugin for OpenClaw — WebSocket inbound, HTTP API o
 ### Via OpenClaw CLI (recommended)
 
 ```bash
-openclaw channels add --channel lansenger
+# 1. Install the plugin
+openclaw plugins install @lansenger-pm/openclaw-lansenger-channel
+
+# 2. Copy to extensions directory (required due to OpenClaw CLI discovery bug)
+mkdir -p ~/.openclaw/extensions/lansenger
+cp -r ~/.openclaw/npm/node_modules/@lansenger-pm/openclaw-lansenger-channel/* \
+     ~/.openclaw/extensions/lansenger/
+
+# 3. Restart gateway
+openclaw gateway restart
 ```
+
+> ⚠️ Step 2 is required because `openclaw channels add` only discovers plugins in the `extensions/` directory, not from npm-installed packages. This is an [OpenClaw upstream bug](https://docs.openclaw.ai), not a plugin issue.
 
 ### Via npm
 
@@ -61,7 +72,7 @@ openclaw gateway restart
 After installing, configure with one command:
 
 ```bash
-openclaw channels add --channel lansenger \
+openclaw channels add --channel Lansenger \
   --app-token "your-appid" \
   --secret "your-appsecret"
 ```
@@ -69,10 +80,17 @@ openclaw channels add --channel lansenger \
 For enterprise deployments, add `--base-url`:
 
 ```bash
-openclaw channels add --channel lansenger \
+openclaw channels add --channel Lansenger \
   --app-token "your-appid" \
   --secret "your-appsecret" \
   --base-url "https://apigw.lx.qianxin.com"
+```
+
+Or use `--token` format (AppID:AppSecret:APIGateway):
+
+```bash
+openclaw channels add --channel Lansenger \
+  --token "your-appid:your-appsecret:https://apigw.lx.qianxin.com"
 ```
 
 Then restart:

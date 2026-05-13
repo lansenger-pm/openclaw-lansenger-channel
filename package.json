@@ -1,6 +1,6 @@
 {
   "name": "@lansenger-pm/openclaw-lansenger-channel",
-  "version": "1.0.1",
+  "version": "1.0.3",
   "type": "module",
   "main": "dist/index.js",
   "files": [

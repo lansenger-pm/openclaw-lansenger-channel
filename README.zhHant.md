@@ -38,8 +38,19 @@
 ### 透過 OpenClaw CLI（建議）
 
 ```bash
-openclaw channels add --channel lansenger
+# 1. 安裝插件
+openclaw plugins install @lansenger-pm/openclaw-lansenger-channel
+
+# 2. 複製到 extensions 目錄（因 OpenClaw CLI 發現機制 bug）
+mkdir -p ~/.openclaw/extensions/lansenger
+cp -r ~/.openclaw/npm/node_modules/@lansenger-pm/openclaw-lansenger-channel/* \
+     ~/.openclaw/extensions/lansenger/
+
+# 3. 重啟閘道
+openclaw gateway restart
 ```
+
+> ⚠️ 第2步是必需的，因為 `openclaw channels add` 只發現 `extensions/` 目錄下的插件。這是 [OpenClaw 上游 bug](https://docs.openclaw.ai)。
 
 ### 透過 npm
 
@@ -62,7 +73,7 @@ openclaw gateway restart
 安裝後，一條指令完成配置：
 
 ```bash
-openclaw channels add --channel lansenger \
+openclaw channels add --channel Lansenger \
   --app-token "你的-appid" \
   --secret "你的-appsecret"
 ```
@@ -70,10 +81,17 @@ openclaw channels add --channel lansenger \
 企業私有化部署加 `--base-url`：
 
 ```bash
-openclaw channels add --channel lansenger \
+openclaw channels add --channel Lansenger \
   --app-token "你的-appid" \
   --secret "你的-appsecret" \
   --base-url "https://apigw.lx.qianxin.com"
+```
+
+或使用 `--token` 格式（AppID:AppSecret:APIGateway）：
+
+```bash
+openclaw channels add --channel Lansenger \
+  --token "你的-appid:你的-appsecret:https://apigw.lx.qianxin.com"
 ```
 
 然後重啟：

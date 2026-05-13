@@ -4,6 +4,12 @@
   "channels": ["lansenger"],
   "name": "Lansenger (蓝信)",
   "description": "Lansenger enterprise messaging channel plugin for OpenClaw / 蓝信企业即时通讯频道插件",
+  "openclaw.channel": {
+    "id": "Lansenger",
+    "selectionLabel": "Lansenger (蓝信)",
+    "order": 80,
+    "aliases": ["lansenger", "lx"]
+  },
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
