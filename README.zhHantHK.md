@@ -15,9 +15,7 @@
 - **多機械人支援** — 將多個藍信機械人綁定至不同的 OpenClaw 代理
 - **Markdown 支援** — 使用 `formatText` msgType（預設）
 - **檔案/圖片/語音附件** — 透過 `text` msgType 上傳媒體
-- **i18nAppCard** — 5 語言卡片類型（zhHans、zhHant、zhHantHK、en、fr）。保留供未來使用；不支援動態更新或 headStatusInfo
-- **appCard（審批）** — 審批卡片，使用 `isDynamic=true` + `headStatusInfo`。不支援多語言；使用雙語文字（如"Pending / 待審批"）
-- **DynamicMsg appCard** — 瀨態更新格式：`appCardUpdateMsg` + `isLastUpdate` + `headStatusInfo`，用於審批狀態變更
+- **審批卡片**——互動式審批流程，支援原地狀態更新（待審批 → 已通過/已拒絕）
 - **語言偵測** — 自動偵測使用者語言，提供本地化回應
 - **群組訊息路由** — 自動偵測並路由至群組/私聊 API
 - **@提及** — 支援群組聊天中 @所有人 和 @指定使用者
@@ -201,7 +199,7 @@ openclaw gateway call lansenger.unbind '{"botId":"your-appid"}'
 | `voice` | 語音訊息 | `sendFile()` | 出站 |
 | `linkCard` | 富連結預覽卡片 | `sendLinkCard()` | 出站 |
 | `i18nAppCard` | 保留供未來使用；5 語言卡片 | `sendI18nAppCard()` | 出站 |
-| `appCard` | 審批卡片（isDynamic + headStatusInfo） | `sendAppCard()` | 出站 |
+| `appCard` | 審批卡片（支援狀態更新） | `sendAppCard()` | 出站 |
 | `appArticles` | 多文章卡片 | `sendAppArticles()` | 出站 |
 | `position` | 位置/定位訊息 | — | 僅入站 |
 | `card` | 通用卡片訊息 | — | 僅入站 |
@@ -288,7 +286,7 @@ openclaw-lansenger-channel/
 
 ### 動態卡片更新失敗
 
-動態更新使用 `msgType="appCard"`（不是 i18nAppCard）。`updateCardStatus()` 方法使用 `appCardUpdateMsg` + `headStatusInfo`。
+審批狀態更新使用 DynamicMsg appCard 格式，`updateCardStatus()` 方法自動處理。
 
 ## 授權條款
 

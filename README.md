@@ -13,9 +13,7 @@ Lansenger (蓝信) channel plugin for OpenClaw — WebSocket inbound, HTTP API o
 - **Multi-bot support** — bind multiple Lansenger bots to different OpenClaw agents
 - **Markdown support** using `formatText` msgType (default)
 - **File/Image/Voice attachments** via `text` msgType with media upload
-- **i18nAppCard** — 5-language card type (zhHans, zhHant, zhHantHK, en, fr). Reserved for future use; does NOT support dynamic updates or headStatusInfo
-- **appCard (approval)** — approval cards with `isDynamic=true` + `headStatusInfo`. Does NOT support multi-language; uses bilingual text (e.g. "Pending / 待审批")
-- **DynamicMsg appCard** — status update format: `appCardUpdateMsg` + `isLastUpdate` + `headStatusInfo` for approval state changes
+- **Approval cards** — interactive approval workflow with in-place status updates (pending → approved/denied)
 - **Language detection** — auto-detect user language from messages for localized responses
 - **Group message routing** — auto-detect and route to group/private chat APIs
 - **@Mentions** — support @all and @specific users in group chats
@@ -199,7 +197,7 @@ openclaw gateway call lansenger.unbind '{"botId":"your-appid"}'
 | `voice` | Voice message | `sendFile()` | Outbound |
 | `linkCard` | Rich link preview card | `sendLinkCard()` | Outbound |
 | `i18nAppCard` | Reserved for future use; 5-language card | `sendI18nAppCard()` | Outbound |
-| `appCard` | Approval cards (isDynamic + headStatusInfo) | `sendAppCard()` | Outbound |
+| `appCard` | Approval cards with status updates | `sendAppCard()` | Outbound |
 | `appArticles` | Multi-article card | `sendAppArticles()` | Outbound |
 | `position` | Location/position message | — | Inbound-only |
 | `card` | Generic card message | — | Inbound-only |
@@ -286,7 +284,7 @@ The plugin includes automatic reconnection with exponential backoff (2s, 5s, 10s
 
 ### Dynamic card update fails
 
-Dynamic updates use `msgType="appCard"` (NOT i18nAppCard). The `updateCardStatus()` method uses `appCardUpdateMsg` + `headStatusInfo`.
+Approval status updates use the DynamicMsg appCard format. The `updateCardStatus()` method handles this automatically.
 
 ## License
 

@@ -15,9 +15,7 @@ Connecte OpenClaw à Lansenger — une plateforme de messagerie d'entreprise —
 - **Support multi-bot** — lier plusieurs bots Lansenger à différents agents OpenClaw
 - **Support Markdown** utilisant le msgType `formatText` (par défaut)
 - **Fichiers/Images/Vocaux** via le msgType `text` avec upload de médias
-- **i18nAppCard** — type de carte 5 langues (zhHans, zhHant, zhHantHK, en, fr). Réservé pour usage futur ; ne supporte PAS les mises à jour dynamiques ni headStatusInfo
-- **appCard (approbation)** — cartes d'approbation avec `isDynamic=true` + `headStatusInfo`. Ne supporte PAS le multilingue ; utilise du texte bilingue (ex. "Pending / 待审批")
-- **DynamicMsg appCard** — format de mise à jour de statut : `appCardUpdateMsg` + `isLastUpdate` + `headStatusInfo` pour les changements d'état d'approbation
+- **Cartes d'approbation** — workflow d'approbation interactif avec mises à jour de statut en place (en attente → approuvé/refusé)
 - **Détection de langue** — détection automatique de la langue de l'utilisateur pour des réponses localisées
 - **Routage des messages de groupe** — détection automatique et routage vers les API groupe/privé
 - **@Mentions** — support @tout et @utilisateurs spécifiques dans les chats de groupe
@@ -201,7 +199,7 @@ openclaw gateway call lansenger.unbind '{"botId":"your-appid"}'
 | `voice` | Message vocal | `sendFile()` | Sortant |
 | `linkCard` | Carte de prévisualisation de lien enrichi | `sendLinkCard()` | Sortant |
 | `i18nAppCard` | Réservé pour usage futur ; carte 5 langues | `sendI18nAppCard()` | Sortant |
-| `appCard` | Cartes d'approbation (isDynamic + headStatusInfo) | `sendAppCard()` | Sortant |
+| `appCard` | Cartes d'approbation avec mises à jour de statut | `sendAppCard()` | Sortant |
 | `appArticles` | Carte multi-articles | `sendAppArticles()` | Sortant |
 | `position` | Message de localisation/position | — | Entrant uniquement |
 | `card` | Message de carte générique | — | Entrant uniquement |
@@ -288,7 +286,7 @@ Le plugin inclut une reconnexion automatique avec un backoff exponentiel (2s, 5s
 
 ### Échec de mise à jour dynamique de carte
 
-Les mises à jour dynamiques utilisent `msgType="appCard"` (PAS i18nAppCard). La méthode `updateCardStatus()` utilise `appCardUpdateMsg` + `headStatusInfo`.
+Les mises à jour de statut d'approbation utilisent le format DynamicMsg appCard. La méthode `updateCardStatus()` gère cela automatiquement.
 
 ## Licence
 

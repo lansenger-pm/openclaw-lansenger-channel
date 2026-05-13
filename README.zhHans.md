@@ -15,9 +15,7 @@
 - **多机器人支持** — 将多个蓝信机器人绑定到不同的 OpenClaw 代理
 - **Markdown 支持** — 使用 `formatText` 消息类型（默认）
 - **文件/图片/语音附件** — 通过 `text` 消息类型上传媒体
-- **i18nAppCard** — 5 语言卡片类型（zhHans、zhHant、zhHantHK、en、fr）。保留供未来使用；不支持动态更新或 headStatusInfo
-- **appCard（审批）** — 审批卡片，使用 `isDynamic=true` + `headStatusInfo`。不支持多语言；使用双语文本（如"Pending / 待审批"）
-- **DynamicMsg appCard** — 状态更新格式：`appCardUpdateMsg` + `isLastUpdate` + `headStatusInfo`，用于审批状态变更
+- **审批卡片** — 交互式审批流程，支持原地状态更新（待审批 → 已批准/已拒绝）
 - **语言检测** — 自动检测用户语言，提供本地化响应
 - **群消息路由** — 自动检测并路由到群聊/私聊 API
 - **@提及** — 支持群聊中 @所有人 和 @指定用户
@@ -201,7 +199,7 @@ openclaw gateway call lansenger.unbind '{"botId":"your-appid"}'
 | `voice` | 语音消息 | `sendFile()` | 出站 |
 | `linkCard` | 富链接预览卡片 | `sendLinkCard()` | 出站 |
 | `i18nAppCard` | 保留供未来使用；5 语言卡片 | `sendI18nAppCard()` | 出站 |
-| `appCard` | 审批卡片（isDynamic + headStatusInfo） | `sendAppCard()` | 出站 |
+| `appCard` | 审批卡片（支持状态更新） | `sendAppCard()` | 出站 |
 | `appArticles` | 多文章卡片（图文卡片） | `sendAppArticles()` | 出站 |
 | `position` | 位置/定位消息 | — | 仅入站 |
 | `card` | 通用卡片消息 | — | 仅入站 |
@@ -288,7 +286,7 @@ openclaw-lansenger-channel/
 
 ### 动态卡片更新失败
 
-动态更新使用 `msgType="appCard"`（不是 i18nAppCard）。`updateCardStatus()` 方法使用 `appCardUpdateMsg` + `headStatusInfo`。
+审批状态更新使用 DynamicMsg appCard 格式，`updateCardStatus()` 方法自动处理。
 
 ## 许可证
 
