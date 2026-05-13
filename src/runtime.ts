@@ -1,3 +1,4 @@
+import { execSync } from "node:child_process";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/channel-core";
 import { createSubsystemLogger } from "openclaw/plugin-sdk/logging-core";
 import { LansengerClient } from "./client.js";
@@ -88,7 +89,12 @@ export function startLansengerGateway(api: OpenClawPluginApi): void {
       return;
     }
     bindingManager.bindBotToAgent(botId, agentId);
-    log.info(`Bound bot ${botId} to agent ${agentId}`);
+    try {
+      execSync(`openclaw config set channels.lansenger.accounts.${botId}.agentId "${agentId}"`, { stdio: "pipe" });
+      log.info(`Bound bot ${botId} to agent ${agentId} (persisted)`);
+    } catch (e) {
+      log.warn(`Bound bot ${botId} to agent ${agentId} (memory only, config write failed: ${e instanceof Error ? e.message : String(e)})`);
+    }
     opts.respond(true, { message: `Bound ${botId} → ${agentId}` });
   });
 
@@ -100,7 +106,12 @@ export function startLansengerGateway(api: OpenClawPluginApi): void {
     }
     const removed = bindingManager.removeBinding(botId);
     if (removed) {
-      log.info(`Unbound bot ${botId}`);
+      try {
+        execSync(`openclaw config unset channels.lansenger.accounts.${botId}.agentId`, { stdio: "pipe" });
+        log.info(`Unbound bot ${botId} (persisted)`);
+      } catch (e) {
+        log.warn(`Unbound bot ${botId} (memory only, config write failed: ${e instanceof Error ? e.message : String(e)})`);
+      }
       opts.respond(true, { message: `Unbound ${botId}` });
     } else {
       opts.respond(false, undefined, errorShape("NOT_LINKED", `No binding for ${botId}`));
