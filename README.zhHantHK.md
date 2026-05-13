@@ -15,8 +15,9 @@
 - **多機械人支援** — 將多個藍信機械人綁定至不同的 OpenClaw 代理
 - **Markdown 支援** — 使用 `formatText` msgType（預設）
 - **檔案/圖片/語音附件** — 透過 `text` msgType 上傳媒體
-- **i18nAppCard** — 互動式審批流程卡片，支援多語言內容（zhHans、zhHant、zhHantHK、英語、法語）
-- **動態卡片更新** — 原地更新審批狀態（待審批 → 已批准/已拒絕）
+- **i18nAppCard** — 5 語言卡片類型（zhHans、zhHant、zhHantHK、en、fr）。保留供未來使用；不支援動態更新或 headStatusInfo
+- **appCard（審批）** — 審批卡片，使用 `isDynamic=true` + `headStatusInfo`。不支援多語言；使用雙語文字（如"Pending / 待審批"）
+- **DynamicMsg appCard** — 瀨態更新格式：`appCardUpdateMsg` + `isLastUpdate` + `headStatusInfo`，用於審批狀態變更
 - **語言偵測** — 自動偵測使用者語言，提供本地化回應
 - **群組訊息路由** — 自動偵測並路由至群組/私聊 API
 - **@提及** — 支援群組聊天中 @所有人 和 @指定使用者
@@ -199,8 +200,8 @@ openclaw gateway call lansenger.unbind '{"botId":"2285568-xxx"}'
 | `video` | 影片附件 | `sendFile()` | 出站 |
 | `voice` | 語音訊息 | `sendFile()` | 出站 |
 | `linkCard` | 富連結預覽卡片 | `sendLinkCard()` | 出站 |
-| `i18nAppCard` | 互動式審批卡片（多語言：zhHans、zhHant、zhHantHK、en、fr） | `sendI18nAppCard()` | 出站 |
-| `appCard` | 動態應用卡片，支援狀態更新 | `sendAppCard()` | 出站 |
+| `i18nAppCard` | 保留（不用於審批）；5 語言：zhHans、zhHant、zhHantHK、en、fr | `sendI18nAppCard()` | 出站 |
+| `appCard` | 審批卡片，使用 isDynamic + headStatusInfo | `sendAppCard()` | 出站 |
 | `appArticles` | 多文章卡片 | `sendAppArticles()` | 出站 |
 | `position` | 位置/定位訊息 | — | 僅入站 |
 | `card` | 通用卡片訊息 | — | 僅入站 |
@@ -217,12 +218,19 @@ openclaw gateway call lansenger.unbind '{"botId":"2285568-xxx"}'
 
 ## 審批流程
 
-OpenClaw 使用藍信的 **i18nAppCard** 進行審批流程：
+審批流程使用 **appCard** 發送初始卡片，使用 **DynamicMsg appCard** 更新狀態：
 
-- 審批請求以 i18nAppCard 發送（5 語言：zhHans、zhHant、zhHantHK、英語、法語）
-- 動態狀態更新使用 appCard msgType，透過 `updateDynamicCardStatus()` 方法，使用 `appCardUpdateMsg` + `dynamicData`（帶樣式的 HTML 狀態/簽名）
-- 語言感知：自動偵測使用者語言（CJK 比率 ≥ 0.6 → 中文）
-- 僅 `allowFrom` 中的使用者可以審批
+- **初始發送**：`msgType="appCard"`，使用 `isDynamic=true` + `headStatusInfo`（顯示待審批狀態，琥珀色）
+- **狀態更新**：DynamicMsg appCard，透過 `updateCardStatus()` 方法，使用 `appCardUpdateMsg` + `headStatusInfo`
+- 內容使用雙語文字（如"Pending / 待審批"），因為 appCard 不支援 i18n 按語言環境渲染
+
+### 藍信卡片類型
+
+| 卡片類型 | i18n | 動態更新 | headStatusInfo | 用途 |
+|----------|------|----------|----------------|------|
+| `i18nAppCard` | ✓（5 語言） | ✗ | ✗ | 保留供未來使用 |
+| `appCard` | ✗ | ✓（`isDynamic=true`） | ✓ | 審批卡片（初始發送） |
+| DynamicMsg `appCard` | ✗ | ✓（`appCardUpdateMsg`） | ✓（`isLastUpdate`） | 審批狀態更新 |
 
 ## 開發
 
@@ -288,7 +296,7 @@ openclaw-lansenger-channel/
 
 ### 動態卡片更新失敗
 
-動態更新使用 `msgType="appCard"`（不是 i18nAppCard）。`updateDynamicCardStatus()` 方法使用 `appCardUpdateMsg` + `dynamicData`。
+動態更新使用 `msgType="appCard"`（不是 i18nAppCard）。`updateCardStatus()` 方法使用 `appCardUpdateMsg` + `headStatusInfo`。
 
 ## 授權條款
 

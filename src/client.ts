@@ -281,7 +281,7 @@ export class LansengerClient {
     }
   }
 
-  async sendAppCard(chatId: string, content: string, options?: AppCardOptions): Promise<ApiResult> {
+  async sendAppCard(chatId: string, cardData: AppCardData): Promise<ApiResult> {
     const token = await this.getAppToken();
     if (!token) return { success: false, error: "No access token" };
     try {
@@ -289,17 +289,7 @@ export class LansengerClient {
       const payload = {
         userIdList: [chatId],
         msgType: "appCard",
-        msgData: {
-          appCard: {
-            isDynamic: options?.isDynamic ?? false,
-            cover: options?.cover ?? "",
-            link: options?.link ?? "",
-            pcLink: options?.pcLink ?? "",
-            actionLink: options?.actionLink ?? "",
-            actionText: options?.actionText ?? "",
-            content,
-          },
-        },
+        msgData: { appCard: cardData },
       };
       const data = await this.postJson(url, payload);
       if (data.errCode !== 0) return { success: false, error: data.errMsg ?? undefined };
@@ -339,12 +329,17 @@ export class LansengerClient {
     }
   }
 
-  async updateDynamicCardStatus(messageId: string, status: "pending" | "approved" | "denied", lang: "zh" | "en" = "zh"): Promise<ApiResult> {
+  async updateCardStatus(messageId: string, status: "pending" | "approved" | "denied", lang?: "zh" | "en"): Promise<ApiResult> {
     const token = await this.getAppToken();
     if (!token) return { success: false, error: "No access token" };
-    const statusText = status === "pending" ? "待审批" : status === "approved" ? "已批准" : "已拒绝";
-    const statusColor = status === "pending" ? "#FFB116" : status === "approved" ? "#198754" : "#dc3545";
-    const signature = lang === "zh" ? "OpenClaw 安全审批" : "OpenClaw Security";
+    const detectedLang = lang ?? "zh";
+    const statusConfig: Record<string, { zh: string; en: string; color: string }> = {
+      pending: { zh: "待审批", en: "Pending", color: "#FFB116" },
+      approved: { zh: "已批准", en: "Approved", color: "#198754" },
+      denied: { zh: "已拒绝", en: "Denied", color: "#dc3545" },
+    };
+    const cfg = statusConfig[status] ?? statusConfig["pending"]!;
+    const statusText = cfg[detectedLang] ?? cfg.en;
     try {
       const url = `${this.apiGatewayUrl}${API_ENDPOINTS.dynamicUpdate}?app_token=${token}`;
       const payload = {
@@ -353,9 +348,9 @@ export class LansengerClient {
         msgData: {
           appCardUpdateMsg: {
             isLastUpdate: status !== "pending",
-            dynamicData: {
-              status: `<div style="color:${statusColor};font-size:14px;">${statusText}</div>`,
-              signature: `<div style="color:#666;font-size:12px;">${signature}</div>`,
+            headStatusInfo: {
+              description: `<div style="color:${cfg.color};text-align:left">${statusText}</div>`,
+              colour: cfg.color,
             },
           },
         },
@@ -428,38 +423,6 @@ export class LansengerClient {
   isGroupChat(chatId: string): boolean {
     const type = this.chatTypeMap.get(chatId);
     return type === "group" || chatId.startsWith("group:");
-  }
-
-  async updateCardStatus(messageId: string, status: "pending" | "approved" | "denied"): Promise<ApiResult> {
-    const token = await this.getAppToken();
-    if (!token) return { success: false, error: "No access token" };
-    const statusConfig = {
-      pending: { color: "#FFB116", text: "待审批" },
-      approved: { color: "#198754", text: "已批准" },
-      denied: { color: "#dc3545", text: "已拒绝" },
-    };
-    const cfg = statusConfig[status];
-    try {
-      const url = `${this.apiGatewayUrl}${API_ENDPOINTS.dynamicUpdate}?app_token=${token}`;
-      const payload = {
-        msgId: messageId,
-        msgType: "appCard",
-        msgData: {
-          appCardUpdateMsg: {
-            isLastUpdate: status !== "pending",
-            headStatusInfo: {
-              description: `<div style="color:${cfg.color};font-size:14px;">${cfg.text}</div>`,
-              colour: cfg.color,
-            },
-          },
-        },
-      };
-      const data = await this.postJson(url, payload);
-      if (data.errCode !== 0) return { success: false, error: data.errMsg ?? undefined };
-      return { success: true, rawResponse: data };
-    } catch (e: any) {
-      return { success: false, error: e.message };
-    }
   }
 
   async downloadMedia(mediaId: string): Promise<{ bytes: Buffer; ext?: string } | null> {
@@ -747,6 +710,34 @@ export type LinkCardOptions = {
   pcLink?: string;
   fromName?: string;
   fromIconLink?: string;
+};
+
+export type AppCardField = { key: string; value: string };
+export type AppCardLink = { title: string; url: string };
+export type AppCardButton = { title: string; action: string };
+export type HeadStatusInfo = {
+  iconLink?: string;
+  description: string;
+  colour?: string;
+};
+
+export type AppCardData = {
+  headTitle?: string;
+  headIconId?: string;
+  headIconUrl?: string;
+  isDynamic?: boolean;
+  headStatusInfo?: HeadStatusInfo;
+  bodyTitle: string;
+  bodySubTitle?: string;
+  bodyContent?: string;
+  signature?: string;
+  staffId?: string;
+  fields?: AppCardField[];
+  links?: AppCardLink[];
+  buttons?: AppCardButton[];
+  cardLink?: string;
+  pcCardLink?: string;
+  padCardLink?: string;
 };
 
 export type AppCardOptions = {

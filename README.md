@@ -13,8 +13,9 @@ Lansenger (蓝信) channel plugin for OpenClaw — WebSocket inbound, HTTP API o
 - **Multi-bot support** — bind multiple Lansenger bots to different OpenClaw agents
 - **Markdown support** using `formatText` msgType (default)
 - **File/Image/Voice attachments** via `text` msgType with media upload
-- **i18nAppCard** — interactive approval workflow cards with multilingual content (zhHans, zhHant, zhHantHK, English, French)
-- **Dynamic card updates** — update approval status in-place (pending → approved/denied)
+- **i18nAppCard** — 5-language card type (zhHans, zhHant, zhHantHK, en, fr). Reserved for future use; does NOT support dynamic updates or headStatusInfo
+- **appCard (approval)** — approval cards with `isDynamic=true` + `headStatusInfo`. Does NOT support multi-language; uses bilingual text (e.g. "Pending / 待审批")
+- **DynamicMsg appCard** — status update format: `appCardUpdateMsg` + `isLastUpdate` + `headStatusInfo` for approval state changes
 - **Language detection** — auto-detect user language from messages for localized responses
 - **Group message routing** — auto-detect and route to group/private chat APIs
 - **@Mentions** — support @all and @specific users in group chats
@@ -197,8 +198,8 @@ openclaw gateway call lansenger.unbind '{"botId":"2285568-xxx"}'
 | `video` | Video attachment | `sendFile()` | Outbound |
 | `voice` | Voice message | `sendFile()` | Outbound |
 | `linkCard` | Rich link preview card | `sendLinkCard()` | Outbound |
-| `i18nAppCard` | Interactive approval card (multilingual: zhHans, zhHant, zhHantHK, en, fr) | `sendI18nAppCard()` | Outbound |
-| `appCard` | Dynamic app card with status updates | `sendAppCard()` | Outbound |
+| `i18nAppCard` | Reserved (not used for approval); 5 languages: zhHans, zhHant, zhHantHK, en, fr | `sendI18nAppCard()` | Outbound |
+| `appCard` | Approval cards with isDynamic + headStatusInfo | `sendAppCard()` | Outbound |
 | `appArticles` | Multi-article card | `sendAppArticles()` | Outbound |
 | `position` | Location/position message | — | Inbound-only |
 | `card` | Generic card message | — | Inbound-only |
@@ -215,12 +216,19 @@ When users send images, videos, files, or voice messages, the plugin:
 
 ## Approval Workflow
 
-OpenClaw uses Lansenger's **i18nAppCard** for approval workflows:
+Approval workflow uses **appCard** for initial send and **DynamicMsg appCard** for status updates:
 
-- Approval requests are sent as i18nAppCard (5-language: zhHans, zhHant, zhHantHK, English, French)
-- Dynamic status updates use appCard msgType via `updateDynamicCardStatus()` with `appCardUpdateMsg` + `dynamicData` (styled HTML status/signature)
-- Language-aware: auto-detects user language (CJK ratio ≥ 0.6 → Chinese)
-- Only users in `allowFrom` can approve
+- **Initial send**: `msgType="appCard"` with `isDynamic=true` + `headStatusInfo` (showing pending status with amber color)
+- **Status update**: DynamicMsg appCard using `updateCardStatus()` with `appCardUpdateMsg` + `headStatusInfo`
+- Content uses bilingual text (e.g. "Pending / 待审批") since appCard does NOT support i18n per-locale rendering
+
+### Lansenger Card Types
+
+| Card Type | i18n | Dynamic Updates | headStatusInfo | Usage |
+|-----------|------|-----------------|----------------|-------|
+| `i18nAppCard` | ✓ (5 languages) | ✗ | ✗ | Reserved for future use |
+| `appCard` | ✗ | ✓ (`isDynamic=true`) | ✓ | Approval cards (initial send) |
+| DynamicMsg `appCard` | ✗ | ✓ (`appCardUpdateMsg`) | ✓ (`isLastUpdate`) | Approval status updates |
 
 ## Development
 
@@ -286,7 +294,7 @@ The plugin includes automatic reconnection with exponential backoff (2s, 5s, 10s
 
 ### Dynamic card update fails
 
-Dynamic updates use `msgType="appCard"` (NOT i18nAppCard). The `updateDynamicCardStatus()` method uses `appCardUpdateMsg` + `dynamicData`.
+Dynamic updates use `msgType="appCard"` (NOT i18nAppCard). The `updateCardStatus()` method uses `appCardUpdateMsg` + `headStatusInfo`.
 
 ## License
 

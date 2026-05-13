@@ -5,8 +5,8 @@ import {
 import type { OpenClawConfig, ChannelPlugin } from "openclaw/plugin-sdk/channel-core";
 import { createChannelApprovalCapability } from "openclaw/plugin-sdk/approval-runtime";
 import { createResolvedApproverActionAuthAdapter } from "openclaw/plugin-sdk/approval-auth-runtime";
-import { LansengerClient, DEFAULT_API_GATEWAY_URL, buildI18n } from "./client.js";
-import type { I18nAppCardData, ClientLogger } from "./client.js";
+import { LansengerClient, DEFAULT_API_GATEWAY_URL } from "./client.js";
+import type { AppCardData, I18nAppCardData, ClientLogger } from "./client.js";
 import { getBindingManager } from "./bindings.js";
 
 type LansengerAccount = {
@@ -423,39 +423,24 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount> = {
       presentation: {
         buildPendingPayload: ({ cfg, request, target, nowMs }: any) => {
           const commandPreview = (request?.command ?? request?.summary ?? "").slice(0, 300);
-          const timestamp = Math.floor((nowMs ?? Date.now()) / 1000);
           const sessionKey = request?.sessionKey ?? "unknown";
           return {
-            type: "i18nAppCard",
-            i18nAppCard: {
-              i18nHeadTitle: buildI18n("⚠️ 命令审批", "⚠️ 命令審批", "⚠️ 命令審批", "⚠️ Command Approval", "⚠️ Approbation de commande"),
-              i18nBodyTitle: buildI18n("危险命令审批请求", "危險命令審批請求", "危險命令審批請求", "Dangerous Command Approval", "Demande d'approbation"),
-              i18nBodyContent: buildI18n(
-                `会话 ID: ${sessionKey.slice(0, 32)}\n命令:\n${commandPreview}`,
-                `會話 ID: ${sessionKey.slice(0, 32)}\n命令:\n${commandPreview}`,
-                `會話 ID: ${sessionKey.slice(0, 32)}\n命令:\n${commandPreview}`,
-                `Session: ${sessionKey.slice(0, 32)}\nCommand:\n${commandPreview}`,
-                `Session: ${sessionKey.slice(0, 32)}\nCommande:\n${commandPreview}`,
-              ),
-              i18nSignature: buildI18n("OpenClaw 安全审批", "OpenClaw 安全審批", "OpenClaw 安全審批", "OpenClaw Security", "OpenClaw Sécurité"),
-              i18nFields: [
-                {
-                  i18nKey: buildI18n("执行一次", "執行一次", "執行一次", "Approve Once", "Approuver"),
-                  i18nValue: buildI18n("/approve", "/approve", "/approve", "/approve", "/approve"),
-                  timestamp,
-                },
-                {
-                  i18nKey: buildI18n("本会话有效", "本會話有效", "本會話有效", "This Session", "Cette session"),
-                  i18nValue: buildI18n("/approve session", "/approve session", "/approve session", "/approve session", "/approve session"),
-                  timestamp,
-                },
-                {
-                  i18nKey: buildI18n("拒绝执行", "拒絕執行", "拒絕執行", "Deny", "Refuser"),
-                  i18nValue: buildI18n("/deny", "/deny", "/deny", "/deny", "/deny"),
-                  timestamp,
-                },
+            type: "appCard",
+            appCard: {
+              headTitle: "⚠️ Command Approval / 命令审批",
+              isDynamic: true,
+              headStatusInfo: {
+                description: '<div style="color:#FFB116;text-align:left">Pending / 待审批</div>',
+                colour: "#FFB116",
+              },
+              bodyTitle: '<div style="color:#000;font-size:15pt;text-align:left">Dangerous Command Approval Request / 危险命令审批请求</div>',
+              bodyContent: `<div style="color:#000;font-size:13pt;text-align:left">Session: ${sessionKey.slice(0, 32)}\nCommand / 命令:\n${commandPreview}</div>`,
+              signature: '<div style="color:rgba(0,0,0,.47)">OpenClaw Security / OpenClaw 安全审批</div>',
+              fields: [
+                { key: "Approve Once / 执行一次", value: "/approve" },
+                { key: "This Session / 本会话有效", value: "/approve session" },
+                { key: "Deny / 拒绝执行", value: "/deny" },
               ],
-              i18nLinks: [],
               cardLink: "",
               pcCardLink: "",
             },
@@ -477,8 +462,8 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount> = {
         send: async ({ cfg, accountId, target, payload }: any) => {
           const account = resolveAccount(cfg, accountId);
           const client = makeClient(account);
-          if (payload?.type === "i18nAppCard" && payload?.i18nAppCard) {
-            const result = await client.sendI18nAppCard(target.to, payload.i18nAppCard as I18nAppCardData);
+          if (payload?.type === "appCard" && payload?.appCard) {
+            const result = await client.sendAppCard(target.to, payload.appCard as AppCardData);
             return { delivered: result.success, messageId: result.messageId ?? null };
           }
           if (payload?.type === "text" && payload?.text) {
@@ -492,7 +477,7 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount> = {
           const client = makeClient(account);
           const status = payload?.status ?? "pending";
           const lang = client.getUserLang(target.to);
-          const result = await client.updateDynamicCardStatus(messageId ?? "", status as "pending" | "approved" | "denied", lang);
+          const result = await client.updateCardStatus(messageId ?? "", status as "pending" | "approved" | "denied", lang);
           return { updated: result.success };
         },
         delete: async ({ cfg, accountId, target, messageId }: any) => {

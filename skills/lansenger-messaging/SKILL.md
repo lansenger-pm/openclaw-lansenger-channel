@@ -68,13 +68,16 @@ The plugin automatically routes outbound replies:
 → **linkCard** — `title` + `link` required, optional: description, icon_link, from_name
 
 ### 6. Approval / interactive card
-→ **i18nAppCard** — multilingual card (5 locales: zhHans, zhHant, zhHantHK, en, fr) with /approve and /deny buttons
-- Supports: zhHans, zhHant, zhHantHK, en, fr
-- Fields: i18nHeadTitle, i18nBodyTitle, i18nBodyContent, i18nSignature, i18nFields
+→ **appCard** (with `isDynamic=true` + `headStatusInfo`) — dynamic approval card with /approve and /deny buttons
+- Supports: div-style HTML formatting (color, font-size, text-align, text-indent)
+- Fields: headTitle, bodyTitle, bodySubTitle, bodyContent, signature, fields, buttons, headStatusInfo
+- Language: content uses bilingual text (e.g. "Pending / 待审批") since appCard does NOT support i18n
 
-### 7. Simple app card
-→ **appCard** — lightweight card with content, optional: isDynamic, cover, link, actionText
-- Used for dynamic card updates (see below)
+### 7. i18nAppCard (reserved, not currently used for approval)
+→ **i18nAppCard** — multilingual card (5 locales: zhHans, zhHant, zhHantHK, en, fr)
+- Supports full i18n fields: i18nHeadTitle, i18nBodyTitle, i18nBodyContent, i18nSignature, i18nFields
+- Does NOT support: dynamic updates, headStatusInfo
+- Reserved for future use when per-locale rendering is needed
 
 ### 8. Article list card
 → **appArticles** — multi-article card, each with title, description, imgUrl, url
@@ -115,18 +118,26 @@ When users send images, videos, files, or voice messages, the plugin:
 
 ## Dynamic Card Updates (Approval Status)
 
-Approval cards use **i18nAppCard** for initial send, then **appCard msgType** for status updates:
+Three card types serve different purposes — **appCard is used for approval**:
 
-### Initial Send
-- `msgType: "i18nAppCard"` — multilingual card (5 locales) with approve/deny buttons
+| Card Type | Multi-language | Dynamic Update | headStatusInfo | Current Usage |
+|-----------|---------------|---------------|---------------|---------------|
+| i18nAppCard | ✓ (5 locales) | ✗ | ✗ | Reserved for future |
+| appCard | ✗ | ✓ (isDynamic) | ✓ | Approval cards |
+| DynamicMsg appCard | ✗ | ✓ (appCardUpdateMsg) | ✓ | Approval status updates |
 
-### Status Update
-- `msgType: "appCard"` — NOT i18nAppCard (dynamic updates require appCard format)
-- Uses `updateDynamicCardStatus()` with `appCardUpdateMsg`:
-  - `isLastUpdate: true` when approved/denied (removes interactive buttons)
-  - `isLastUpdate: false` when still pending
-  - `dynamicData` — HTML content for status display (`<div>` styled status + signature)
-  - Signature uses detected language: "OpenClaw 安全审批" (zh) or "OpenClaw Security" (en)
+### Initial Send (appCard)
+- `msgType: "appCard"` with `isDynamic=true` + `headStatusInfo` (pending status)
+- Uses `sendAppCard()` with full `AppCardData` fields (bodyTitle, bodyContent, signature, fields, etc.)
+- Content uses bilingual text since appCard does NOT support i18n per-locale rendering
+
+### Status Update (DynamicMsg appCard)
+- `msgType: "appCard"` with `appCardUpdateMsg` — NOT a new card, updates existing card in-place
+- Uses `updateCardStatus()` with `headStatusInfo`:
+  - `isLastUpdate: true` when approved/denied (locks the card, no further updates)
+  - `isLastUpdate: false` when still pending (allows future updates within 30 days)
+  - `headStatusInfo.description` — div-style HTML status badge (e.g. `<div style="color:#198754">已批准</div>`)
+  - `headStatusInfo.colour` — colored circle indicator
 
 ### Language-Aware Updates
 

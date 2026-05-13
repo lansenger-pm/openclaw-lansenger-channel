@@ -15,8 +15,9 @@ Connecte OpenClaw à Lansenger — une plateforme de messagerie d'entreprise —
 - **Support multi-bot** — lier plusieurs bots Lansenger à différents agents OpenClaw
 - **Support Markdown** utilisant le msgType `formatText` (par défaut)
 - **Fichiers/Images/Vocaux** via le msgType `text` avec upload de médias
-- **i18nAppCard** — cartes interactives de flux d'approbation avec contenu multilingue (zhHans, zhHant, zhHantHK, anglais, français)
-- **Mises à jour dynamiques de cartes** — mise à jour du statut d'approbation en place (en attente → approuvé/refusé)
+- **i18nAppCard** — type de carte 5 langues (zhHans, zhHant, zhHantHK, en, fr). Réservé pour usage futur ; ne supporte PAS les mises à jour dynamiques ni headStatusInfo
+- **appCard (approbation)** — cartes d'approbation avec `isDynamic=true` + `headStatusInfo`. Ne supporte PAS le multilingue ; utilise du texte bilingue (ex. "Pending / 待审批")
+- **DynamicMsg appCard** — format de mise à jour de statut : `appCardUpdateMsg` + `isLastUpdate` + `headStatusInfo` pour les changements d'état d'approbation
 - **Détection de langue** — détection automatique de la langue de l'utilisateur pour des réponses localisées
 - **Routage des messages de groupe** — détection automatique et routage vers les API groupe/privé
 - **@Mentions** — support @tout et @utilisateurs spécifiques dans les chats de groupe
@@ -199,8 +200,8 @@ openclaw gateway call lansenger.unbind '{"botId":"2285568-xxx"}'
 | `video` | Vidéo jointe | `sendFile()` | Sortant |
 | `voice` | Message vocal | `sendFile()` | Sortant |
 | `linkCard` | Carte de prévisualisation de lien enrichi | `sendLinkCard()` | Sortant |
-| `i18nAppCard` | Carte d'approbation interactive (multilingue : zhHans, zhHant, zhHantHK, en, fr) | `sendI18nAppCard()` | Sortant |
-| `appCard` | Carte d'application dynamique avec mises à jour de statut | `sendAppCard()` | Sortant |
+| `i18nAppCard` | Réservé (non utilisé pour approbation) ; 5 langues : zhHans, zhHant, zhHantHK, en, fr | `sendI18nAppCard()` | Sortant |
+| `appCard` | Cartes d'approbation avec isDynamic + headStatusInfo | `sendAppCard()` | Sortant |
 | `appArticles` | Carte multi-articles | `sendAppArticles()` | Sortant |
 | `position` | Message de localisation/position | — | Entrant uniquement |
 | `card` | Message de carte générique | — | Entrant uniquement |
@@ -217,12 +218,19 @@ Lorsque les utilisateurs envoient des images, vidéos, fichiers ou messages voca
 
 ## Flux d'approbation
 
-OpenClaw utilise les **i18nAppCard** de Lansenger pour les flux d'approbation :
+Le flux d'approbation utilise **appCard** pour l'envoi initial et **DynamicMsg appCard** pour les mises à jour de statut :
 
-- Les demandes d'approbation sont envoyées sous forme de i18nAppCard (5 langues : zhHans, zhHant, zhHantHK, anglais, français)
-- Les mises à jour dynamiques du statut utilisent le msgType appCard via `updateDynamicCardStatus()` avec `appCardUpdateMsg` + `dynamicData` (statut/signature HTML stylisé)
-- Sensible à la langue : détection automatique (ratio CJK ≥ 0.6 → chinois)
-- Seuls les utilisateurs dans `allowFrom` peuvent approuver
+- **Envoi initial** : `msgType="appCard"` avec `isDynamic=true` + `headStatusInfo` (statut en attente, couleur ambre)
+- **Mise à jour de statut** : DynamicMsg appCard via `updateCardStatus()` avec `appCardUpdateMsg` + `headStatusInfo`
+- Le contenu utilise du texte bilingue (ex. "Pending / 待审批") car appCard ne supporte PAS le rendu i18n par langue
+
+### Types de cartes Lansenger
+
+| Type de carte | i18n | Mises à jour dynamiques | headStatusInfo | Utilisation |
+|---------------|------|-------------------------|----------------|-------------|
+| `i18nAppCard` | ✓ (5 langues) | ✗ | ✗ | Réservé pour usage futur |
+| `appCard` | ✗ | ✓ (`isDynamic=true`) | ✓ | Cartes d'approbation (envoi initial) |
+| DynamicMsg `appCard` | ✗ | ✓ (`appCardUpdateMsg`) | ✓ (`isLastUpdate`) | Mises à jour de statut d'approbation |
 
 ## Développement
 
@@ -288,7 +296,7 @@ Le plugin inclut une reconnexion automatique avec un backoff exponentiel (2s, 5s
 
 ### Échec de mise à jour dynamique de carte
 
-Les mises à jour dynamiques utilisent `msgType="appCard"` (PAS i18nAppCard). La méthode `updateDynamicCardStatus()` utilise `appCardUpdateMsg` + `dynamicData`.
+Les mises à jour dynamiques utilisent `msgType="appCard"` (PAS i18nAppCard). La méthode `updateCardStatus()` utilise `appCardUpdateMsg` + `headStatusInfo`.
 
 ## Licence
 
