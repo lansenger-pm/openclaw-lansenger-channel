@@ -15,6 +15,7 @@ const DEFAULT_API_GATEWAY_URL = "https://open.e.lanxin.cn/open/apigw";
 const MAX_MESSAGE_LENGTH = 4000;
 const RECONNECT_BACKOFF = [2, 5, 10, 30, 60];
 const HEARTBEAT_INTERVAL_MS = 30_000;
+const PONG_TIMEOUT_MS = 10_000;
 const LANG_DETECT_THRESHOLD = 0.6;
 
 const API_ENDPOINTS = {
@@ -72,6 +73,8 @@ export class LansengerClient {
   private running = false;
   private backoffIdx = 0;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  private pongTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastPongAt = 0;
   private messageHandler: ((event: InboundEvent) => Promise<void>) | null = null;
   private log: ClientLogger;
   private chatTypeMap = new Map<string, "group" | "dm">();
@@ -640,18 +643,28 @@ export class LansengerClient {
           }
         };
 
+        ws.on("pong", () => {
+          this.lastPongAt = Date.now();
+          this.clearPongTimeout();
+        });
+
+        let resolveClose: (() => void) | null = null;
+        const closePromise = new Promise<void>((r) => { resolveClose = r; });
+
         ws.onclose = (ev) => {
           this.log.info(`WS closed (code=${ev.code} reason=${ev.reason})`);
           this.stopHeartbeat();
+          this.clearPongTimeout();
+          resolveClose?.();
         };
-        ws.onerror = () => {
-          this.log.error("WS error");
+        ws.onerror = (ev) => {
+          this.log.error(`WS error: ${(ev as any).message ?? "unknown"}`);
+          this.stopHeartbeat();
+          this.clearPongTimeout();
+          resolveClose?.();
         };
 
-        await new Promise<void>((resolve) => {
-          ws.onclose = () => resolve();
-          ws.onerror = () => resolve();
-        });
+        await closePromise;
 
         if (!this.running) return;
       } catch (e: any) {
@@ -670,11 +683,30 @@ export class LansengerClient {
 
   private startHeartbeat(ws: WebSocket): void {
     this.stopHeartbeat();
+    this.clearPongTimeout();
+    this.lastPongAt = Date.now();
     this.heartbeatTimer = setInterval(() => {
       if (ws.readyState === WebSocket.OPEN) {
-        try { ws.ping(); } catch { this.log.error("heartbeat ping failed"); }
+        try {
+          ws.ping();
+          this.pongTimeoutTimer = setTimeout(() => {
+            if (Date.now() - this.lastPongAt > PONG_TIMEOUT_MS && ws.readyState === WebSocket.OPEN) {
+              this.log.error("pong timeout — terminating zombie connection");
+              ws.terminate();
+            }
+          }, PONG_TIMEOUT_MS);
+        } catch {
+          this.log.error("heartbeat ping failed");
+        }
       }
     }, HEARTBEAT_INTERVAL_MS);
+  }
+
+  private clearPongTimeout(): void {
+    if (this.pongTimeoutTimer) {
+      clearTimeout(this.pongTimeoutTimer);
+      this.pongTimeoutTimer = null;
+    }
   }
 
   private stopHeartbeat(): void {
@@ -682,6 +714,7 @@ export class LansengerClient {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
     }
+    this.clearPongTimeout();
   }
 
   private async extractText(msgData: Record<string, any>): Promise<{ text: string | null; mediaPaths?: string[] }> {
