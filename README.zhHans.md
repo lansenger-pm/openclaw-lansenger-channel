@@ -372,6 +372,11 @@ openclaw-lansenger-channel/
 
 ## 更新日志
 
+## 更新日志
+
+- **v2.7.0** — 工具注册改为纯对象（非工厂函数）；使用运行时状态获取 client/target — 修复外部插件工具注册
+- **v2.6.0** — 无条件注册工具（执行时解析账号）；移除幽灵 delete_message 注册
+- **v2.5.2** — 修复 SKILL/README mention 说明（formatText 支持 reminder）；AppArticles 使用 `summary` 不是 `description`；移除 delete_message
 - **v2.5.1** — 回滚 sysMsg（不显示）和 deleteMessage（API 10000）；撤回 chatType 仅 bot/group
 - **v2.5.0** — 添加撤回 sysMsg、deleteMessage 工具（2.5.1 已回滚）
 - **v2.4.0** — 修复消息体组装：wrap() 从 msgData 中剥离 msgType；appArticles 正确 msgType/summary/平铺数组；linkCard 补全必须字段

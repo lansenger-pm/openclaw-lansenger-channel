@@ -371,6 +371,20 @@ openclaw-lansenger-channel/
 
 審批狀態更新使用 DynamicMsg appCard 格式，`updateCardStatus()` 方法自動處理。
 
+## 更新日誌
+
+- **v2.7.0** — 工具註冊改為純物件（非工廠函數）；使用運行時狀態取得 client/target — 修復外部插件工具註冊
+- **v2.6.0** — 無條件註冊工具（執行時解析帳號）；移除幽靈 delete_message 註冊
+- **v2.5.2** — 修復 SKILL/README mention 指引（formatText 支援 reminder）；AppArticles 使用 `summary` 不是 `description`；移除 delete_message
+- **v2.5.1** — 回滾 sysMsg（不顯示）和 deleteMessage（API 10000）；撤回 chatType 僅 bot/group
+- **v2.5.0** — 新增撤回 sysMsg、deleteMessage 工具（2.5.1 已回滾）
+- **v2.4.0** — 修復消息體組裝：wrap() 從 msgData 剝離 msgType；appArticles 正確 msgType/summary/平鋪數組；linkCard 補全必填字段
+- **v2.3.0** — 移除遺留 sendGroupText/sendGroupFormatText；全部通過 msgTarget 路由
+- **v2.2.8** — 修復 MEDIA 標籤投遞（delivery.deliver 處理 payload.mediaUrls）；修復 WS 重連狀態
+- **v2.2.5** — 修復 uploadMedia 端點、stop key、狀態校驗、sendCard 動態參數
+- **v2.2.0** — 新增 9 個 agent 工具及 contracts.tools + toolMetadata
+- **v2.0.0** — 渠道核心遷移，初始發佈
+
 ## 授權條款
 
 MIT — 詳見 [LICENSE](LICENSE)。

@@ -373,6 +373,9 @@ Les mises à jour de statut d'approbation utilisent le format DynamicMsg appCard
 
 ## Journal des modifications
 
+- **v2.7.0** — Enregistrement des outils comme objets simples (pas fonctions factory) ; utilisation de l'état runtime pour client/target — correction de l'enregistrement des outils de plugin externe
+- **v2.6.0** — Enregistrement inconditionnel des outils (résolution du compte à l'exécution) ; suppression du ghost delete_message
+- **v2.5.2** — Correction guide SKILL/README mention (formatText supporte reminder) ; AppArticles utilise `summary` pas `description` ; suppression delete_message
 - **v2.5.1** — Retour sysMsg (non affiché) et deleteMessage (API 10000) ; revoke chatType bot/group uniquement
 - **v2.5.0** — Ajout sysMsg pour revoke, outil deleteMessage (retiré en 2.5.1)
 - **v2.4.0** — Correction assemblage message : wrap() exclut msgType de msgData ; appArticles msgType/summary/tableau plat ; linkCard champs requis

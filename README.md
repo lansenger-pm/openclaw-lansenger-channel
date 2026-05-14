@@ -372,6 +372,9 @@ Approval status updates use the DynamicMsg appCard format. The `updateCardStatus
 
 ## Changelog
 
+- **v2.7.0** — Register tools as plain objects (not factory functions); use runtime state for client/target — fixes external plugin tool registration
+- **v2.6.0** — Register tools unconditionally (resolve account at execute time); removed phantom delete_message tool registration
+- **v2.5.2** — Fix SKILL/README mention guidance (formatText supports reminder); AppArticles uses `summary` not `description`; remove delete_message from tools.allow
 - **v2.5.1** — Rollback sysMsg (not displayed) and deleteMessage (API 10000); revoke chatType bot/group only
 - **v2.5.0** — Add sysMsg for revoke, deleteMessage tool (rolled back in 2.5.1)
 - **v2.4.0** — Fix message body assembly: wrap() excludes msgType from msgData; appArticles correct msgType/summary/flat array; linkCard add missing required params
