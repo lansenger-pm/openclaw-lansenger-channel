@@ -80,7 +80,7 @@ export function getRunningAccount(): ResolvedAccount | null {
 }
 
 export function startLansengerGateway(api: OpenClawPluginApi): void {
-  const section = (api.config.channels as Record<string, any>)?.["lansenger"];
+  const section = (api.config.channels as Record<string, any>)?.["Lansenger"];
   const accounts = section?.accounts as Record<string, any> | undefined;
 
   api.registerGatewayMethod("lansenger.start", async (opts) => {
@@ -253,7 +253,7 @@ export function startLansengerGateway(api: OpenClawPluginApi): void {
 }
 
 function autoStart(api: OpenClawPluginApi, accounts?: Record<string, any>): void {
-  const section = (api.config.channels as Record<string, any>)?.["lansenger"];
+  const section = (api.config.channels as Record<string, any>)?.["Lansenger"];
 
   const accountIds = new Set<string>();
   if (accounts && Object.keys(accounts).length > 0) {
@@ -283,7 +283,7 @@ async function handleInbound(
   if (event.isGroup) {
     const groupPolicy = api.runtime.channel.groups.resolveGroupPolicy({
       cfg: api.config,
-      channel: "lansenger",
+      channel: "Lansenger",
       groupId: event.chatId,
       accountId: account.accountId,
     });
@@ -293,7 +293,7 @@ async function handleInbound(
     }
     const requireMention = api.runtime.channel.groups.resolveRequireMention({
       cfg: api.config,
-      channel: "lansenger",
+      channel: "Lansenger",
       groupId: event.chatId,
       accountId: account.accountId,
     });
@@ -302,7 +302,7 @@ async function handleInbound(
 
   const route = api.runtime.channel.routing.resolveAgentRoute({
     cfg: api.config,
-    channel: "lansenger",
+    channel: "Lansenger",
     accountId: account.accountId,
     peer: { kind: chatType as "direct" | "group" | "channel", id: event.chatId },
   });
@@ -321,7 +321,7 @@ async function handleInbound(
   try {
     log.info(`turn.run starting: sessionKey=${sessionKey} agentId=${agentId} accountId=${account.accountId} matchedBy=${route.matchedBy}`);
     await api.runtime.channel.turn.run({
-      channel: "lansenger",
+      channel: "Lansenger",
       accountId: account.accountId ?? undefined,
       raw: event,
       adapter: {
@@ -338,7 +338,7 @@ async function handleInbound(
           const storePath = api.runtime.channel.session.resolveStorePath(undefined, { agentId });
           return {
             cfg: api.config,
-            channel: "lansenger",
+            channel: "Lansenger",
             accountId: account.accountId ?? undefined,
             agentId,
             routeSessionKey: sessionKey,
@@ -350,7 +350,7 @@ async function handleInbound(
               FromName: event.userName,
               SessionKey: sessionKey,
               ChatType: chatType,
-              Channel: "lansenger",
+              Channel: "Lansenger",
               To: replyTo,
             },
             recordInboundSession: api.runtime.channel.session.recordInboundSession,

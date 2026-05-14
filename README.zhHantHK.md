@@ -33,7 +33,7 @@
 
 **預設策略**：優先使用 `formatText` 發送 Markdown 回覆。附件使用 `text` 回退。兩種類型均支援 @mention（透過 `reminder` 參數）—提及使用者時在文字中包含「@姓名」。
 
-## 代理工具（v2.5.1）
+## 代理工具
 
 | 工具 | 說明 |
 |------|------|
@@ -47,32 +47,29 @@
 | `lansenger_revoke_message` | 撤回已發送的訊息 |
 | `lansenger_query_groups` | 查詢可用群組 |
 
-## 快速安裝
+## 安裝與設定
 
-### 透過 OpenClaw CLI（推薦）
+### 建議 4 步流程
 
 ```bash
 # 1. 安裝插件
 openclaw plugins install @lansenger-pm/openclaw-lansenger-channel
 
-# 2. 複製到 extensions 目錄（因 OpenClaw CLI 發現機制 bug）
-mkdir -p ~/.openclaw/extensions/lansenger
-cp -r ~/.openclaw/npm/node_modules/@lansenger-pm/openclaw-lansenger-channel/* \
-     ~/.openclaw/extensions/lansenger/
+# 2. 啟用插件（如未自動啟用）
+openclaw config set plugins.entries.Lansenger.enabled true
 
-# 3. 重啟網關
+# 3. 配置頻道（互動式向導）
+openclaw channels add --channel Lansenger
+#   或非互動式：
+openclaw channels add --channel Lansenger --token "appId:appSecret"
+
+# 4. 重啟網關
 openclaw gateway restart
 ```
 
-> ⚠️ 第2步是必需的，因為 `openclaw channels add` 只發現 `extensions/` 目錄下的插件。這是 [OpenClaw 上游 bug](https://docs.openclaw.ai)。
+`package.json` 中的 `openclaw.install` 元資料（`npmSpec`、`localPath`、`defaultChoice`）支援**按需安裝**：如果使用者在插件安裝前執行 `openclaw channels add --channel Lansenger`，OpenClaw 可自動安裝該插件。
 
-### 透過 npm
-
-```bash
-# First install the npm package manually, then configure via CLI
-npm install -g @lansenger-pm/openclaw-lansenger-channel
-openclaw channels add --channel Lansenger --app-token "your-appid" --secret "your-appsecret"
-```
+> **自訂閘道**：企業私有化部署（如奇安信）需在設定後透過 `openclaw.json` 或環境變數設定 `apiGatewayUrl` — 見[可選設定](#可選設定)。
 
 ### 開發安裝（本地連結）
 
@@ -83,36 +80,18 @@ openclaw plugins install --link
 openclaw gateway restart
 ```
 
-## 快速配置
+### 取得憑證
 
-安裝後，配置憑證：
+**藍信桌面端** → **通訊錄** → **智能機械人** → **個人機械人** → 點擊 **ℹ️** 圖標
 
-> **單帳號**：`channels add` 僅建立一個帳號。如需多個機械人，見下方[多機械人設定](#多機械人設定)。
+> ⚠️ **行動端不支援查看憑證。** 請僅使用桌面端。
 
-```bash
-# 標準安裝（使用預設閘道 https://open.e.lanxin.cn/open/apigw）
-openclaw channels add --channel Lansenger \
-  --app-token "你的-appid" \
-  --secret "你的-appsecret"
-
-# 企業私有化部署（自訂閘道地址）
-openclaw channels add --channel Lansenger \
-  --app-token "你的-appid" \
-  --secret "你的-appsecret" \
-  --base-url "https://apigw.lx.qianxin.com"
-```
-
-然後重啟：
-```bash
-openclaw gateway restart
-```
-
-取得憑證：**藍信桌面端** → **通訊錄** → **智能機器人** → **個人機械人** → 點擊右側 **ℹ️** 圖標（行動端不支援查看憑證）。
+### 首次訊息
 
 重啟後機械人自動透過 WebSocket 連線。給機械人發私聊訊息，會收到配對碼，核准配對：
 
 ```bash
-openclaw pairing approve lansenger <配對碼>
+openclaw pairing approve Lansenger <配對碼>
 ```
 
 ## 設定
@@ -138,11 +117,11 @@ openclaw pairing approve lansenger <配對碼>
 ```json
 {
   "channels": {
-    "lansenger": {
+    "Lansenger": {
       "appId": "your-appid",
       "appSecret": "your-secret",
       "apiGatewayUrl": "https://open.e.lanxin.cn/open/apigw",
-      "homeChannel": "lansenger",
+      "homeChannel": "Lansenger",
       "enabled": true,
       "allowFrom": ["your-appid"],
       "dmSecurity": "paired",
@@ -163,7 +142,7 @@ openclaw pairing approve lansenger <配對碼>
 | `appId` | 個人機械人 App ID | — |
 | `appSecret` | 個人機械人 App Secret | — |
 | `apiGatewayUrl` | API 網關 URL | `https://open.e.lanxin.cn/open/apigw` |
-| `homeChannel` | 代理路由的預設頻道 | `lansenger` |
+| `homeChannel` | 代理路由的預設頻道 | `Lansenger` |
 | `enabled` | 啟用/禁用頻道 | `true` |
 | `allowFrom` | 允許私聊的使用者 ID | `[]` |
 | `dmSecurity` | 私聊策略：`paired`、`allowlist`、`open` | `paired` |
@@ -174,15 +153,15 @@ openclaw pairing approve lansenger <配對碼>
 
 ### 多機械人設定
 
-> ⚠️ `openclaw channels add` 僅支援單帳號，每次執行會**覆蓋**之前的帳號。新增多個機械人需使用 `openclaw config set` 配置 `accounts` 結構。
+新增多個機械人時，使用 `openclaw config set` 配置 `accounts` 結構：
 
 透過 `channels add` 新增第一個帳號後，用 `openclaw config set` 新增更多機械人：
 
 ```bash
 # 新增第二個機械人（替換 appid/appsecret/gateway 為你的值）
-openclaw config set channels.lansenger.accounts.your-appid-2.appId "your-appid-2"
-openclaw config set channels.lansenger.accounts.your-appid-2.appSecret "your-appsecret"
-openclaw config set channels.lansenger.accounts.your-appid-2.apiGatewayUrl "https://apigw.lx.qianxin.com"
+openclaw config set channels.Lansenger.accounts.your-appid-2.appId "your-appid-2"
+openclaw config set channels.Lansenger.accounts.your-appid-2.appSecret "your-appsecret"
+openclaw config set channels.Lansenger.accounts.your-appid-2.apiGatewayUrl "https://apigw.lx.qianxin.com"
 
 # 重啟生效
 openclaw gateway restart
@@ -193,7 +172,7 @@ openclaw gateway restart
 ```json
 {
   "channels": {
-    "lansenger": {
+    "Lansenger": {
       "appId": "your-appid-2",
       "appSecret": "...",
       "dmSecurity": "paired",
@@ -254,14 +233,14 @@ openclaw gateway call lansenger.status
     {
       agentId: "agent-a",
       match: {
-        channel: "lansenger",
+        channel: "Lansenger",
         peer: { kind: "direct", id: "2285568-xxx" },
       },
     },
     {
       agentId: "agent-a",
       match: {
-        channel: "lansenger",
+        channel: "Lansenger",
         peer: { kind: "group", id: "group-chat-id" },
       },
     },
@@ -270,7 +249,7 @@ openclaw gateway call lansenger.status
 ```
 
 路由欄位：
-* `match.channel`: `"lansenger"`
+* `match.channel`: `"Lansenger"`
 * `match.peer.kind`: `"direct"`（私聊）或 `"group"`（羣組聊天）
 * `match.peer.id`: 使用者 ID（`2285568-xxx`）或羣組聊天 ID
 
@@ -393,6 +372,7 @@ Agent 路由由 OpenClaw 的 `bindings[]` 設定管理——見[多 Agent 路由
 
 ## 更新日誌
 
+- **v2.8.1** — 修復 README：正確的 4 步安裝流程（安裝 → 啟用 → 配置 → 重啟），移除手動複製 hack；修復 SKILL.md frontmatter（AgentSkills 規範合規：移除 version/category/trigger，新增 metadata.openclaw gating）；channel identifier 改為 Lansenger
 - **v2.8.0** — 多 Agent 路由改用 OpenClaw `bindings[]`（替代 per-account `agentId`）；新增 groupPolicy/groupAllowFrom/groups 羣聊准入控制；使用 `resolveAgentRoute` SDK 处理 inbound 路由
 - **v2.7.2** — 新增 VERSION 檔案；補全 5 個 README changelog；重新生成 package-lock.json
 - **v2.7.0** — 工具註冊改為純物件（非工廠函數）；使用運行時狀態取得 client/target — 修復外部插件工具註冊

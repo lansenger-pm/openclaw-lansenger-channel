@@ -1,9 +1,7 @@
 ---
 name: lansenger-messaging
-version: 2.7.0
-category: communication
 description: How to communicate effectively on Lansenger (蓝信) — message types, formatting rules, media, cards, approvals, and pitfalls
-trigger: When the current session channel is lansenger, or when you need to send a message, file, image, card, or approval via Lansenger
+metadata: {"openclaw":{"requires":{"config":["channels.Lansenger"]},"primaryEnv":"LANSENGER_APP_ID"}}
 ---
 
 # Lansenger (蓝信) Messaging Guide for Agents
@@ -195,7 +193,7 @@ Multi-agent routing uses OpenClaw's **bindings** config — same pattern as Feis
 
 Default policy is **paired** — the first DM from a new user triggers a pairing code. The user must get approval via:
 ```
-openclaw pairing approve lansenger <code>
+openclaw pairing approve Lansenger <code>
 ```
 
 ## Critical Pitfalls

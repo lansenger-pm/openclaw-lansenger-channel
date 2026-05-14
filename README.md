@@ -31,7 +31,7 @@ Lansenger (蓝信) channel plugin for OpenClaw — WebSocket inbound, HTTP API o
 
 **Default strategy**: Use `formatText` first for Markdown replies. Fall back to `text` for attachments. Both `formatText` and `text` support @mention via `reminder` param — include "@姓名" in text content when mentioning.
 
-## Agent Tools (v2.5.1)
+## Agent Tools
 
 | Tool | Description |
 |------|-------------|
@@ -45,32 +45,29 @@ Lansenger (蓝信) channel plugin for OpenClaw — WebSocket inbound, HTTP API o
 | `lansenger_revoke_message` | Revoke a previously sent message |
 | `lansenger_query_groups` | Query available groups |
 
-## Quick Install
+## Installation & Configuration
 
-### Via OpenClaw CLI (recommended)
+### Recommended 4-step flow
 
 ```bash
 # 1. Install the plugin
 openclaw plugins install @lansenger-pm/openclaw-lansenger-channel
 
-# 2. Copy to extensions directory (required due to OpenClaw CLI discovery bug)
-mkdir -p ~/.openclaw/extensions/lansenger
-cp -r ~/.openclaw/npm/node_modules/@lansenger-pm/openclaw-lansenger-channel/* \
-     ~/.openclaw/extensions/lansenger/
+# 2. Enable the plugin (if not auto-enabled)
+openclaw config set plugins.entries.Lansenger.enabled true
 
-# 3. Restart gateway
+# 3. Configure the channel (interactive wizard)
+openclaw channels add --channel Lansenger
+#   OR non-interactive:
+openclaw channels add --channel Lansenger --token "appId:appSecret"
+
+# 4. Restart the gateway
 openclaw gateway restart
 ```
 
-> ⚠️ Step 2 is required because `openclaw channels add` only discovers plugins in the `extensions/` directory, not from npm-installed packages. This is an [OpenClaw upstream bug](https://docs.openclaw.ai), not a plugin issue.
+The `openclaw.install` metadata in `package.json` (`npmSpec`, `localPath`, `defaultChoice`) enables **install-on-demand**: if a user runs `openclaw channels add --channel Lansenger` before the plugin is installed, OpenClaw can automatically install it using this metadata.
 
-### Via npm
-
-```bash
-# First install the npm package manually, then configure via CLI
-npm install -g @lansenger-pm/openclaw-lansenger-channel
-openclaw channels add --channel lansenger
-```
+> **Custom gateway**: For enterprise deployments (e.g. 奇安信), set `apiGatewayUrl` in `openclaw.json` or environment after configuration — see [Optional Configuration](#optional-configuration).
 
 ### Development install (linked)
 
@@ -81,36 +78,18 @@ openclaw plugins install --link
 openclaw gateway restart
 ```
 
-## Quick Start
+### Get Credentials
 
-After installing, configure credentials:
+**Lansenger Desktop** → **Contacts** → **Bots** → **Personal Bots** → click **ℹ️** icon
 
-> **Single account**: `channels add` creates one account. For multiple bots, see [Multi-Bot Configuration](#multi-bot-configuration) below.
+> ⚠️ **Mobile client does NOT support viewing credentials.** Use the desktop client only.
 
-```bash
-# Standard (uses default gateway https://open.e.lanxin.cn/open/apigw)
-openclaw channels add --channel Lansenger \
-  --app-token "your-appid" \
-  --secret "your-appsecret"
+### First message
 
-# Enterprise deployment (custom gateway URL)
-openclaw channels add --channel Lansenger \
-  --app-token "your-appid" \
-  --secret "your-appsecret" \
-  --base-url "https://apigw.lx.qianxin.com"
-```
-
-Then restart:
-```bash
-openclaw gateway restart
-```
-
-Get credentials from **Lansenger Desktop** → **Contacts** → **Bots** → **Personal Bots** → click **ℹ️** icon (mobile client cannot view credentials).
-
-The bot will auto-connect via WebSocket on gateway restart. Send a DM to the bot — you'll receive a pairing code. Approve it:
+The bot auto-connects via WebSocket on gateway restart. Send a DM to the bot — you'll receive a pairing code. Approve it:
 
 ```bash
-openclaw pairing approve lansenger <code>
+openclaw pairing approve Lansenger <code>
 ```
 
 ## Configuration
@@ -136,11 +115,11 @@ Add these to `~/.openclaw/.env` or your environment:
 ```json
 {
   "channels": {
-    "lansenger": {
+    "Lansenger": {
       "appId": "your-appid",
       "appSecret": "your-secret",
       "apiGatewayUrl": "https://open.e.lanxin.cn/open/apigw",
-      "homeChannel": "lansenger",
+      "homeChannel": "Lansenger",
       "enabled": true,
       "allowFrom": ["your-appid"],
       "dmSecurity": "paired",
@@ -161,7 +140,7 @@ Add these to `~/.openclaw/.env` or your environment:
 | `appId` | Personal bot App ID | — |
 | `appSecret` | Personal bot App Secret | — |
 | `apiGatewayUrl` | API Gateway URL | `https://open.e.lanxin.cn/open/apigw` |
-| `homeChannel` | Default channel for agent routing | `lansenger` |
+| `homeChannel` | Default channel for agent routing | `Lansenger` |
 | `enabled` | Enable/disable the channel | `true` |
 | `allowFrom` | User IDs allowed to DM the bot | `[]` |
 | `dmSecurity` | DM policy: `paired`, `allowlist`, `open` | `paired` |
@@ -172,15 +151,13 @@ Add these to `~/.openclaw/.env` or your environment:
 
 ### Multi-Bot Configuration
 
-> ⚠️ `openclaw channels add` only supports a single account and **overwrites** the previous one each time. For multiple bots, use `openclaw config set` with the `accounts` structure below.
-
-After adding the first account via `channels add`, add additional bots using `openclaw config set`:
+For multiple bots, add additional accounts using `openclaw config set`:
 
 ```bash
 # Add a second bot (replace appid/appsecret/gateway with your values)
-openclaw config set channels.lansenger.accounts.your-appid-2.appId "your-appid-2"
-openclaw config set channels.lansenger.accounts.your-appid-2.appSecret "your-appsecret"
-openclaw config set channels.lansenger.accounts.your-appid-2.apiGatewayUrl "https://apigw.lx.qianxin.com"
+openclaw config set channels.Lansenger.accounts.your-appid-2.appId "your-appid-2"
+openclaw config set channels.Lansenger.accounts.your-appid-2.appSecret "your-appsecret"
+openclaw config set channels.Lansenger.accounts.your-appid-2.apiGatewayUrl "https://apigw.lx.qianxin.com"
 
 # Restart to apply
 openclaw gateway restart
@@ -191,7 +168,7 @@ The resulting config structure:
 ```json
 {
   "channels": {
-    "lansenger": {
+    "Lansenger": {
       "appId": "your-appid-2",
       "appSecret": "...",
       "dmSecurity": "paired",
@@ -252,14 +229,14 @@ Use `bindings` to route Lansenger DMs or groups to different agents (same patter
     {
       agentId: "agent-a",
       match: {
-        channel: "lansenger",
+        channel: "Lansenger",
         peer: { kind: "direct", id: "2285568-xxx" },
       },
     },
     {
       agentId: "agent-a",
       match: {
-        channel: "lansenger",
+        channel: "Lansenger",
         peer: { kind: "group", id: "group-chat-id" },
       },
     },
@@ -268,7 +245,7 @@ Use `bindings` to route Lansenger DMs or groups to different agents (same patter
 ```
 
 Routing fields:
-* `match.channel`: `"lansenger"`
+* `match.channel`: `"Lansenger"`
 * `match.peer.kind`: `"direct"` (DM) or `"group"` (group chat)
 * `match.peer.id`: user ID (`2285568-xxx`) or group chat ID
 
@@ -391,6 +368,7 @@ Approval status updates use the DynamicMsg appCard format. The `updateCardStatus
 
 ## Changelog
 
+- **v2.8.1** — Fix README: proper 4-step install flow (install → enable → configure → restart), remove manual-copy hack; fix SKILL.md frontmatter (AgentSkills spec compliance: remove version/category/trigger, add metadata.openclaw gating); rename channel identifier to Lansenger
 - **v2.8.0** — Use OpenClaw `bindings[]` for multi-agent routing (replaces per-account `agentId`); add groupPolicy/groupAllowFrom/groups for group chat access control; use `resolveAgentRoute` SDK for inbound routing
 - **v2.7.2** — Add VERSION file; complete changelog in all 5 READMEs; regenerate package-lock.json
 - **v2.7.0** — Register tools as plain objects (not factory functions); use runtime state for client/target — fixes external plugin tool registration

@@ -1,6 +1,6 @@
 {
-  "id": "lansenger",
-  "channels": ["lansenger"],
+  "id": "Lansenger",
+  "channels": ["Lansenger"],
   "name": "Lansenger (蓝信)",
   "description": "Lansenger enterprise messaging channel plugin for OpenClaw / 蓝信企业即时通讯频道插件",
   "configSchema": {
@@ -9,12 +9,12 @@
     "properties": {}
   },
   "channelEnvVars": {
-    "lansenger": ["LANSENGER_APP_ID", "LANSENGER_APP_SECRET", "LANSENGER_API_GATEWAY_URL"]
+    "Lansenger": ["LANSENGER_APP_ID", "LANSENGER_APP_SECRET", "LANSENGER_API_GATEWAY_URL"]
   },
   "activation": {
     "onStartup": true,
-    "onChannels": ["lansenger"],
-    "onConfigPaths": ["channels.lansenger"]
+    "onChannels": ["Lansenger"],
+    "onConfigPaths": ["channels.Lansenger"]
   },
   "contracts": {
     "tools": [
@@ -31,36 +31,36 @@
   },
   "toolMetadata": {
     "lansenger_send_file": {
-      "configSignals": [{ "rootPath": "channels.lansenger", "required": ["appId", "appSecret"] }]
+      "configSignals": [{ "rootPath": "channels.Lansenger", "required": ["appId", "appSecret"] }]
     },
     "lansenger_send_text": {
-      "configSignals": [{ "rootPath": "channels.lansenger", "required": ["appId", "appSecret"] }]
+      "configSignals": [{ "rootPath": "channels.Lansenger", "required": ["appId", "appSecret"] }]
     },
     "lansenger_send_image_url": {
-      "configSignals": [{ "rootPath": "channels.lansenger", "required": ["appId", "appSecret"] }]
+      "configSignals": [{ "rootPath": "channels.Lansenger", "required": ["appId", "appSecret"] }]
     },
     "lansenger_revoke_message": {
-      "configSignals": [{ "rootPath": "channels.lansenger", "required": ["appId", "appSecret"] }]
+      "configSignals": [{ "rootPath": "channels.Lansenger", "required": ["appId", "appSecret"] }]
     },
     "lansenger_send_link_card": {
-      "configSignals": [{ "rootPath": "channels.lansenger", "required": ["appId", "appSecret"] }]
+      "configSignals": [{ "rootPath": "channels.Lansenger", "required": ["appId", "appSecret"] }]
     },
     "lansenger_send_app_articles": {
-      "configSignals": [{ "rootPath": "channels.lansenger", "required": ["appId", "appSecret"] }]
+      "configSignals": [{ "rootPath": "channels.Lansenger", "required": ["appId", "appSecret"] }]
     },
     "lansenger_send_app_card": {
-      "configSignals": [{ "rootPath": "channels.lansenger", "required": ["appId", "appSecret"] }]
+      "configSignals": [{ "rootPath": "channels.Lansenger", "required": ["appId", "appSecret"] }]
     },
     "lansenger_update_dynamic_card": {
-      "configSignals": [{ "rootPath": "channels.lansenger", "required": ["appId", "appSecret"] }]
+      "configSignals": [{ "rootPath": "channels.Lansenger", "required": ["appId", "appSecret"] }]
     },
     "lansenger_query_groups": {
-      "configSignals": [{ "rootPath": "channels.lansenger", "required": ["appId", "appSecret"] }]
+      "configSignals": [{ "rootPath": "channels.Lansenger", "required": ["appId", "appSecret"] }]
     }
   },
   "skills": ["./skills"],
   "channelConfigs": {
-    "lansenger": {
+    "Lansenger": {
       "label": "Lansenger (蓝信)",
       "description": "Lansenger enterprise messaging channel / 蓝信企业即时通讯频道",
       "schema": {
