@@ -77,6 +77,15 @@ const RevokeMessageSchema = {
     messageIds: { type: "array", items: { type: "string" }, description: "List of message IDs to revoke." },
     chatType: { type: "string", description: "Chat type: bot (default) or group. For group, senderId is required.", default: "bot" },
     senderId: { type: "string", description: "Sender ID (required for group chat type)." },
+    sysMsgContent: { type: "string", description: "Custom system message text shown when the message is revoked (e.g. '该消息已撤回'). Optional." },
+  },
+  required: ["messageIds"],
+};
+
+const DeleteMessageSchema = {
+  type: "object",
+  properties: {
+    messageIds: { type: "array", items: { type: "string" }, description: "List of message IDs to delete. Currently only supports deleting private chat (bot DM) messages." },
   },
   required: ["messageIds"],
 };
@@ -267,21 +276,36 @@ export function registerLansengerTools(api: any) {
   api.registerTool((ctx: any) => ({
     name: "lansenger_revoke_message",
     label: "Lansenger Revoke Message",
-    description: "Revoke previously sent Lansenger (蓝信) messages. You need the message IDs to revoke. For group chat, senderId is required.",
+    description: "Revoke previously sent Lansenger (蓝信) messages. Shows a 'revoked' system message to the recipient. For group chat, senderId is required. Optionally provide a custom system message text (sysMsgContent).",
     parameters: RevokeMessageSchema,
     async execute(_toolCallId: string, params: any) {
       const messageIds = params.messageIds;
       if (!messageIds || messageIds.length === 0) return jsonResult({ error: "messageIds is required" });
       const chatType = params.chatType ?? "bot";
       const senderId = params.senderId;
-      if (["staff", "group"].includes(chatType) && !senderId) {
-        return jsonResult({ error: `chatType='${chatType}' requires senderId` });
+      const sysMsg = params.sysMsgContent ? { content: params.sysMsgContent } : undefined;
+      if (chatType === "group" && !senderId) {
+        return jsonResult({ error: "chatType='group' requires senderId" });
       }
       const client = makeClient(account);
-      const result = await client.revokeMessage(messageIds, chatType, senderId);
+      const result = await client.revokeMessage(messageIds, chatType, senderId, sysMsg);
       return jsonResult({ success: result.success });
     },
   }), { name: "lansenger_revoke_message" });
+
+  api.registerTool((ctx: any) => ({
+    name: "lansenger_delete_message",
+    label: "Lansenger Delete Message",
+    description: "Delete previously sent Lansenger (蓝信) private chat messages. The recipient will not see the deleted message and will NOT receive any notification (unlike revoke which shows a system message). Currently only supports deleting bot DM messages.",
+    parameters: DeleteMessageSchema,
+    async execute(_toolCallId: string, params: any) {
+      const messageIds = params.messageIds;
+      if (!messageIds || messageIds.length === 0) return jsonResult({ error: "messageIds is required" });
+      const client = makeClient(account);
+      const result = await client.deleteMessage(messageIds);
+      return jsonResult({ success: result.success });
+    },
+  }), { name: "lansenger_delete_message" });
 
   api.registerTool((ctx: any) => ({
     name: "lansenger_send_link_card",
