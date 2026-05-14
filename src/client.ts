@@ -142,13 +142,25 @@ export class LansengerClient {
     }
   }
 
-  async sendFormatText(chatId: string, content: string): Promise<ApiResult> {
+  async sendFormatText(chatId: string, content: string, reminder?: ReminderParams): Promise<ApiResult> {
     const token = await this.getAppToken();
     if (!token) return { success: false, error: "No access token" };
     try {
       const { url, wrap } = this.msgTarget(chatId);
-      const payload = wrap({ formatText: { formatType: 1, text: content }, msgType: "formatText" });
+      const fmtData: Record<string, unknown> = { formatType: 1, text: content };
+      if (reminder) fmtData.reminder = reminder;
+      const payload = wrap({ formatText: fmtData, msgType: "formatText" });
       const data = await this.postJson(`${url}?app_token=${token}`, payload);
+      if (data.errCode !== 0 && reminder) {
+        this.log.info(`sendFormatText with reminder failed (${data.errMsg ?? "unknown"}), retrying without reminder`);
+        const retryPayload = wrap({ formatText: { formatType: 1, text: content }, msgType: "formatText" });
+        const retryData = await this.postJson(`${url}?app_token=${token}`, retryPayload);
+        if (retryData.errCode !== 0) {
+          this.log.error(`sendFormatText: errCode=${retryData.errCode} errMsg=${retryData.errMsg ?? "n/a"}`);
+          return { success: false, error: retryData.errMsg ?? undefined };
+        }
+        return { success: true, messageId: retryData.data?.msgId ?? undefined, rawResponse: retryData };
+      }
       if (data.errCode !== 0) {
         this.log.error(`sendFormatText: errCode=${data.errCode} errMsg=${data.errMsg ?? "n/a"}`);
         return { success: false, error: data.errMsg ?? undefined };
