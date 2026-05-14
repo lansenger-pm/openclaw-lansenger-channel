@@ -41,7 +41,7 @@ Lansenger has two outbound text types that cannot be combined:
 
 - **Normal replies** → just write Markdown. It's automatically sent as formatText.
 - **Need @mention** → Markdown won't work. You must use plain text only. If you need both formatting AND @mention, send the formatted content first, then use `lansenger_send_text` for the @mention.
-- **Need to attach a file/image/video** → Markdown won't work. Use `lansenger_send_file`. If you need both formatting AND a file, send the Markdown reply first, then call `lansenger_send_file` separately.
+- **Need to attach a file/image/video** → For workspace files, MEDIA: tags work. For external paths, use `lansenger_send_file`. If you need both formatting AND a file, send the Markdown reply first, then call `lansenger_send_file` separately.
 - **Never put raw Markdown in a plain-text message** — it displays as ugly source code to the user.
 
 ## Available Tools
@@ -69,9 +69,13 @@ The plugin auto-routes via `msgTarget(chatId)` — you never need to specify whi
 
 **Group API limitation**: The Lansenger group endpoint (4.6.2) officially only supports `text` and `oacard` msgTypes. The plugin routes all msgTypes via msgTarget, but `appCard`, `linkCard`, `appArticles`, `formatText` may be rejected by the API in group context. If a group send fails, try falling back to plain text.
 
-## Sending Files (CRITICAL)
+## Sending Files
 
-When you need to send a file to the user, **use `lansenger_send_file`**. Do NOT use `MEDIA:` tags — they only work for workspace files and are silently dropped for any other path.
+Two ways to send files, depending on location:
+
+1. **Workspace files** → MEDIA: tags work fine. The plugin's `delivery.deliver` processes `payload.mediaUrls` and sends them via `client.sendFile`. Just write normally and reference files with MEDIA: syntax.
+
+2. **Non-workspace files** (Documents, Desktop, /tmp, external paths) → MEDIA: tags are silently dropped by `mediaLocalRoots` restrictions. Use `lansenger_send_file` instead:
 
 ```
 lansenger_send_file(filePath=<absolute local path>, caption=<optional plain-text>, to=<optional chatId>)
@@ -80,7 +84,6 @@ lansenger_send_file(filePath=<absolute local path>, caption=<optional plain-text
 - Any local path works — workspace, Documents, Desktop, /tmp, etc.
 - `caption` is plain text only (Markdown will NOT render)
 - If you need both formatted explanation AND a file, send the Markdown reply first, then call `lansenger_send_file` separately
-- **NEVER use `MEDIA:` tags** — always use `lansenger_send_file`
 
 ## Sending Text with Attachments or @Mentions
 
@@ -192,6 +195,7 @@ openclaw pairing approve lansenger <code>
 - **Markdown is default** — write normally, it renders automatically
 - **Never put Markdown in a plain-text message** — displays as raw source code
 - **Never put @mentions in a Markdown message** — silently ignored
+- **MEDIA: tags work for workspace files** — for non-workspace paths (Documents, /tmp, etc.), use `lansenger_send_file` instead
 - **AppArticles uses `description` not `summary`** — the article description field is called `description`, not `summary`
 - **`text-indent` MUST have units** — bare `0` causes empty API response; use `0em`
 - **Dynamic cards require `headStatusInfo`** — auto-filled if omitted, but explicit is better
