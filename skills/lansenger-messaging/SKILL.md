@@ -98,7 +98,7 @@ lansenger_send_text(content=<plain text>, filePath=<optional local path>, to=<op
 
 - **NO Markdown** — content is plain text only
 - `filePath` optional — if provided, content becomes caption for the attachment
-- `reminderAll` / `reminderUserIds` — optional @mention. In group chat, recommended to @mention the person you're replying to. When using reminder, include "@姓名" in the text so users can see who was mentioned. (group/staff chat only, NOT DMs)
+- `reminderAll` / `reminderUserIds` — optional @mention. In group chat, recommended to @mention the person you're replying to so they know the message is for them. When using reminder, include "@姓名" in the text. (works in both DM and group, but usually only needed in group)
 
 ## Sending Images from URLs
 
@@ -139,10 +139,9 @@ Card status text is language-aware (CJK ratio ≥ 0.6 = Chinese).
 ## Revoking Messages
 
 ```
-lansenger_revoke_message(messageIds=<list of IDs>, chatType=<bot|staff|group>, senderId=<optional>)
-```
+lansenger_revoke_message(messageIds=<list of IDs>, chatType=<bot|group>, senderId=<optional>)
 
-For staff/group chat, `senderId` is required.
+For group chat, `senderId` is required.
 
 ## Querying Groups
 

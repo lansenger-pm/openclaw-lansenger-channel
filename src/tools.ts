@@ -55,8 +55,8 @@ const SendTextSchema = {
     content: { type: "string", description: "Plain text content. No Markdown support — use lansenger_send_file for file delivery, Markdown renders automatically in normal replies." },
     filePath: { type: "string", description: "Optional local file/image/video to attach. If provided, content becomes the caption." },
     to: { type: "string", description: "LEAVE EMPTY — the current conversation target is auto-detected. Only fill this if you need to send to a different chat." },
-    reminderAll: { type: "boolean", description: "@mention all members in a group (only works in group/staff chat, not DMs)." },
-    reminderUserIds: { type: "array", items: { type: "string" }, description: "List of user IDs to @mention (group/staff chat only). You MUST include '@姓名' in the message text so users can see who was mentioned." },
+    reminderAll: { type: "boolean", description: "@mention all members in a group (only works in group chat, not DMs)." },
+    reminderUserIds: { type: "array", items: { type: "string" }, description: "List of user IDs to @mention (group chat only). Include '@姓名' in the message text so users can see who was mentioned." },
   },
   required: ["content"],
 };
@@ -75,8 +75,8 @@ const RevokeMessageSchema = {
   type: "object",
   properties: {
     messageIds: { type: "array", items: { type: "string" }, description: "List of message IDs to revoke." },
-    chatType: { type: "string", description: "Chat type: bot (default), staff, group. For staff/group, senderId is required.", default: "bot" },
-    senderId: { type: "string", description: "Sender ID (required for staff/group chat types)." },
+    chatType: { type: "string", description: "Chat type: bot (default) or group. For group, senderId is required.", default: "bot" },
+    senderId: { type: "string", description: "Sender ID (required for group chat type)." },
   },
   required: ["messageIds"],
 };
@@ -215,7 +215,7 @@ export function registerLansengerTools(api: any) {
   api.registerTool((ctx: any) => ({
     name: "lansenger_send_text",
     label: "Lansenger Send Text",
-    description: "Send a plain text message on Lansenger (蓝信) with optional file attachment and @mentions. Uses msgType=text: plain text only (NO Markdown). Supports attachments and @mentions in group/staff chat. For Markdown, just write normally — it renders automatically in replies. If you need both Markdown AND a file, send Markdown first, then call this tool for the file.",
+    description: "Send a plain text message on Lansenger (蓝信) with optional file attachment and @mentions. Uses msgType=text: plain text only (NO Markdown). Supports attachments and @mentions in group chat. For Markdown, just write normally — it renders automatically in replies. If you need both Markdown AND a file, send Markdown first, then call this tool for the file.",
     parameters: SendTextSchema,
     async execute(_toolCallId: string, params: any) {
       const content = params.content ?? "";
@@ -267,7 +267,7 @@ export function registerLansengerTools(api: any) {
   api.registerTool((ctx: any) => ({
     name: "lansenger_revoke_message",
     label: "Lansenger Revoke Message",
-    description: "Revoke previously sent Lansenger (蓝信) messages. You need the message IDs to revoke. For staff/group chat, senderId is required.",
+    description: "Revoke previously sent Lansenger (蓝信) messages. You need the message IDs to revoke. For group chat, senderId is required.",
     parameters: RevokeMessageSchema,
     async execute(_toolCallId: string, params: any) {
       const messageIds = params.messageIds;
