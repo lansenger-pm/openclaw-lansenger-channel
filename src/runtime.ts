@@ -76,7 +76,8 @@ export function startLansengerGateway(api: OpenClawPluginApi): void {
   api.registerGatewayMethod("lansenger.stop", async (opts) => {
     log.info("lansenger.stop called");
     const accountId = opts.params?.accountId as string | undefined;
-    const key = accountId ?? "__default__";
+    const account = resolveAccount(api.config, accountId);
+    const key = account.appId || account.accountId || "__default__";
     const entry = runningAccounts.get(key);
     if (!entry) {
       opts.respond(false, undefined, errorShape("NOT_LINKED", "Lansenger not running"));
@@ -129,7 +130,7 @@ export function startLansengerGateway(api: OpenClawPluginApi): void {
   });
 
   api.registerGatewayMethod("lansenger.sendCard", async (opts) => {
-    const { chatId, lang } = opts.params as { chatId?: string; lang?: string };
+    const { chatId, lang, command, sessionId, signature } = opts.params as { chatId?: string; lang?: string; command?: string; sessionId?: string; signature?: string };
     if (!chatId) {
       opts.respond(false, undefined, errorShape("UNAVAILABLE", "chatId required (Lansenger user ID)"));
       return;
@@ -143,17 +144,20 @@ export function startLansengerGateway(api: OpenClawPluginApi): void {
     }
     const client = entry.client;
     const detectedLang = (lang === "en" ? "en" : "zh") as "zh" | "en";
+    const cmdText = command ?? "unspecified command";
+    const sessText = sessionId ?? "unknown";
+    const sigText = signature ?? (detectedLang === "zh" ? "OpenClaw 安全审批" : "OpenClaw Security");
 
     const zhCard: AppCardData = {
-      headTitle: "⚠️ 命令审批",
+      headTitle: "⚠️ 危险命令审批",
       isDynamic: true,
       headStatusInfo: {
         description: '<div style="color:#FFB116;text-align:left">待审批</div>',
         colour: "#FFB116",
       },
       bodyTitle: "危险命令审批请求",
-      bodyContent: '<div style="color:#000;font-size:13pt;text-align:left;text-indent:0em">会话 ID: test-session-001\n命令:\nrm -rf /tmp/old-data</div>',
-      signature: "OpenClaw 安全审批",
+      bodyContent: `<div style="color:#000;font-size:13pt;text-align:left;text-indent:0em">会话 ID: ${sessText}\n命令:\n${cmdText}</div>`,
+      signature: sigText,
       fields: [
         { key: "执行一次", value: "/approve" },
         { key: "本会话有效", value: "/approve session" },
@@ -164,15 +168,15 @@ export function startLansengerGateway(api: OpenClawPluginApi): void {
     };
 
     const enCard: AppCardData = {
-      headTitle: "⚠️ Command Approval",
+      headTitle: "⚠️ Dangerous Command Approval",
       isDynamic: true,
       headStatusInfo: {
         description: '<div style="color:#FFB116;text-align:left">Pending</div>',
         colour: "#FFB116",
       },
       bodyTitle: "Dangerous Command Approval Request",
-      bodyContent: '<div style="color:#000;font-size:13pt;text-align:left;text-indent:0em">Session: test-session-001\nCommand:\nrm -rf /tmp/old-data</div>',
-      signature: "OpenClaw Security",
+      bodyContent: `<div style="color:#000;font-size:13pt;text-align:left;text-indent:0em">Session: ${sessText}\nCommand:\n${cmdText}</div>`,
+      signature: sigText,
       fields: [
         { key: "Approve Once", value: "/approve" },
         { key: "This Session", value: "/approve session" },
@@ -206,13 +210,17 @@ export function startLansengerGateway(api: OpenClawPluginApi): void {
     }
     const client = entry.client;
     const detectedLang = (lang === "en" ? "en" : "zh") as "zh" | "en";
-    const validStatus = ["pending", "approved", "denied"].includes(status ?? "") ? status as "pending" | "approved" | "denied" : "pending";
-    const result = await client.updateCardStatus(messageId, validStatus, detectedLang);
+    const validStatuses = ["pending", "approved", "denied"];
+    if (!validStatuses.includes(status ?? "")) {
+      opts.respond(false, undefined, errorShape("UNAVAILABLE", `Invalid status: ${status}. Must be one of: pending, approved, denied`));
+      return;
+    }
+    const result = await client.updateCardStatus(messageId, status as "pending" | "approved" | "denied", detectedLang);
     if (!result.success) {
       opts.respond(false, undefined, errorShape("UNAVAILABLE", result.error ?? "Failed to update card"));
       return;
     }
-    opts.respond(true, { messageId, status: validStatus, lang: detectedLang, rawResponse: result.rawResponse });
+    opts.respond(true, { messageId, status, lang: detectedLang, rawResponse: result.rawResponse });
   });
 
   autoStart(api, accounts);

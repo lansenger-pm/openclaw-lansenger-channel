@@ -22,7 +22,7 @@ const API_ENDPOINTS = {
   wsEndpoint: "/v1/ws/endpoint/create",
   privateMessage: "/v1/bot/messages/create",
   groupMessage: "/v1/messages/group/create",
-  uploadMedia: "/v1/app/medias/create",
+  uploadMedia: "/v1/medias/create",
   fetchMedia: "/v1/medias",
   revokeMessage: "/v1/messages/revoke",
   dynamicUpdate: "/v1/messages/dynamic/update",
