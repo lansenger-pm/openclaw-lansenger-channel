@@ -373,6 +373,7 @@ openclaw-lansenger-channel/
 
 ## 更新日誌
 
+- **v2.7.2** — 新增 VERSION 檔案；補全 5 個 README changelog；重新生成 package-lock.json
 - **v2.7.0** — 工具註冊改為純物件（非工廠函數）；使用運行時狀態取得 client/target — 修復外部插件工具註冊
 - **v2.6.0** — 無條件註冊工具（執行時解析帳號）；移除幽靈 delete_message 註冊
 - **v2.5.2** — 修復 SKILL/README mention 指引（formatText 支援 reminder）；AppArticles 使用 `summary` 不是 `description`；移除 delete_message

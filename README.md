@@ -372,6 +372,7 @@ Approval status updates use the DynamicMsg appCard format. The `updateCardStatus
 
 ## Changelog
 
+- **v2.7.2** — Add VERSION file; complete changelog in all 5 READMEs; regenerate package-lock.json
 - **v2.7.0** — Register tools as plain objects (not factory functions); use runtime state for client/target — fixes external plugin tool registration
 - **v2.6.0** — Register tools unconditionally (resolve account at execute time); removed phantom delete_message tool registration
 - **v2.5.2** — Fix SKILL/README mention guidance (formatText supports reminder); AppArticles uses `summary` not `description`; remove delete_message from tools.allow
