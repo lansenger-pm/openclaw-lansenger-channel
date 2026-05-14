@@ -29,9 +29,9 @@ Connecte OpenClaw à Lansenger — une plateforme de messagerie d'entreprise —
 | msgType     | Markdown | @mention | Pièces jointes |
 |-------------|----------|----------|-----------------|
 | `text`      | ✗        | ✓        | ✓               |
-| `formatText`| ✓        | ✗        | ✗               |
+| `formatText`| ✓        | ✓ (reminder)| ✗               |
 
-**Stratégie par défaut** : utiliser `formatText` en priorité pour les réponses Markdown. Revenir à `text` pour les pièces jointes.
+**Stratégie par défaut** : utiliser `formatText` en priorité pour les réponses Markdown. Revenir à `text` pour les pièces jointes. Les deux types supportent @mention via le paramètre `reminder` — inclure « @姓名 » dans le texte pour les mentions.
 
 ## Outils de l'agent (v2.5.1)
 
@@ -363,12 +363,24 @@ Le plugin inclut une reconnexion automatique avec un backoff exponentiel (2s, 5s
 ### formatText vs text
 
 - Utilisez `formatText` pour les réponses Markdown (par défaut)
-- Utilisez `text` pour les @mentions ou pièces jointes
-- Pour les deux, envoyez deux messages distincts
+- Utilisez `text` pour les pièces jointes (pas de Markdown)
+- Les deux types supportent @mention via `reminder` — inclure « @姓名 » dans le texte pour les mentions
+- Pour Markdown ET fichier, envoyez deux messages distincts
 
 ### Échec de mise à jour dynamique de carte
 
 Les mises à jour de statut d'approbation utilisent le format DynamicMsg appCard. La méthode `updateCardStatus()` gère cela automatiquement.
+
+## Journal des modifications
+
+- **v2.5.1** — Retour sysMsg (non affiché) et deleteMessage (API 10000) ; revoke chatType bot/group uniquement
+- **v2.5.0** — Ajout sysMsg pour revoke, outil deleteMessage (retiré en 2.5.1)
+- **v2.4.0** — Correction assemblage message : wrap() exclut msgType de msgData ; appArticles msgType/summary/tableau plat ; linkCard champs requis
+- **v2.3.0** — Suppression sendGroupText/sendGroupFormatText ; routage via msgTarget
+- **v2.2.8** — Correction livraison MEDIA (delivery.deliver traite payload.mediaUrls) ; correction reconnect WS
+- **v2.2.5** — Correction uploadMedia endpoint, stop key, validation statut, sendCard params dynamiques
+- **v2.2.0** — Ajout 9 outils agent avec contracts.tools + toolMetadata
+- **v2.0.0** — Migration kernel canal, version initiale
 
 ## Licence
 

@@ -1,6 +1,6 @@
 ---
 name: lansenger-messaging
-version: 2.3.0
+version: 2.5.2
 category: communication
 description: How to communicate effectively on Lansenger (蓝信) — message types, formatting rules, media, cards, approvals, and pitfalls
 trigger: When the current session channel is lansenger, or when you need to send a message, file, image, card, or approval via Lansenger
@@ -34,15 +34,21 @@ Lansenger has two outbound text types that cannot be combined:
 ┌──────────────┬──────────────┬──────────────┬──────────────┐
 │  Type        │  Markdown    │  @mention    │  Attachments │
 ├──────────────┼──────────────┼──────────────┤──────────────┤
-│  formatText  │  ✓ (default) │  ✗           │  ✗           │
+│  formatText  │  ✓ (default) │  ✓ (reminder)│  ✗           │
 │  text        │  ✗           │  ✓           │  ✓           │
 └──────────────┴──────────────┴──────────────┴──────────────┘
 ```
 
+> **reminder** is the newer API parameter for @mention in formatText. It works on newer Lansenger versions; older versions silently accept it without showing a notification. The plugin auto-falls back: if the API rejects reminder, it retries without it. When using reminder, always include "@姓名" in the text content so the mention is visible regardless of API version.
+
 ### What this means for you
 
 - **Normal replies** → just write Markdown. It's automatically sent as formatText.
-- **@mention is optional, but recommended in group chat** → In group chat, @mention the person you're replying to so they know the message is directed at them. When using reminder, include "@姓名" in the text. Example: `"@张三 明天开会"` with `reminderUserIds: ["staffId-of-张三"]`. Old API silently accepts reminder but won't show notification — the "@姓名" in text ensures clarity regardless.
+- **@mention in group chat is recommended** → When replying to someone in a group, @mention them so they know the message is directed at them. Both `formatText` and `text` support @mention via the `reminder` parameter:
+  - **formatText**: `sendFormatText` accepts optional `reminder` with `{ all: boolean, userIds: string[] }`. Always include "@姓名" in the text content. Example: `"@张三 明天开会"` with `reminder: { userIds: ["staffId-of-张三"] }`. If the API version doesn't support reminder, the plugin auto-retries without it.
+  - **text**: `sendText` / `lansenger_send_text` also supports `reminderAll` and `reminderUserIds` params. Same rule: include "@姓名" in text content.
+  - **Critical rule**: When using reminder, you MUST include "@姓名" in the message text. Without it, the mention notification may not be meaningful to the recipient. The API sends the push notification via `reminder`, but the visible "@姓名" in text ensures clarity regardless of API version.
+  - **reminder is optional** — you don't have to use it every time, but in group chat it's recommended so the mentioned person actually sees your reply.
 - **Need to attach a file/image/video** → Markdown won't work. Use `lansenger_send_file`. If you need both formatting AND a file, send the Markdown reply first, then call `lansenger_send_file` separately.
 - **Never put raw Markdown in a plain-text message** — it displays as ugly source code to the user.
 
@@ -114,7 +120,7 @@ Downloads the image first, then uploads and sends. For local files, use `lanseng
 A rich link preview card. Requires `title` + `link`. Optional: `description`, `iconLink`, `pcLink`, `fromName`, `fromIconLink`.
 
 ### AppArticles (`lansenger_send_app_articles`)
-Multi-article card (图文卡片). Each article needs `imgUrl`, `title`, `url`. Optional: `description` (article summary), `pcUrl` (PC link).
+Multi-article card (图文卡片). Each article needs `imgUrl`, `title`, `url`. Optional: `summary` (article summary/摘要 — NOT `description`), `pcUrl` (PC link).
 
 ### AppCard (`lansenger_send_app_card`)
 Rich formatted card (应用卡片). Supports div-style HTML in body fields (color, font-size, text-align, text-indent).
@@ -195,9 +201,9 @@ openclaw pairing approve lansenger <code>
 
 - **Markdown is default** — write normally, it renders automatically
 - **Never put Markdown in a plain-text message** — displays as raw source code
-- **@mention in group chat is recommended** — when replying to someone in a group, @mention them so they know the message is for them; include "@姓名" in the text
+- **@mention via `reminder` works in both formatText and text** — `sendFormatText` supports optional `reminder: { all, userIds }` (auto-fallback if API rejects). `sendText`/`lansenger_send_text` also has `reminderAll`/`reminderUserIds`. Always include "@姓名" in text content when mentioning — the reminder param sends the push, but "@姓名" ensures the mention is visible in the message itself.
 - **MEDIA: tags work for workspace files** — for non-workspace paths (Documents, /tmp, etc.), use `lansenger_send_file` instead
-- **AppArticles uses `description` not `summary`** — the article description field is called `description`, not `summary`
+- **AppArticles uses `summary` not `description`** — the article summary field is called `summary`, not `description`. Using `description` will cause the field to be ignored by the API.
 - **`text-indent` MUST have units** — bare `0` causes empty API response; use `0em`
 - **Dynamic cards require `headStatusInfo`** — auto-filled if omitted, but explicit is better
 - **Gateway URL is per-environment** — the plugin uses whatever `apiGatewayUrl` is configured (e.g. `https://apigw.lx.qianxin.com` for 奇安信 environments, or `https://open.e.lanxin.cn/open/apigw` for standard Lansenger). All API endpoints are appended to this base URL. Do NOT assume the default gateway — always use the configured value.

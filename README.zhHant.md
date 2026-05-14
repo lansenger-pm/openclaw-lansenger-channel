@@ -29,9 +29,9 @@
 | msgType     | Markdown | @提及 | 附件 |
 |-------------|----------|-------|------|
 | `text`      | ✗        | ✓     | ✓    |
-| `formatText`| ✓        | ✗     | ✗    |
+| `formatText`| ✓        | ✓ (reminder) | ✗    |
 
-**預設策略**：優先使用 `formatText` 傳送 Markdown 回覆。附件使用 `text` 回退。
+**預設策略**：優先使用 `formatText` 傳送 Markdown 回覆。附件使用 `text` 回退。兩種類型均支援 @mention（透過 `reminder` 參數）—提及使用者時在文字中包含「@姓名」。
 
 ## 代理工具（v2.5.1）
 
@@ -363,12 +363,24 @@ openclaw-lansenger-channel/
 ### formatText vs text
 
 - 使用 `formatText` 傳送 Markdown 回覆（預設）
-- 使用 `text` 傳送 @提及或附件
+- 使用 `text` 傳送附件（無 Markdown）
+- 兩種類型均支援 @mention（透過 `reminder`）—提及時在文字中包含「@姓名」
 - 兩者都需要時，傳送兩條獨立訊息
 
 ### 動態卡片更新失敗
 
 審批狀態更新使用 DynamicMsg appCard 格式，`updateCardStatus()` 方法自動處理。
+
+## 更新日誌
+
+- **v2.5.1** — 回滾 sysMsg（不顯示）和 deleteMessage（API 10000）；撤回 chatType 僅 bot/group
+- **v2.5.0** — 新增撤回 sysMsg、deleteMessage 工具（2.5.1 已回滾）
+- **v2.4.0** — 修復消息體組裝：wrap() 從 msgData 剝離 msgType；appArticles 正確 msgType/summary/平鋪數組；linkCard 補全必填字段
+- **v2.3.0** — 移除遺留 sendGroupText/sendGroupFormatText；全部通過 msgTarget 路由
+- **v2.2.8** — 修復 MEDIA 標籤投遞（delivery.deliver 處理 payload.mediaUrls）；修復 WS 重連狀態
+- **v2.2.5** — 修復 uploadMedia 端點、stop key、狀態校驗、sendCard 動態參數
+- **v2.2.0** — 新增 9 個 agent 工具及 contracts.tools + toolMetadata
+- **v2.0.0** — 渠道核心遷移，初始發佈
 
 ## 授權條款
 

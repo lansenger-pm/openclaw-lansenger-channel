@@ -29,9 +29,9 @@
 | msgType     | Markdown | @提及 | 附件 |
 |-------------|----------|-------|------|
 | `text`      | ✗        | ✓     | ✓    |
-| `formatText`| ✓        | ✗     | ✗    |
+| `formatText`| ✓        | ✓ (reminder) | ✗    |
 
-**預設策略**：優先使用 `formatText` 發送 Markdown 回覆。附件使用 `text` 回退。
+**預設策略**：優先使用 `formatText` 發送 Markdown 回覆。附件使用 `text` 回退。兩種類型均支援 @mention（透過 `reminder` 參數）—提及使用者時在文字中包含「@姓名」。
 
 ## 代理工具（v2.5.1）
 
@@ -363,7 +363,8 @@ openclaw-lansenger-channel/
 ### formatText vs text
 
 - 使用 `formatText` 發送 Markdown 回覆（預設）
-- 使用 `text` 發送 @提及或附件
+- 使用 `text` 發送附件（無 Markdown）
+- 兩種類型均支援 @mention（透過 `reminder`）—提及時在文字中包含「@姓名」
 - 兩者都需要時，發送兩條獨立訊息
 
 ### 動態卡片更新失敗

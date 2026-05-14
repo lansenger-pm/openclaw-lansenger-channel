@@ -27,9 +27,9 @@ Lansenger (蓝信) channel plugin for OpenClaw — WebSocket inbound, HTTP API o
 | msgType     | Markdown | @mention | Attachments |
 |-------------|----------|----------|-------------|
 | `text`      | ✗        | ✓        | ✓           |
-| `formatText`| ✓        | ✗        | ✗           |
+| `formatText`| ✓        | ✓ (reminder) | ✗           |
 
-**Default strategy**: Use `formatText` first for Markdown replies. Fall back to `text` for attachments.
+**Default strategy**: Use `formatText` first for Markdown replies. Fall back to `text` for attachments. Both `formatText` and `text` support @mention via `reminder` param — include "@姓名" in text content when mentioning.
 
 ## Agent Tools (v2.5.1)
 
@@ -362,12 +362,24 @@ The plugin includes automatic reconnection with exponential backoff (2s, 5s, 10s
 ### formatText vs text
 
 - Use `formatText` for Markdown replies (default)
-- Use `text` for @mentions or attachments
-- For both, send two separate messages
+- Use `text` for attachments (no Markdown)
+- Both support @mention via `reminder` — include "@姓名" in text content when mentioning
+- For both Markdown AND a file, send two separate messages
 
 ### Dynamic card update fails
 
 Approval status updates use the DynamicMsg appCard format. The `updateCardStatus()` method handles this automatically.
+
+## Changelog
+
+- **v2.5.1** — Rollback sysMsg (not displayed) and deleteMessage (API 10000); revoke chatType bot/group only
+- **v2.5.0** — Add sysMsg for revoke, deleteMessage tool (rolled back in 2.5.1)
+- **v2.4.0** — Fix message body assembly: wrap() excludes msgType from msgData; appArticles correct msgType/summary/flat array; linkCard add missing required params
+- **v2.3.0** — Remove legacy sendGroupText/sendGroupFormatText; all routing via msgTarget
+- **v2.2.8** — Fix MEDIA tag delivery (delivery.deliver processes payload.mediaUrls); fix WS reconnect state
+- **v2.2.5** — Fix uploadMedia endpoint, stop key, status validation, sendCard dynamic params
+- **v2.2.0** — Add 9 agent tools with contracts.tools + toolMetadata in manifest
+- **v2.0.0** — Channel kernel migration, initial release
 
 ## License
 

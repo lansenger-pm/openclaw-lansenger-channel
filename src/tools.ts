@@ -267,7 +267,7 @@ export function registerLansengerTools(api: any) {
   api.registerTool((ctx: any) => ({
     name: "lansenger_revoke_message",
     label: "Lansenger Revoke Message",
-    description: "Revoke previously sent Lansenger (蓝信) messages. Shows a 'revoked' system message to the recipient. For group chat, senderId is required.",
+    description: "Revoke previously sent Lansenger (蓝信) messages. The recipient sees a 'message revoked' notification from the platform. For group chat, senderId is required.",
     parameters: RevokeMessageSchema,
     async execute(_toolCallId: string, params: any) {
       const messageIds = params.messageIds;
@@ -282,10 +282,6 @@ export function registerLansengerTools(api: any) {
       return jsonResult({ success: result.success });
     },
   }), { name: "lansenger_revoke_message" });
-
-  api.registerTool((ctx: any) => ({
-    name: "lansenger_send_link_card",
-  }), { name: "lansenger_delete_message" });
 
   api.registerTool((ctx: any) => ({
     name: "lansenger_send_link_card",
