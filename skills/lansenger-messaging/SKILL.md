@@ -1,6 +1,6 @@
 ---
 name: lansenger-messaging
-version: 2.2.0
+version: 2.3.0
 category: communication
 description: How to communicate effectively on Lansenger (蓝信) — message types, formatting rules, media, cards, approvals, and pitfalls
 trigger: When the current session channel is lansenger, or when you need to send a message, file, image, card, or approval via Lansenger
@@ -9,6 +9,14 @@ trigger: When the current session channel is lansenger, or when you need to send
 # Lansenger (蓝信) Messaging Guide for Agents
 
 You are communicating on Lansenger, an enterprise messaging platform. Understanding its message type rules is critical — choosing the wrong type causes silent feature loss (Markdown ignored, attachments dropped, @mentions invisible).
+
+## Auto-Routing: msgTarget(chatId)
+
+All outbound methods use the `msgTarget` helper internally — **no separate group/private methods exist**. Just pass the chatId and routing happens automatically:
+
+- Group chatId → `/v1/messages/group/create` (payload wrapped with `groupId`)
+- Private chatId → `/v1/bot/messages/create` (payload wrapped with `userIdList`)
+- Detection: `chatTypeMap.get(chatId) === "group"` OR `chatId.startsWith("group:")`
 
 ## The #1 Rule: Markdown Is Automatic
 
@@ -50,14 +58,16 @@ Lansenger has two outbound text types that cannot be combined:
 | `lansenger_revoke_message` | Revoke previously sent messages | — |
 | `lansenger_query_groups` | List bot's group IDs | — |
 
-All tools accept an optional `to` parameter (chat ID). If omitted, the message goes to the current conversation automatically.
+All tools accept an optional `to` parameter (chat ID). **LEAVE EMPTY** to auto-detect the current conversation target — only fill it if you need to send to a different chat. chatId is case-sensitive.
 
 ## DM vs Group
 
-The plugin automatically routes to the right API:
-- **DM (1:1 chat)** → private message endpoint
-- **Group chat** → group message endpoint
-- You don't need to specify which — it's detected from the session
+The plugin auto-routes via `msgTarget(chatId)` — you never need to specify which endpoint:
+- **DM (1:1 chat)** → private message endpoint (`userIdList: [chatId]`)
+- **Group chat** → group message endpoint (`groupId: chatId`)
+- Detection is automatic from session context or `group:` prefix in chatId
+
+**Group API limitation**: The Lansenger group endpoint (4.6.2) officially only supports `text` and `oacard` msgTypes. The plugin routes all msgTypes via msgTarget, but `appCard`, `linkCard`, `appArticles`, `formatText` may be rejected by the API in group context. If a group send fails, try falling back to plain text.
 
 ## Sending Files (CRITICAL)
 
@@ -96,19 +106,20 @@ Downloads the image first, then uploads and sends. For local files, use `lanseng
 ## Rich Content Types
 
 ### Link Card (`lansenger_send_link_card`)
-A rich link preview card. Requires `title` + `link`. Optional: `description`, `iconLink`.
+A rich link preview card. Requires `title` + `link`. Optional: `description`, `iconLink`, `pcLink`, `fromName`, `fromIconLink`.
 
 ### AppArticles (`lansenger_send_app_articles`)
-Multi-article card (图文卡片). Each article needs `imgUrl`, `title`, `url`. Optional: `summary`.
+Multi-article card (图文卡片). Each article needs `imgUrl`, `title`, `url`. Optional: `description` (article summary), `pcUrl` (PC link).
 
 ### AppCard (`lansenger_send_app_card`)
 Rich formatted card (应用卡片). Supports div-style HTML in body fields (color, font-size, text-align, text-indent).
 - ⚠️ **`text-indent` MUST have units** — bare `0` causes silent API failure; always use `0em`
 - ⚠️ **Dynamic cards (`isDynamic=true`) require `headStatusInfo`** — plugin auto-fills "Active" default if omitted
 - Card content should be **single-language** based on user's detected language
+- Optional: `headTitle`, `bodySubTitle`, `signature`, `fields` (key-value pairs, max 10), `links` (max 3), `cardLink`, `staffId`, `headIconUrl`
 
-### i18nAppCard (Multi-language Card)
-For non-approval cards needing 5-locale rendering. Does NOT support dynamic updates.
+### i18nAppCard
+Internal method only — no agent tool exposes this. For non-approval cards needing 5-locale rendering. Does NOT support dynamic updates.
 
 ## Approval Workflow
 
@@ -181,6 +192,7 @@ openclaw pairing approve lansenger <code>
 - **Markdown is default** — write normally, it renders automatically
 - **Never put Markdown in a plain-text message** — displays as raw source code
 - **Never put @mentions in a Markdown message** — silently ignored
+- **AppArticles uses `description` not `summary`** — the article description field is called `description`, not `summary`
 - **`text-indent` MUST have units** — bare `0` causes empty API response; use `0em`
 - **Dynamic cards require `headStatusInfo`** — auto-filled if omitted, but explicit is better
 - **Personal bots only** — organization/enterprise bots are NOT supported

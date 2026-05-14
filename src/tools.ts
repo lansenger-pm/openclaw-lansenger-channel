@@ -105,7 +105,7 @@ const SendAppArticlesSchema = {
           title: { type: "string", description: "Article title." },
           url: { type: "string", description: "Article content link URL." },
           pcUrl: { type: "string", description: "PC client content link URL." },
-          summary: { type: "string", description: "Optional article summary." },
+          description: { type: "string", description: "Optional article description/summary." },
         },
         required: ["imgUrl", "title", "url"],
       },
