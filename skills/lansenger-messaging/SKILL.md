@@ -42,8 +42,8 @@ Lansenger has two outbound text types that cannot be combined:
 ### What this means for you
 
 - **Normal replies** → just write Markdown. It's automatically sent as formatText.
-- **Need @mention** → Markdown won't work. You must use plain text only. If you need both formatting AND @mention, send the formatted content first, then use `lansenger_send_text` for the @mention.
-- **Need to attach a file/image/video** → For workspace files, MEDIA: tags work. For external paths, use `lansenger_send_file`. If you need both formatting AND a file, send the Markdown reply first, then call `lansenger_send_file` separately.
+- **Need @mention** → formatText supports `reminder` (newer API), but you MUST include "@姓名" in the message text so the user sees who was mentioned. Example: write `"@张三 重要通知：明天开会"` and set `reminderUserIds: ["staffId-of-张三"]`. Old API environments silently accept reminder but won't show the notification on client — the explicit "@姓名" in text ensures clarity regardless.
+- **Need to attach a file/image/video** → Markdown won't work. Use `lansenger_send_file`. If you need both formatting AND a file, send the Markdown reply first, then call `lansenger_send_file` separately.
 - **Never put raw Markdown in a plain-text message** — it displays as ugly source code to the user.
 
 ## Available Tools
@@ -98,7 +98,7 @@ lansenger_send_text(content=<plain text>, filePath=<optional local path>, to=<op
 
 - **NO Markdown** — content is plain text only
 - `filePath` optional — if provided, content becomes caption for the attachment
-- `reminderAll` / `reminderUserIds` — @mention members (group/staff chat only, NOT DMs)
+- `reminderAll` / `reminderUserIds` — @mention members. **You MUST include "@姓名" in the message text** so the user can see who was mentioned. For text type: client shows @notification. For formatText: newer API supports reminder, old API silently accepts it but client won't show notification — the explicit "@姓名" text ensures clarity regardless. (group/staff chat only, NOT DMs)
 
 ## Sending Images from URLs
 
@@ -196,7 +196,7 @@ openclaw pairing approve lansenger <code>
 
 - **Markdown is default** — write normally, it renders automatically
 - **Never put Markdown in a plain-text message** — displays as raw source code
-- **Never put @mentions in a Markdown message** — silently ignored
+- **Never put @mentions in a Markdown message without "@姓名" text** — reminder works in formatText (newer API), but you must write "@姓名" explicitly so users can see who was mentioned
 - **MEDIA: tags work for workspace files** — for non-workspace paths (Documents, /tmp, etc.), use `lansenger_send_file` instead
 - **AppArticles uses `description` not `summary`** — the article description field is called `description`, not `summary`
 - **`text-indent` MUST have units** — bare `0` causes empty API response; use `0em`

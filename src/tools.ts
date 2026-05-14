@@ -56,7 +56,7 @@ const SendTextSchema = {
     filePath: { type: "string", description: "Optional local file/image/video to attach. If provided, content becomes the caption." },
     to: { type: "string", description: "LEAVE EMPTY — the current conversation target is auto-detected. Only fill this if you need to send to a different chat." },
     reminderAll: { type: "boolean", description: "@mention all members in a group (only works in group/staff chat, not DMs)." },
-    reminderUserIds: { type: "array", items: { type: "string" }, description: "List of user IDs to @mention (only works in group/staff chat)." },
+    reminderUserIds: { type: "array", items: { type: "string" }, description: "List of user IDs to @mention (group/staff chat only). You MUST include '@姓名' in the message text so users can see who was mentioned." },
   },
   required: ["content"],
 };
