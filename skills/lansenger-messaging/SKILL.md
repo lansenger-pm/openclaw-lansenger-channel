@@ -199,7 +199,7 @@ openclaw pairing approve lansenger <code>
 - **AppArticles uses `description` not `summary`** — the article description field is called `description`, not `summary`
 - **`text-indent` MUST have units** — bare `0` causes empty API response; use `0em`
 - **Dynamic cards require `headStatusInfo`** — auto-filled if omitted, but explicit is better
-- **Personal bots only** — organization/enterprise bots are NOT supported
+- **Gateway URL is per-environment** — the plugin uses whatever `apiGatewayUrl` is configured (e.g. `https://apigw.lx.qianxin.com` for 奇安信 environments, or `https://open.e.lanxin.cn/open/apigw` for standard Lansenger). All API endpoints are appended to this base URL. Do NOT assume the default gateway — always use the configured value.
 - **Message length limit** ~4000 characters
 - **File size limits** depend on organization's Lansenger configuration
 - **Credentials** in Lansenger Desktop → Contacts → Bots → Personal Bot → ℹ️ icon
