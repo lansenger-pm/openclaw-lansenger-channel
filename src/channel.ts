@@ -34,7 +34,7 @@ type ResolvedAccount = {
 };
 
 function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): ResolvedAccount {
-  const section = (cfg.channels as Record<string, any>)?.["Lansenger"];
+  const section = (cfg.channels as Record<string, any>)?.["lansenger"];
   const accounts = section?.accounts as Record<string, LansengerAccount> | undefined;
   const defaultAccount = section?.defaultAccount as string | undefined;
 
@@ -95,7 +95,7 @@ const approverAuth = createResolvedApproverActionAuthAdapter({
 
 const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
   base: createChannelPluginBase({
-    id: "Lansenger",
+    id: "lansenger",
     meta: {
       label: "Lansenger (蓝信)",
       selectionLabel: "Lansenger (蓝信)",
@@ -111,7 +111,7 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
     config: {
       resolveAccount,
       listAccountIds: (cfg) => {
-        const section = (cfg.channels as Record<string, any>)?.["Lansenger"];
+        const section = (cfg.channels as Record<string, any>)?.["lansenger"];
         const accounts = section?.accounts as Record<string, any> | undefined;
         const ids: string[] = [];
         // Single account mode (appId as key)
@@ -129,7 +129,7 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
         return ids;
       },
       inspectAccount: (cfg, accountId) => {
-        const section = (cfg.channels as Record<string, any>)?.["Lansenger"];
+        const section = (cfg.channels as Record<string, any>)?.["lansenger"];
         const accounts = section?.accounts as Record<string, any> | undefined;
         // Find account by appId
         let account: any = undefined;
@@ -158,12 +158,12 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
     setup: {
       applyAccountConfig: ({ cfg, accountId, input }) => {
         const channels = { ...((cfg.channels as Record<string, any>) ?? {}) };
-        const current = channels.Lansenger ?? {};
+        const current = channels.lansenger ?? {};
         const updated = { ...current };
         if (input.appToken) updated.appId = input.appToken;
         if (input.secret) updated.appSecret = input.secret;
         if (input.baseUrl) updated.apiGatewayUrl = input.baseUrl;
-        channels.Lansenger = updated;
+        channels.lansenger = updated;
         return { ...cfg, channels };
       },
     },
@@ -171,7 +171,7 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
 
   security: {
     dm: {
-      channelKey: "Lansenger",
+      channelKey: "lansenger",
       resolvePolicy: (account) => account.dmPolicy ?? "paired",
       resolveAllowFrom: (account) => account.allowFrom,
       defaultPolicy: "paired",
@@ -194,7 +194,7 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
 
   outbound: {
     attachedResults: {
-      channel: "Lansenger",
+      channel: "lansenger",
       sendText: async (ctx) => {
         const account = resolveAccount(ctx.cfg, ctx.accountId ?? undefined);
         const client = makeClient(account);
@@ -240,7 +240,7 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
         const account = resolveAccount(ctx.cfg, ctx.accountId ?? undefined);
         const client = makeClient(account);
         const result = await client.sendFormatText(ctx.to, ctx.text);
-        return [{ channel: "Lansenger", messageId: result.messageId ?? "" }];
+        return [{ channel: "lansenger", messageId: result.messageId ?? "" }];
       },
     },
   },
@@ -248,7 +248,7 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
 
 const lansengerOnboarding = {
   configuredCheck: (cfg: any) => {
-    const section = (cfg.channels as Record<string, any>)?.["Lansenger"];
+    const section = (cfg.channels as Record<string, any>)?.["lansenger"];
     const accounts = section?.accounts as Record<string, any> | undefined;
     if (accounts && Object.keys(accounts).length > 0) {
       return Object.values(accounts).some((a: any) => a?.appId && a?.appSecret);
@@ -257,13 +257,13 @@ const lansengerOnboarding = {
   },
   setDmPolicy: (cfg: any, policy: string) => {
     const channels = { ...((cfg.channels as Record<string, any>) ?? {}) };
-    const current = channels.Lansenger ?? {};
-    channels.Lansenger = { ...current, dmSecurity: policy };
+    const current = channels.lansenger ?? {};
+    channels.lansenger = { ...current, dmSecurity: policy };
     return { ...cfg, channels };
   },
   promptAllowFrom: async (params: any) => {
     const { cfg, prompter, accountId } = params;
-    const section = (cfg.channels as Record<string, any>)?.["Lansenger"] ?? {};
+    const section = (cfg.channels as Record<string, any>)?.["lansenger"] ?? {};
     const accounts = section?.accounts as Record<string, any> | undefined;
     const account = accountId ? accounts?.[accountId] : section;
     const currentAllowFrom: string[] = account?.allowFrom ?? [];
@@ -277,14 +277,14 @@ const lansengerOnboarding = {
     const merged = [...currentAllowFrom.map(String).filter(Boolean), newId];
     const unique = [...new Set(merged)];
     const channels = { ...((cfg.channels as Record<string, any>) ?? {}) };
-    const current = channels.Lansenger ?? {};
+    const current = channels.lansenger ?? {};
     const accountsCopy = current.accounts ? { ...current.accounts } : {};
     if (accountId && accountsCopy[accountId]) {
       accountsCopy[accountId] = { ...accountsCopy[accountId], allowFrom: unique };
     } else {
       current.allowFrom = unique;
     }
-    channels.Lansenger = { ...current, enabled: true, accounts: accountsCopy, dmSecurity: current.dmSecurity ?? "paired" };
+    channels.lansenger = { ...current, enabled: true, accounts: accountsCopy, dmSecurity: current.dmSecurity ?? "paired" };
     return { ...cfg, channels };
   },
   noteSetupHelp: async (params: any) => {
@@ -339,7 +339,7 @@ const lansengerOnboarding = {
       }
     }
 
-    const section = (cfg.channels as Record<string, any>)?.["Lansenger"] ?? {};
+    const section = (cfg.channels as Record<string, any>)?.["lansenger"] ?? {};
     const accounts = section?.accounts as Record<string, any> | undefined;
     const alreadyConfigured = Boolean(section.appId && section.appSecret) || (accounts && Object.keys(accounts).length > 0);
 
@@ -377,7 +377,7 @@ const lansengerOnboarding = {
     }
 
     const channels = { ...((cfg.channels as Record<string, any>) ?? {}) };
-    const current = channels.Lansenger ?? {};
+    const current = channels.lansenger ?? {};
     const accountsCopy = current.accounts ? { ...current.accounts } : {};
 
     if (appId && appSecret) {
@@ -411,7 +411,7 @@ const lansengerOnboarding = {
       }
     }
 
-    channels.Lansenger = current;
+    channels.lansenger = current;
     return { ...cfg, channels };
   },
 };

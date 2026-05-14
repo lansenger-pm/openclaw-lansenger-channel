@@ -8,7 +8,7 @@ describe("Lansenger plugin", () => {
   it("resolves account from config", () => {
     const cfg = {
       channels: {
-        Lansenger: { appId: "test-app-id", appSecret: "test-secret", allowFrom: ["user1"] },
+        lansenger: { appId: "test-app-id", appSecret: "test-secret", allowFrom: ["user1"] },
       },
     } as any;
     const account = resolveAccount(cfg, undefined);
@@ -21,7 +21,7 @@ describe("Lansenger plugin", () => {
   it("resolves account from accounts by accountId", () => {
     const cfg = {
       channels: {
-        Lansenger: {
+        lansenger: {
           appId: "default-id",
           appSecret: "default-secret",
           accounts: {
@@ -40,7 +40,7 @@ describe("Lansenger plugin", () => {
   it("falls back to top-level when accountId not in accounts", () => {
     const cfg = {
       channels: {
-        Lansenger: {
+        lansenger: {
           appId: "default-id",
           appSecret: "default-secret",
           accounts: {
@@ -86,7 +86,7 @@ describe("Lansenger plugin", () => {
   });
 
   it("has correct plugin id", () => {
-    expect(lansengerPlugin.id).toBe("Lansenger");
+    expect(lansengerPlugin.id).toBe("lansenger");
   });
 });
 
@@ -206,19 +206,19 @@ describe("processRawMessage", () => {
   });
 });
 
-describe("lansengerOnboarding", () => {
+describe("LansengerOnboarding", () => {
   it("configuredCheck returns true when both appId and appSecret present", () => {
-    const cfg = { channels: { Lansenger: { appId: "id", appSecret: "secret" } } };
+    const cfg = { channels: { lansenger: { appId: "id", appSecret: "secret" } } };
     expect(lansengerOnboarding.configuredCheck(cfg)).toBe(true);
   });
 
   it("configuredCheck returns false when missing appId", () => {
-    const cfg = { channels: { Lansenger: { appSecret: "secret" } } };
+    const cfg = { channels: { lansenger: { appSecret: "secret" } } };
     expect(lansengerOnboarding.configuredCheck(cfg)).toBe(false);
   });
 
   it("configuredCheck returns false when missing appSecret", () => {
-    const cfg = { channels: { Lansenger: { appId: "id" } } };
+    const cfg = { channels: { lansenger: { appId: "id" } } };
     expect(lansengerOnboarding.configuredCheck(cfg)).toBe(false);
   });
 
@@ -228,17 +228,17 @@ describe("lansengerOnboarding", () => {
   });
 
   it("setDmPolicy merges dmSecurity into config", () => {
-    const cfg = { channels: { Lansenger: { appId: "id", appSecret: "secret" } } };
+    const cfg = { channels: { lansenger: { appId: "id", appSecret: "secret" } } };
     const result = lansengerOnboarding.setDmPolicy(cfg, "open");
-    expect(result.channels.Lansenger.dmSecurity).toBe("open");
+    expect(result.channels.lansenger.dmSecurity).toBe("open");
   });
 
   it("setDmPolicy preserves existing fields", () => {
-    const cfg = { channels: { Lansenger: { appId: "id", appSecret: "secret", allowFrom: ["u1"] } } };
+    const cfg = { channels: { lansenger: { appId: "id", appSecret: "secret", allowFrom: ["u1"] } } };
     const result = lansengerOnboarding.setDmPolicy(cfg, "paired");
-    expect(result.channels.Lansenger.appId).toBe("id");
-    expect(result.channels.Lansenger.allowFrom).toEqual(["u1"]);
-    expect(result.channels.Lansenger.dmSecurity).toBe("paired");
+    expect(result.channels.lansenger.appId).toBe("id");
+    expect(result.channels.lansenger.allowFrom).toEqual(["u1"]);
+    expect(result.channels.lansenger.dmSecurity).toBe("paired");
   });
 
   it("promptAllowFrom adds new ID with dedup", async () => {
@@ -248,11 +248,11 @@ describe("lansengerOnboarding", () => {
       select: async () => "",
       note: async () => {},
     };
-    const cfg = { channels: { Lansenger: { appId: "id", appSecret: "secret", allowFrom: ["user-old"] } } };
+    const cfg = { channels: { lansenger: { appId: "id", appSecret: "secret", allowFrom: ["user-old"] } } };
     const result = await lansengerOnboarding.promptAllowFrom({ cfg, prompter: mockPrompter, accountId: null });
-    expect(result.channels.Lansenger.allowFrom).toEqual(["user-old", "user-new"]);
-    expect(result.channels.Lansenger.enabled).toBe(true);
-    expect(result.channels.Lansenger.dmSecurity).toBe("paired");
+    expect(result.channels.lansenger.allowFrom).toEqual(["user-old", "user-new"]);
+    expect(result.channels.lansenger.enabled).toBe(true);
+    expect(result.channels.lansenger.dmSecurity).toBe("paired");
   });
 
   it("promptAllowFrom deduplicates existing entries", async () => {
@@ -262,9 +262,9 @@ describe("lansengerOnboarding", () => {
       select: async () => "",
       note: async () => {},
     };
-    const cfg = { channels: { Lansenger: { appId: "id", appSecret: "secret", allowFrom: ["user-old"] } } };
+    const cfg = { channels: { lansenger: { appId: "id", appSecret: "secret", allowFrom: ["user-old"] } } };
     const result = await lansengerOnboarding.promptAllowFrom({ cfg, prompter: mockPrompter, accountId: null });
-    expect(result.channels.Lansenger.allowFrom).toEqual(["user-old"]);
+    expect(result.channels.lansenger.allowFrom).toEqual(["user-old"]);
   });
 
   it("promptAllowFrom sets dmSecurity to paired when missing", async () => {
@@ -274,9 +274,9 @@ describe("lansengerOnboarding", () => {
       select: async () => "",
       note: async () => {},
     };
-    const cfg = { channels: { Lansenger: { appId: "id", appSecret: "secret" } } };
+    const cfg = { channels: { lansenger: { appId: "id", appSecret: "secret" } } };
     const result = await lansengerOnboarding.promptAllowFrom({ cfg, prompter: mockPrompter, accountId: null });
-    expect(result.channels.Lansenger.dmSecurity).toBe("paired");
+    expect(result.channels.lansenger.dmSecurity).toBe("paired");
   });
 
   it("noteSetupHelp calls prompter.note", async () => {
@@ -300,11 +300,11 @@ describe("lansengerOnboarding", () => {
     };
     const cfg = { channels: {} };
     const result = await lansengerOnboarding.runSetupWizard({ cfg, prompter: mockPrompter, token: "my-app-id:my-secret" });
-    expect(result.channels.Lansenger.appId).toBe("my-app-id");
-    expect(result.channels.Lansenger.appSecret).toBe("my-secret");
-    expect(result.channels.Lansenger.enabled).toBe(true);
-    expect(result.channels.Lansenger.dmSecurity).toBe("paired");
-    expect(result.channels.Lansenger.approval.enabled).toBe(true);
+    expect(result.channels.lansenger.appId).toBe("my-app-id");
+    expect(result.channels.lansenger.appSecret).toBe("my-secret");
+    expect(result.channels.lansenger.enabled).toBe(true);
+    expect(result.channels.lansenger.dmSecurity).toBe("paired");
+    expect(result.channels.lansenger.approval.enabled).toBe(true);
   });
 
   it("runSetupWizard prompts for credentials when not configured and no token", async () => {
@@ -317,9 +317,9 @@ describe("lansengerOnboarding", () => {
     };
     const cfg = { channels: {} };
     const result = await lansengerOnboarding.runSetupWizard({ cfg, prompter: mockPrompter, token: undefined });
-    expect(result.channels.Lansenger.appId).toBe("new-id");
-    expect(result.channels.Lansenger.appSecret).toBe("new-secret");
-    expect(result.channels.Lansenger.enabled).toBe(true);
+    expect(result.channels.lansenger.appId).toBe("new-id");
+    expect(result.channels.lansenger.appSecret).toBe("new-secret");
+    expect(result.channels.lansenger.enabled).toBe(true);
   });
 
   it("runSetupWizard keeps existing credentials when user confirms", async () => {
@@ -329,11 +329,11 @@ describe("lansengerOnboarding", () => {
       select: async () => "",
       note: async () => {},
     };
-    const cfg = { channels: { Lansenger: { appId: "existing-id", appSecret: "existing-secret", allowFrom: ["u1"] } } };
+    const cfg = { channels: { lansenger: { appId: "existing-id", appSecret: "existing-secret", allowFrom: ["u1"] } } };
     const result = await lansengerOnboarding.runSetupWizard({ cfg, prompter: mockPrompter, token: undefined });
-    expect(result.channels.Lansenger.appId).toBe("existing-id");
-    expect(result.channels.Lansenger.appSecret).toBe("existing-secret");
-    expect(result.channels.Lansenger.allowFrom).toEqual(["u1"]);
+    expect(result.channels.lansenger.appId).toBe("existing-id");
+    expect(result.channels.lansenger.appSecret).toBe("existing-secret");
+    expect(result.channels.lansenger.allowFrom).toEqual(["u1"]);
   });
 
   it("runSetupWizard replaces credentials when user declines keep", async () => {
@@ -344,9 +344,9 @@ describe("lansengerOnboarding", () => {
       select: async () => "",
       note: async () => {},
     };
-    const cfg = { channels: { Lansenger: { appId: "old-id", appSecret: "old-secret" } } };
+    const cfg = { channels: { lansenger: { appId: "old-id", appSecret: "old-secret" } } };
     const result = await lansengerOnboarding.runSetupWizard({ cfg, prompter: mockPrompter, token: undefined });
-    expect(result.channels.Lansenger.appId).toBe("replaced-id");
-    expect(result.channels.Lansenger.appSecret).toBe("replaced-secret");
+    expect(result.channels.lansenger.appId).toBe("replaced-id");
+    expect(result.channels.lansenger.appSecret).toBe("replaced-secret");
   });
 });

@@ -1,7 +1,7 @@
 ---
 name: lansenger-messaging
 description: How to communicate effectively on Lansenger (蓝信) — message types, formatting rules, media, cards, approvals, and pitfalls
-metadata: {"openclaw":{"requires":{"config":["channels.Lansenger"]},"primaryEnv":"LANSENGER_APP_ID"}}
+metadata: {"openclaw":{"requires":{"config":["channels.lansenger"]},"primaryEnv":"LANSENGER_APP_ID"}}
 ---
 
 # Lansenger (蓝信) Messaging Guide for Agents

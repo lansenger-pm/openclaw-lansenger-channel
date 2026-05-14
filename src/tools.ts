@@ -6,7 +6,7 @@ import * as fs from "node:fs/promises";
 
 function resolveAccountFromConfig(config: any): ResolvedAccount | null {
   if (!config) return null;
-  const section = (config.channels as Record<string, any>)?.["Lansenger"];
+  const section = (config.channels as Record<string, any>)?.["lansenger"];
   if (!section) return null;
   const accounts = section.accounts as Record<string, any> | undefined;
   let account: ResolvedAccount;

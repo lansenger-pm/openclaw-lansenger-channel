@@ -56,18 +56,18 @@
 openclaw plugins install @lansenger-pm/openclaw-lansenger-channel
 
 # 2. 啟用插件（如未自動啟用）
-openclaw config set plugins.entries.Lansenger.enabled true
+openclaw config set plugins.entries.lansenger.enabled true
 
 # 3. 配置頻道（互動式向導）
-openclaw channels add --channel Lansenger
+openclaw channels add --channel lansenger
 #   或非互動式：
-openclaw channels add --channel Lansenger --token "appId:appSecret"
+openclaw channels add --channel lansenger --token "appId:appSecret"
 
 # 4. 重啟閘道
 openclaw gateway restart
 ```
 
-`package.json` 中的 `openclaw.install` 元資料（`npmSpec`、`localPath`、`defaultChoice`）支援**按需安裝**：如果使用者在插件安裝前執行 `openclaw channels add --channel Lansenger`，OpenClaw 可自動安裝該插件。
+`package.json` 中的 `openclaw.install` 元資料（`npmSpec`、`localPath`、`defaultChoice`）支援**按需安裝**：如果使用者在插件安裝前執行 `openclaw channels add --channel lansenger`，OpenClaw 可自動安裝該插件。
 
 > **自訂閘道**：企業私有化部署（如奇安信）需在設定後透過 `openclaw.json` 或環境變數設定 `apiGatewayUrl` — 見[可選設定](#可選設定)。
 
@@ -91,7 +91,7 @@ openclaw gateway restart
 重啟後機器人自動透過 WebSocket 連線。給機器人發私聊訊息，會收到配對碼，核准配對：
 
 ```bash
-openclaw pairing approve Lansenger <配對碼>
+openclaw pairing approve lansenger <配對碼>
 ```
 
 ## 設定
@@ -117,11 +117,11 @@ openclaw pairing approve Lansenger <配對碼>
 ```json
 {
   "channels": {
-    "Lansenger": {
+    "lansenger": {
       "appId": "your-appid",
       "appSecret": "your-secret",
       "apiGatewayUrl": "https://open.e.lanxin.cn/open/apigw",
-      "homeChannel": "Lansenger",
+      "homeChannel": "lansenger",
       "enabled": true,
       "allowFrom": ["your-appid"],
       "dmSecurity": "paired",
@@ -142,7 +142,7 @@ openclaw pairing approve Lansenger <配對碼>
 | `appId` | 個人機器人 App ID | — |
 | `appSecret` | 個人機器人 App Secret | — |
 | `apiGatewayUrl` | API 閘道 URL | `https://open.e.lanxin.cn/open/apigw` |
-| `homeChannel` | 代理路由的預設頻道 | `Lansenger` |
+| `homeChannel` | 代理路由的預設頻道 | `lansenger` |
 | `enabled` | 啟用/禁用頻道 | `true` |
 | `allowFrom` | 允許私聊的使用者 ID | `[]` |
 | `dmSecurity` | 私聊策略：`paired`、`allowlist`、`open` | `paired` |
@@ -157,9 +157,9 @@ openclaw pairing approve Lansenger <配對碼>
 
 ```bash
 # 新增第二個機器人（替換 appid/appsecret/gateway 為你的值）
-openclaw config set channels.Lansenger.accounts.your-appid-2.appId "your-appid-2"
-openclaw config set channels.Lansenger.accounts.your-appid-2.appSecret "your-appsecret"
-openclaw config set channels.Lansenger.accounts.your-appid-2.apiGatewayUrl "https://apigw.lx.qianxin.com"
+openclaw config set channels.lansenger.accounts.your-appid-2.appId "your-appid-2"
+openclaw config set channels.lansenger.accounts.your-appid-2.appSecret "your-appsecret"
+openclaw config set channels.lansenger.accounts.your-appid-2.apiGatewayUrl "https://apigw.lx.qianxin.com"
 
 # 重啟生效
 openclaw gateway restart
@@ -170,7 +170,7 @@ openclaw gateway restart
 ```json
 {
   "channels": {
-    "Lansenger": {
+    "lansenger": {
       "appId": "your-appid-2",
       "appSecret": "...",
       "dmSecurity": "paired",
@@ -231,14 +231,14 @@ openclaw gateway call lansenger.status
     {
       agentId: "agent-a",
       match: {
-        channel: "Lansenger",
+        channel: "lansenger",
         peer: { kind: "direct", id: "2285568-xxx" },
       },
     },
     {
       agentId: "agent-a",
       match: {
-        channel: "Lansenger",
+        channel: "lansenger",
         peer: { kind: "group", id: "group-chat-id" },
       },
     },
@@ -247,7 +247,7 @@ openclaw gateway call lansenger.status
 ```
 
 路由欄位：
-* `match.channel`: `"Lansenger"`
+* `match.channel`: `"lansenger"`
 * `match.peer.kind`: `"direct"`（私聊）或 `"group"`（群組聊天）
 * `match.peer.id`: 使用者 ID（`2285568-xxx`）或群組聊天 ID
 

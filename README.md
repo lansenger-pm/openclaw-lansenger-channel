@@ -54,18 +54,18 @@ Lansenger (蓝信) channel plugin for OpenClaw — WebSocket inbound, HTTP API o
 openclaw plugins install @lansenger-pm/openclaw-lansenger-channel
 
 # 2. Enable the plugin (if not auto-enabled)
-openclaw config set plugins.entries.Lansenger.enabled true
+openclaw config set plugins.entries.lansenger.enabled true
 
 # 3. Configure the channel (interactive wizard)
-openclaw channels add --channel Lansenger
+openclaw channels add --channel lansenger
 #   OR non-interactive:
-openclaw channels add --channel Lansenger --token "appId:appSecret"
+openclaw channels add --channel lansenger --token "appId:appSecret"
 
 # 4. Restart the gateway
 openclaw gateway restart
 ```
 
-The `openclaw.install` metadata in `package.json` (`npmSpec`, `localPath`, `defaultChoice`) enables **install-on-demand**: if a user runs `openclaw channels add --channel Lansenger` before the plugin is installed, OpenClaw can automatically install it using this metadata.
+The `openclaw.install` metadata in `package.json` (`npmSpec`, `localPath`, `defaultChoice`) enables **install-on-demand**: if a user runs `openclaw channels add --channel lansenger` before the plugin is installed, OpenClaw can automatically install it using this metadata.
 
 > **Custom gateway**: For enterprise deployments (e.g. 奇安信), set `apiGatewayUrl` in `openclaw.json` or environment after configuration — see [Optional Configuration](#optional-configuration).
 
@@ -89,7 +89,7 @@ openclaw gateway restart
 The bot auto-connects via WebSocket on gateway restart. Send a DM to the bot — you'll receive a pairing code. Approve it:
 
 ```bash
-openclaw pairing approve Lansenger <code>
+openclaw pairing approve lansenger <code>
 ```
 
 ## Configuration
@@ -115,11 +115,11 @@ Add these to `~/.openclaw/.env` or your environment:
 ```json
 {
   "channels": {
-    "Lansenger": {
+    "lansenger": {
       "appId": "your-appid",
       "appSecret": "your-secret",
       "apiGatewayUrl": "https://open.e.lanxin.cn/open/apigw",
-      "homeChannel": "Lansenger",
+      "homeChannel": "lansenger",
       "enabled": true,
       "allowFrom": ["your-appid"],
       "dmSecurity": "paired",
@@ -140,7 +140,7 @@ Add these to `~/.openclaw/.env` or your environment:
 | `appId` | Personal bot App ID | — |
 | `appSecret` | Personal bot App Secret | — |
 | `apiGatewayUrl` | API Gateway URL | `https://open.e.lanxin.cn/open/apigw` |
-| `homeChannel` | Default channel for agent routing | `Lansenger` |
+| `homeChannel` | Default channel for agent routing | `lansenger` |
 | `enabled` | Enable/disable the channel | `true` |
 | `allowFrom` | User IDs allowed to DM the bot | `[]` |
 | `dmSecurity` | DM policy: `paired`, `allowlist`, `open` | `paired` |
@@ -155,9 +155,9 @@ For multiple bots, add additional accounts using `openclaw config set`:
 
 ```bash
 # Add a second bot (replace appid/appsecret/gateway with your values)
-openclaw config set channels.Lansenger.accounts.your-appid-2.appId "your-appid-2"
-openclaw config set channels.Lansenger.accounts.your-appid-2.appSecret "your-appsecret"
-openclaw config set channels.Lansenger.accounts.your-appid-2.apiGatewayUrl "https://apigw.lx.qianxin.com"
+openclaw config set channels.lansenger.accounts.your-appid-2.appId "your-appid-2"
+openclaw config set channels.lansenger.accounts.your-appid-2.appSecret "your-appsecret"
+openclaw config set channels.lansenger.accounts.your-appid-2.apiGatewayUrl "https://apigw.lx.qianxin.com"
 
 # Restart to apply
 openclaw gateway restart
@@ -168,7 +168,7 @@ The resulting config structure:
 ```json
 {
   "channels": {
-    "Lansenger": {
+    "lansenger": {
       "appId": "your-appid-2",
       "appSecret": "...",
       "dmSecurity": "paired",
@@ -229,14 +229,14 @@ Use `bindings` to route Lansenger DMs or groups to different agents (same patter
     {
       agentId: "agent-a",
       match: {
-        channel: "Lansenger",
+        channel: "lansenger",
         peer: { kind: "direct", id: "2285568-xxx" },
       },
     },
     {
       agentId: "agent-a",
       match: {
-        channel: "Lansenger",
+        channel: "lansenger",
         peer: { kind: "group", id: "group-chat-id" },
       },
     },
@@ -245,7 +245,7 @@ Use `bindings` to route Lansenger DMs or groups to different agents (same patter
 ```
 
 Routing fields:
-* `match.channel`: `"Lansenger"`
+* `match.channel`: `"lansenger"`
 * `match.peer.kind`: `"direct"` (DM) or `"group"` (group chat)
 * `match.peer.id`: user ID (`2285568-xxx`) or group chat ID
 

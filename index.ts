@@ -4,19 +4,19 @@ import { startLansengerGateway } from "./src/runtime.js";
 import { registerLansengerTools } from "./src/tools.js";
 
 export default defineChannelPluginEntry({
-  id: "Lansenger",
+  id: "lansenger",
   name: "Lansenger (蓝信)",
   description: "Lansenger enterprise messaging channel plugin for OpenClaw",
   plugin: lansengerPlugin,
   registerCliMetadata(api) {
     api.registerCli(
       ({ program }) => {
-        program.command("Lansenger").description("Lansenger (蓝信) management");
+        program.command("lansenger").description("Lansenger (蓝信) management");
       },
       {
         descriptors: [
           {
-            name: "Lansenger",
+            name: "lansenger",
             description: "Lansenger (蓝信) management",
             hasSubcommands: false,
           },
