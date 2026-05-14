@@ -106,6 +106,8 @@ openclaw pairing approve lansenger <配對碼>
 | `LANSENGER_APP_SECRET` | 個人機械人 App Secret | `57E718CA1CAC20F2...` |
 | `LANSENGER_API_GATEWAY_URL` | 藍信 API 網關 URL 覆蓋 | `https://open.e.lanxin.cn/open/apigw` |
 
+憑證也可透過 `openclaw.json` 配置提供（見下方可選設定）。當兩者同時設定時，環境變數優先。
+
 ### 取得憑證
 
 **藍信桌面端** → **通訊錄** → **智能機械人** → **個人機械人** → 點擊 **ℹ️** 圖標
@@ -213,8 +215,8 @@ openclaw gateway call lansenger.stop
 
 ```bash
 openclaw channels status
-# 或
-openclaw gateway call lansenger.status
+# 含健康探測（顯示「configured」和「works」）：
+openclaw channels status --probe
 ```
 
 ### 多 Agent 路由
@@ -372,20 +374,17 @@ Agent 路由由 OpenClaw 的 `bindings[]` 設定管理——見[多 Agent 路由
 
 ## 更新日誌
 
-- **v2.8.1** — 修復 README：正確的 4 步安裝流程（安裝 → 啟用 → 配置 → 重啟），移除手動複製 hack；修復 SKILL.md frontmatter（AgentSkills 規範合規：移除 version/category/trigger，新增 metadata.openclaw gating）；channel identifier 改為 Lansenger
-- **v2.8.0** — 多 Agent 路由改用 OpenClaw `bindings[]`（替代 per-account `agentId`）；新增 groupPolicy/groupAllowFrom/groups 羣聊准入控制；使用 `resolveAgentRoute` SDK 处理 inbound 路由
-- **v2.7.2** — 新增 VERSION 檔案；補全 5 個 README changelog；重新生成 package-lock.json
-- **v2.7.0** — 工具註冊改為純物件（非工廠函數）；使用運行時狀態取得 client/target — 修復外部插件工具註冊
-- **v2.6.0** — 無條件註冊工具（執行時解析帳號）；移除幽靈 delete_message 註冊
-- **v2.5.2** — 修復 SKILL/README mention 指引（formatText 支援 reminder）；AppArticles 使用 `summary` 不是 `description`；移除 delete_message
-- **v2.5.1** — 回滾 sysMsg（不顯示）和 deleteMessage（API 10000）；撤回 chatType 僅 bot/group
-- **v2.5.0** — 新增撤回 sysMsg、deleteMessage 工具（2.5.1 已回滾）
-- **v2.4.0** — 修復消息體組裝：wrap() 從 msgData 剝離 msgType；appArticles 正確 msgType/summary/平鋪數組；linkCard 補全必填字段
-- **v2.3.0** — 移除遺留 sendGroupText/sendGroupFormatText；全部通過 msgTarget 路由
-- **v2.2.8** — 修復 MEDIA 標籤投遞（delivery.deliver 處理 payload.mediaUrls）；修復 WS 重連狀態
-- **v2.2.5** — 修復 uploadMedia 端點、stop key、狀態校驗、sendCard 動態參數
-- **v2.2.0** — 新增 9 個 agent 工具及 contracts.tools + toolMetadata
-- **v2.0.0** — 渠道核心遷移，初始發佈
+- **v2.9.11** — 新增狀態適配器（probeAccount / buildChannelSummary / buildAccountSnapshot）；`channels status --probe` 顯示「configured」和「works」；環境變數回退支援憑證（LANSENGER_APP_ID / LANSENGER_APP_SECRET / LANSENGER_API_GATEWAY_URL）
+- **v2.8.1** — 修復 README：4 步安裝流程；SKILL.md frontmatter（AgentSkills 規範）；頻道識別符改為小寫 `lansenger`
+- **v2.8.0** — OpenClaw `bindings[]` 多 Agent 路由；groupPolicy/groupAllowFrom/groups 羣聊准入控制
+- **v2.7.0** — 純物件工具註冊；運行時狀態取得 client/target
+- **v2.6.0** — 無條件註冊工具；移除幽靈 delete_message
+- **v2.5.2** — formatText reminder 支援；AppArticles `summary` 欄位；移除 delete_message
+- **v2.5.1** — 回滾 sysMsg/deleteMessage（API 不可用）；撤回 chatType 僅 bot/group
+- **v2.4.0** — 修復訊息體組裝：wrap() 剝離 msgType；appArticles/linkCard欄位修復
+- **v2.3.0** — 移除遺留羣組/私聊發送；全部透過 msgTarget 路由
+- **v2.2.0** — 新增 9 個 agent 工具
+- **v2.0.0** — 初始發佈
 
 ## 授權條款
 

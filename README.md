@@ -78,12 +78,6 @@ openclaw plugins install --link
 openclaw gateway restart
 ```
 
-### Get Credentials
-
-**Lansenger Desktop** → **Contacts** → **Bots** → **Personal Bots** → click **ℹ️** icon
-
-> ⚠️ **Mobile client does NOT support viewing credentials.** Use the desktop client only.
-
 ### First message
 
 The bot auto-connects via WebSocket on gateway restart. Send a DM to the bot — you'll receive a pairing code. Approve it:
@@ -103,6 +97,8 @@ Add these to `~/.openclaw/.env` or your environment:
 | `LANSENGER_APP_ID` | Personal bot App ID | `your-appid` |
 | `LANSENGER_APP_SECRET` | Personal bot App Secret | `57E718CA1CAC20F2...` |
 | `LANSENGER_API_GATEWAY_URL` | Lansenger API Gateway URL override | `https://open.e.lanxin.cn/open/apigw` |
+
+Credentials can also be provided via `openclaw.json` config (see Optional Configuration below). Env vars take precedence when both are set.
 
 ### Get Credentials
 
@@ -209,8 +205,8 @@ openclaw gateway call lansenger.stop
 
 ```bash
 openclaw channels status
-# or
-openclaw gateway call lansenger.status
+# With health probe (shows "configured" and "works"):
+openclaw channels status --probe
 ```
 
 ### Multi-agent routing
@@ -368,20 +364,17 @@ Approval status updates use the DynamicMsg appCard format. The `updateCardStatus
 
 ## Changelog
 
-- **v2.8.1** — Fix README: proper 4-step install flow (install → enable → configure → restart), remove manual-copy hack; fix SKILL.md frontmatter (AgentSkills spec compliance: remove version/category/trigger, add metadata.openclaw gating); rename channel identifier to Lansenger
-- **v2.8.0** — Use OpenClaw `bindings[]` for multi-agent routing (replaces per-account `agentId`); add groupPolicy/groupAllowFrom/groups for group chat access control; use `resolveAgentRoute` SDK for inbound routing
-- **v2.7.2** — Add VERSION file; complete changelog in all 5 READMEs; regenerate package-lock.json
-- **v2.7.0** — Register tools as plain objects (not factory functions); use runtime state for client/target — fixes external plugin tool registration
-- **v2.6.0** — Register tools unconditionally (resolve account at execute time); removed phantom delete_message tool registration
-- **v2.5.2** — Fix SKILL/README mention guidance (formatText supports reminder); AppArticles uses `summary` not `description`; remove delete_message from tools.allow
-- **v2.5.1** — Rollback sysMsg (not displayed) and deleteMessage (API 10000); revoke chatType bot/group only
-- **v2.5.0** — Add sysMsg for revoke, deleteMessage tool (rolled back in 2.5.1)
-- **v2.4.0** — Fix message body assembly: wrap() excludes msgType from msgData; appArticles correct msgType/summary/flat array; linkCard add missing required params
-- **v2.3.0** — Remove legacy sendGroupText/sendGroupFormatText; all routing via msgTarget
-- **v2.2.8** — Fix MEDIA tag delivery (delivery.deliver processes payload.mediaUrls); fix WS reconnect state
-- **v2.2.5** — Fix uploadMedia endpoint, stop key, status validation, sendCard dynamic params
-- **v2.2.0** — Add 9 agent tools with contracts.tools + toolMetadata in manifest
-- **v2.0.0** — Channel kernel migration, initial release
+- **v2.9.11** — Add status adapter (probeAccount / buildChannelSummary / buildAccountSnapshot); `channels status --probe` shows "configured" and "works"; env var fallback for credentials (LANSENGER_APP_ID / LANSENGER_APP_SECRET / LANSENGER_API_GATEWAY_URL)
+- **v2.8.1** — Fix README: proper 4-step install flow; SKILL.md frontmatter (AgentSkills spec); channel identifier to lowercase `lansenger`
+- **v2.8.0** — OpenClaw `bindings[]` multi-agent routing; groupPolicy/groupAllowFrom/groups access control
+- **v2.7.0** — Plain-object tool registration; runtime state for client/target
+- **v2.6.0** — Register tools unconditionally; removed phantom delete_message
+- **v2.5.2** — formatText reminder support; AppArticles `summary` field; remove delete_message from tools.allow
+- **v2.5.1** — Rollback sysMsg/deleteMessage (API non-functional); revoke chatType bot/group only
+- **v2.4.0** — Fix message body assembly: wrap() excludes msgType; appArticles/linkCard field fixes
+- **v2.3.0** — Remove legacy group/private send; all routing via msgTarget
+- **v2.2.0** — Add 9 agent tools
+- **v2.0.0** — Initial release
 
 ## License
 

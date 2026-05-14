@@ -79,10 +79,6 @@
             "type": "string",
             "description": "Lansenger API Gateway URL / API 网关地址（默认：https://open.e.lanxin.cn/open/apigw）"
           },
-          "defaultAccount": {
-            "type": "string",
-            "description": "Default account ID for outbound routing when no accountId specified / 未指定 accountId 时的默认出站路由账号"
-          },
           "allowFrom": {
             "type": "array",
             "items": { "type": "string" },
@@ -179,6 +175,26 @@
           "sensitive": false,
           "help": "Default chat for cron/notifications. Auto-set from first p2p message / 定时任务/通知的默认聊天窗口，自动从第一条私聊消息设置"
         },
+        "groupPolicy": {
+          "label": "Group Policy / 群聊策略",
+          "enumLabels": {
+            "open": "Open (All Groups) / 所有群",
+            "allowlist": "Allowlist (Selected Groups) / 仅允许列表中的群",
+            "disabled": "Disabled / 禁止群消息"
+          },
+          "help": "Controls which groups can trigger the bot. Recommended: allowlist — only groups in groupAllowFrom will trigger the bot. / 控制哪些群可以触发机器人。推荐：allowlist — 仅 groupAllowFrom 中的群会触发机器人。"
+        },
+        "groupAllowFrom": {
+          "label": "Group Allow From / 允许的群聊",
+          "placeholder": "Add group chatId / 添加群聊 chatId",
+          "sensitive": false,
+          "help": "Group chat IDs allowed to trigger the bot (format: chatId). Only effective when groupPolicy is 'allowlist'. / 允许触发机器人的群聊 ID（格式：chatId）。仅在 groupPolicy 为 allowlist 时生效。"
+        },
+        "groups": {
+          "label": "Per-Group Config / 单群配置",
+          "sensitive": false,
+          "help": "Fine-tune individual groups: requireMention, enable/disable, restrict senders. Key is group chatId. / 逐群微调：requireMention、启用/禁用、限制发送者。key 为群聊 chatId。"
+        },
         "accounts": {
           "label": "Multi-Bot Accounts / 多机器人账号",
           "sensitive": false,
@@ -186,20 +202,23 @@
         },
         "accounts.*.appId": {
           "label": "App ID / 蓝信 App ID",
-          "sensitive": false
+          "sensitive": false,
+          "help": "Personal bot App ID for this account / 该账号的个人机器人 App ID"
         },
         "accounts.*.appSecret": {
           "label": "App Secret / 蓝信 App Secret",
-          "sensitive": true
+          "sensitive": true,
+          "help": "Personal bot App Secret for this account / 该账号的个人机器人 App Secret"
         },
         "accounts.*.apiGatewayUrl": {
           "label": "API Gateway URL / API 网关地址",
-          "sensitive": false
+          "sensitive": false,
+          "help": "Custom gateway for enterprise deployments / 企业私有化部署的自定义网关地址"
         },
-        
         "accounts.*.allowFrom": {
           "label": "Allow From / 允许的用户",
-          "sensitive": false
+          "sensitive": false,
+          "help": "Lansenger user IDs allowed to DM this bot / 允许私聊该机器人的蓝信用户 ID"
         },
         "accounts.*.dmSecurity": {
           "label": "DM Security / 私聊安全策略",
@@ -207,11 +226,13 @@
             "paired": "Paired (Recommended) / 配对验证（推荐）",
             "allowlist": "Allowlist Only / 仅允许列表用户",
             "open": "Open to All / 对所有人开放"
-          }
+          },
+          "help": "DM security policy for this bot / 该机器人的私聊安全策略"
         },
         "accounts.*.enabled": {
           "label": "Enabled / 启用",
-          "sensitive": false
+          "sensitive": false,
+          "help": "Enable/disable this bot account / 启用/禁用该机器人账号"
         }
       }
     }

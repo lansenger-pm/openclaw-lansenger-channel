@@ -2,15 +2,26 @@ import {
   createChatChannelPlugin,
   createChannelPluginBase,
 } from "openclaw/plugin-sdk/channel-core";
+import { DEFAULT_ACCOUNT_ID } from "openclaw/plugin-sdk/account-id";
 import type { OpenClawConfig, ChannelPlugin } from "openclaw/plugin-sdk/channel-core";
 import { createChannelApprovalCapability } from "openclaw/plugin-sdk/approval-runtime";
 import { createResolvedApproverActionAuthAdapter } from "openclaw/plugin-sdk/approval-auth-runtime";
+import {
+  buildProbeChannelStatusSummary,
+} from "openclaw/plugin-sdk/channel-status";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as crypto from "node:crypto";
 import { LansengerClient, DEFAULT_API_GATEWAY_URL } from "./client.js";
 import type { AppCardData, I18nAppCardData, ClientLogger } from "./client.js";
+import { getRunningClient, getLastInboundTime } from "./runtime.js";
+
+type LansengerProbeResult = {
+  ok: boolean;
+  appId?: string;
+  error?: string;
+};
 
 type LansengerAccount = {
   appId?: string;
@@ -36,9 +47,8 @@ type ResolvedAccount = {
 function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): ResolvedAccount {
   const section = (cfg.channels as Record<string, any>)?.["lansenger"];
   const accounts = section?.accounts as Record<string, LansengerAccount> | undefined;
-  const defaultAccount = section?.defaultAccount as string | undefined;
 
-  let resolvedAccountId: string | null = accountId ?? defaultAccount ?? null;
+  let resolvedAccountId: string | null = accountId ?? null;
   let account: LansengerAccount | undefined;
 
   if (resolvedAccountId && accounts && accounts[resolvedAccountId]) {
@@ -93,6 +103,26 @@ const approverAuth = createResolvedApproverActionAuthAdapter({
   resolveApprovers: resolveLansengerApprovers,
 });
 
+async function probeLansengerAccount(account: ResolvedAccount): Promise<LansengerProbeResult> {
+  if (!account.appId || !account.appSecret) {
+    return { ok: false, error: "missing credentials (appId, appSecret)" };
+  }
+  try {
+    const client = makeClient(account);
+    const token = await client.getAppToken();
+    if (token) {
+      return { ok: true, appId: account.appId };
+    }
+    return { ok: false, appId: account.appId, error: "Failed to obtain app token — verify appId/appSecret/apiGatewayUrl" };
+  } catch (err) {
+    return {
+      ok: false,
+      appId: account.appId,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
 const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
   base: createChannelPluginBase({
     id: "lansenger",
@@ -110,6 +140,21 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
     },
     config: {
       resolveAccount,
+      isConfigured: (account: ResolvedAccount, cfg: OpenClawConfig) => {
+        if (account.appId && account.appSecret) return true;
+        if ((account as any).configured === true) return true;
+        if ((account as any).appIdStatus === "available" && (account as any).appSecretStatus === "available") return true;
+        return false;
+      },
+      hasConfiguredState: ({ cfg, env }) => {
+        const section = (cfg.channels as Record<string, any>)?.["lansenger"];
+        const accounts = section?.accounts as Record<string, any> | undefined;
+        if (accounts && Object.keys(accounts).length > 0) {
+          return Object.values(accounts).some((a: any) => Boolean(a?.appId && a?.appSecret));
+        }
+        return Boolean(section?.appId && section?.appSecret) ||
+          Boolean(env?.LANSENGER_APP_ID && env?.LANSENGER_APP_SECRET);
+      },
       listAccountIds: (cfg) => {
         const section = (cfg.channels as Record<string, any>)?.["lansenger"];
         const accounts = section?.accounts as Record<string, any> | undefined;
@@ -131,14 +176,14 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
       inspectAccount: (cfg, accountId) => {
         const section = (cfg.channels as Record<string, any>)?.["lansenger"];
         const accounts = section?.accounts as Record<string, any> | undefined;
-        // Find account by appId
         let account: any = undefined;
-        if (section?.appId === accountId) {
+        if (!accountId || accountId === "default" || accountId === DEFAULT_ACCOUNT_ID) {
+          account = accounts?.default ?? section;
+        } else if (section?.appId === accountId) {
           account = section;
-        } else if (accounts && accountId && accounts[accountId]) {
+        } else if (accounts && accounts[accountId]) {
           account = accounts[accountId];
         } else if (accounts) {
-          // Search by appId value
           for (const [, acc] of Object.entries(accounts)) {
             if (acc?.appId === accountId) {
               account = acc;
@@ -146,11 +191,12 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
             }
           }
         }
+        const hasCreds = Boolean(account?.appId && account?.appSecret) || Boolean(process.env.LANSENGER_APP_ID && process.env.LANSENGER_APP_SECRET);
         return {
-          enabled: Boolean((account?.enabled ?? false) || (account?.appId && account?.appSecret)),
-          configured: Boolean(account?.appId && account?.appSecret),
-          appIdStatus: account?.appId ? "available" : "missing",
-          appSecretStatus: account?.appSecret ? "available" : "missing",
+          enabled: Boolean((account?.enabled ?? false) || hasCreds),
+          configured: hasCreds,
+          appIdStatus: account?.appId ? "available" : (process.env.LANSENGER_APP_ID ? "env" : "missing"),
+          appSecretStatus: account?.appSecret ? "available" : (process.env.LANSENGER_APP_SECRET ? "env" : "missing"),
           apiGatewayUrl: account?.apiGatewayUrl,
         };
       },
@@ -416,8 +462,42 @@ const lansengerOnboarding = {
   },
 };
 
-export const lansengerPlugin: ChannelPlugin<ResolvedAccount> = {
+export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResult> = {
   ...chatPlugin as any,
+  status: {
+    buildChannelSummary: ({ snapshot, cfg }) => {
+      const hasCfg = (() => {
+        const section = (cfg.channels as Record<string, any>)?.["lansenger"];
+        const configured = Boolean(section?.appId && section?.appSecret) || Boolean(process.env.LANSENGER_APP_ID && process.env.LANSENGER_APP_SECRET);
+        return configured;
+      })();
+      const patched = { ...snapshot, configured: snapshot.configured || hasCfg };
+      return buildProbeChannelStatusSummary(patched);
+    },
+    probeAccount: async ({ account, timeoutMs, cfg }) => {
+      return await probeLansengerAccount(account);
+    },
+    buildAccountSnapshot: ({ account, runtime, probe }) => {
+      const liveClient = getRunningClient();
+      const connected = liveClient?.isWsAlive() ?? false;
+      const lastInboundAt = getLastInboundTime();
+      return {
+        accountId: account.accountId ?? account.appId ?? DEFAULT_ACCOUNT_ID,
+        enabled: account.enabled,
+        configured: Boolean(account.appId && account.appSecret) || Boolean(process.env.LANSENGER_APP_ID && process.env.LANSENGER_APP_SECRET),
+        name: account.appId,
+        appId: account.appId,
+        running: connected || (runtime?.running ?? false),
+        lastStartAt: runtime?.lastStartAt ?? null,
+        lastStopAt: runtime?.lastStopAt ?? null,
+        lastError: runtime?.lastError ?? null,
+        probe,
+        connected,
+        lastConnectedAt: runtime?.lastConnectedAt ?? null,
+        lastInboundAt,
+      };
+    },
+  },
   onboarding: lansengerOnboarding as any,
   approvalCapability: createChannelApprovalCapability({
     authorizeActorAction: approverAuth.authorizeActorAction,

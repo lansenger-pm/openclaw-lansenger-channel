@@ -106,6 +106,8 @@ Ajoutez ces variables à `~/.openclaw/.env` ou à votre environnement :
 | `LANSENGER_APP_SECRET` | App Secret du bot personnel | `57E718CA1CAC20F2...` |
 | `LANSENGER_API_GATEWAY_URL` | URL de la passerelle API Lansenger (remplacement) | `https://open.e.lanxin.cn/open/apigw` |
 
+Les identifiants peuvent aussi être fournis via la configuration `openclaw.json` (voir Configuration optionnelle ci-dessous). Les variables d'environnement sont prioritaires si les deux sont définis.
+
 ### Obtenir les identifiants
 
 **Client Lansenger (desktop)** → **Contacts** → **Bots** → **Bots personnels** → cliquer sur l'icône **ℹ️**
@@ -211,8 +213,8 @@ openclaw gateway call lansenger.stop
 
 ```bash
 openclaw channels status
-# ou
-openclaw gateway call lansenger.status
+# Avec probe de santé (affiche « configured » et « works ») :
+openclaw channels status --probe
 ```
 
 ### Routage multi-agent
@@ -370,20 +372,17 @@ Les mises à jour de statut d'approbation utilisent le format DynamicMsg appCard
 
 ## Journal des modifications
 
-- **v2.8.1** — Correction README : flux d'installation en 4 étapes (installer → activer → configurer → redémarrer), suppression du hack de copie manuelle ; correction SKILL.md frontmatter (conformité AgentSkills : suppression version/category/trigger, ajout metadata.openclaw gating) ; identifiant de canal renommé en Lansenger
-- **v2.8.0** — Routage multi-agent via OpenClaw `bindings[]` (remplace `agentId` par compte) ; ajout groupPolicy/groupAllowFrom/groups pour contrôle d'accès groupe ; utilisation de `resolveAgentRoute` SDK pour routage inbound
-- **v2.7.2** — Ajout fichier VERSION ; complétion changelog dans 5 READMEs ; régénération package-lock.json
-- **v2.7.0** — Enregistrement des outils comme objets simples (pas fonctions factory) ; utilisation de l'état runtime pour client/target — correction de l'enregistrement des outils de plugin externe
-- **v2.6.0** — Enregistrement inconditionnel des outils (résolution du compte à l'exécution) ; suppression du ghost delete_message
-- **v2.5.2** — Correction guide SKILL/README mention (formatText supporte reminder) ; AppArticles utilise `summary` pas `description` ; suppression delete_message
-- **v2.5.1** — Retour sysMsg (non affiché) et deleteMessage (API 10000) ; revoke chatType bot/group uniquement
-- **v2.5.0** — Ajout sysMsg pour revoke, outil deleteMessage (retiré en 2.5.1)
-- **v2.4.0** — Correction assemblage message : wrap() exclut msgType de msgData ; appArticles msgType/summary/tableau plat ; linkCard champs requis
-- **v2.3.0** — Suppression sendGroupText/sendGroupFormatText ; routage via msgTarget
-- **v2.2.8** — Correction livraison MEDIA (delivery.deliver traite payload.mediaUrls) ; correction reconnect WS
-- **v2.2.5** — Correction uploadMedia endpoint, stop key, validation statut, sendCard params dynamiques
-- **v2.2.0** — Ajout 9 outils agent avec contracts.tools + toolMetadata
-- **v2.0.0** — Migration kernel canal, version initiale
+- **v2.9.11** — Adaptateur de statut (probeAccount / buildChannelSummary / buildAccountSnapshot) ; `channels status --probe` affiche « configured » et « works » ; repli sur variables d'environnement pour les identifiants (LANSENGER_APP_ID / LANSENGER_APP_SECRET / LANSENGER_API_GATEWAY_URL)
+- **v2.8.1** — Correction README : flux d'installation 4 étapes ; SKILL.md frontmatter (spec AgentSkills) ; identifiant de canal en minuscules `lansenger`
+- **v2.8.0** — Routage multi-agent OpenClaw `bindings[]` ; groupPolicy/groupAllowFrom/groups contrôle d'accès groupe
+- **v2.7.0** — Enregistrement outils comme objets simples ; état runtime pour client/target
+- **v2.6.0** — Enregistrement inconditionnel des outils ; suppression du ghost delete_message
+- **v2.5.2** — formatText reminder ; AppArticles champ `summary` ; suppression delete_message
+- **v2.5.1** — Retour sysMsg/deleteMessage (API non fonctionnel) ; revoke chatType bot/group uniquement
+- **v2.4.0** — Correction assemblage message : wrap() exclut msgType ; corrections appArticles/linkCard
+- **v2.3.0** — Suppression envoi groupe/privé legacy ; routage via msgTarget
+- **v2.2.0** — Ajout 9 outils agent
+- **v2.0.0** — Version initiale
 
 ## Licence
 
