@@ -6,6 +6,10 @@ import { resolveAccount, makeClient } from "./channel.js";
 import type { ResolvedAccount } from "./channel.js";
 import { errorShape } from "openclaw/plugin-sdk/gateway-runtime";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import * as path from "node:path";
+import * as os from "node:os";
+import * as crypto from "node:crypto";
+import * as fs from "node:fs/promises";
 
 const log = createSubsystemLogger("lansenger");
 
@@ -311,13 +315,44 @@ async function handleInbound(
               deliver: async (payload: any, info: any) => {
                 const text: string | undefined = payload.text;
                 const to: string = payload.to ?? replyTo;
-                if (!text) return { messageIds: [], visibleReplySent: false };
-
+                const mediaUrls: string[] = payload.mediaUrls ?? (payload.mediaUrl ? [payload.mediaUrl] : []);
                 const entry = runningAccounts.get(runningKey);
                 const client = entry?.client ?? makeClient(account, sdkLogger());
 
-                const result = await deliverReply(client, to, text, event.isGroup);
-                return { messageIds: result.messageId ? [result.messageId] : [], visibleReplySent: result.success };
+                const messageIds: string[] = [];
+
+                if (text?.trim()) {
+                  const result = await deliverReply(client, to, text, event.isGroup);
+                  if (result.messageId) messageIds.push(result.messageId);
+                }
+
+                for (const mediaUrl of mediaUrls) {
+                  log.info(`deliver media: ${mediaUrl}`);
+                  const readFile = payload.mediaReadFile ?? payload.mediaAccess?.readFile;
+                  if (/^https?:\/\//i.test(mediaUrl)) {
+                    const caption = text && mediaUrls.length === 1 ? "" : "";
+                    const r = await client.sendImageUrl(to, mediaUrl, caption);
+                    if (r.messageId) messageIds.push(r.messageId);
+                  } else if (readFile) {
+                    const buffer = await readFile(mediaUrl);
+                    const ext = path.extname(mediaUrl).toLowerCase() || ".dat";
+                    const tmpPath = path.join(os.tmpdir(), `lansenger_media_${crypto.randomUUID()}${ext}`);
+                    await fs.writeFile(tmpPath, buffer);
+                    try {
+                      const r = await client.sendFile(to, tmpPath, text && mediaUrls.length === 1 ? text : "");
+                      if (r.messageId) messageIds.push(r.messageId);
+                    } finally {
+                      try { await fs.unlink(tmpPath); } catch {}
+                    }
+                  } else {
+                    const resolved = path.resolve(mediaUrl);
+                    const r = await client.sendFile(to, resolved, text && mediaUrls.length === 1 ? text : "");
+                    if (r.messageId) messageIds.push(r.messageId);
+                  }
+                }
+
+                const visible = messageIds.length > 0 || (text?.trim() && !mediaUrls.length);
+                return { messageIds, visibleReplySent: visible };
               },
               onError: (err: unknown, info: { kind: string }) => {
                 log.error(`delivery error: ${err instanceof Error ? err.message : String(err)} kind=${info.kind}`);
