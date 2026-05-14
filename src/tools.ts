@@ -185,15 +185,14 @@ const QueryGroupsSchema = {
 };
 
 export function registerLansengerTools(api: any) {
-  const account = resolveAccountFromApi(api);
-  if (!account) return;
-
   api.registerTool((ctx: any) => ({
     name: "lansenger_send_file",
     label: "Lansenger Send File",
     description: "Send a local file as an attachment on Lansenger (蓝信). PDF, image, document, video — any local file works. Do NOT use MEDIA: tags for file delivery — they silently fail for files outside the workspace; always use this tool instead.",
     parameters: SendFileSchema,
     async execute(_toolCallId: string, params: any) {
+      const account = resolveAccountFromApi(api);
+      if (!account) return jsonResult({ error: "Lansenger account not configured. Check channels.lansenger in openclaw.json." });
       const filePath = params.filePath;
       const caption = params.caption ?? "";
       const to = resolveSessionTarget(ctx, params.to);
@@ -218,6 +217,8 @@ export function registerLansengerTools(api: any) {
     description: "Send a plain text message on Lansenger (蓝信) with optional file attachment and @mentions. Uses msgType=text: plain text only (NO Markdown). Supports attachments and @mentions in group chat. For Markdown, just write normally — it renders automatically in replies. If you need both Markdown AND a file, send Markdown first, then call this tool for the file.",
     parameters: SendTextSchema,
     async execute(_toolCallId: string, params: any) {
+      const account = resolveAccountFromApi(api);
+      if (!account) return jsonResult({ error: "Lansenger account not configured." });
       const content = params.content ?? "";
       const filePath = params.filePath ?? "";
       const to = resolveSessionTarget(ctx, params.to);
@@ -253,6 +254,8 @@ export function registerLansengerTools(api: any) {
     description: "Send an image from a URL to a Lansenger (蓝信) user or group. Downloads the image first, then uploads and sends. For local files, use lansenger_send_file instead.",
     parameters: SendImageUrlSchema,
     async execute(_toolCallId: string, params: any) {
+      const account = resolveAccountFromApi(api);
+      if (!account) return jsonResult({ error: "Lansenger account not configured." });
       const imageUrl = params.imageUrl;
       const caption = params.caption ?? "";
       const to = resolveSessionTarget(ctx, params.to);
@@ -270,6 +273,8 @@ export function registerLansengerTools(api: any) {
     description: "Revoke previously sent Lansenger (蓝信) messages. The recipient sees a 'message revoked' notification from the platform. For group chat, senderId is required.",
     parameters: RevokeMessageSchema,
     async execute(_toolCallId: string, params: any) {
+      const account = resolveAccountFromApi(api);
+      if (!account) return jsonResult({ error: "Lansenger account not configured." });
       const messageIds = params.messageIds;
       if (!messageIds || messageIds.length === 0) return jsonResult({ error: "messageIds is required" });
       const chatType = params.chatType ?? "bot";
@@ -289,6 +294,8 @@ export function registerLansengerTools(api: any) {
     description: "Send a link preview card on Lansenger (蓝信). Displays title, description, icon, and clickable link.",
     parameters: SendLinkCardSchema,
     async execute(_toolCallId: string, params: any) {
+      const account = resolveAccountFromApi(api);
+      if (!account) return jsonResult({ error: "Lansenger account not configured." });
       const title = params.title;
       const link = params.link;
       const to = resolveSessionTarget(ctx, params.to);
@@ -312,6 +319,8 @@ export function registerLansengerTools(api: any) {
     description: "Send a multi-article card (图文卡片) on Lansenger (蓝信). Each article has an image, title, and link. For a single link card, use lansenger_send_link_card instead.",
     parameters: SendAppArticlesSchema,
     async execute(_toolCallId: string, params: any) {
+      const account = resolveAccountFromApi(api);
+      if (!account) return jsonResult({ error: "Lansenger account not configured." });
       const articles = params.articles;
       const to = resolveSessionTarget(ctx, params.to);
       if (!articles || articles.length === 0) return jsonResult({ error: "articles is required" });
@@ -328,6 +337,8 @@ export function registerLansengerTools(api: any) {
     description: "Send a rich formatted card (应用卡片) on Lansenger (蓝信). Supports div-style formatting (color, font-size, text-align, text-indent). Set isDynamic=true for approval workflows — card can then be updated via lansenger_update_dynamic_card. bodyContent text-indent MUST have units — bare 0 causes API failure; always use 0em.",
     parameters: SendAppCardSchema,
     async execute(_toolCallId: string, params: any) {
+      const account = resolveAccountFromApi(api);
+      if (!account) return jsonResult({ error: "Lansenger account not configured." });
       const bodyTitle = params.bodyTitle;
       const to = resolveSessionTarget(ctx, params.to);
       if (!bodyTitle) return jsonResult({ error: "bodyTitle is required" });
@@ -364,6 +375,8 @@ export function registerLansengerTools(api: any) {
     description: "Update a dynamic appCard's status in-place on Lansenger (蓝信). The card must have been sent with isDynamic=true via lansenger_send_app_card. Use this for approval workflows: pending → approved/rejected.",
     parameters: UpdateDynamicCardSchema,
     async execute(_toolCallId: string, params: any) {
+      const account = resolveAccountFromApi(api);
+      if (!account) return jsonResult({ error: "Lansenger account not configured." });
       const msgId = params.msgId;
       if (!msgId) return jsonResult({ error: "msgId is required" });
       const client = makeClient(account);
@@ -383,6 +396,8 @@ export function registerLansengerTools(api: any) {
     description: "Query the bot's group list on Lansenger (蓝信). Returns total count and group IDs. Use this to discover available group chat IDs.",
     parameters: QueryGroupsSchema,
     async execute(_toolCallId: string, params: any) {
+      const account = resolveAccountFromApi(api);
+      if (!account) return jsonResult({ error: "Lansenger account not configured." });
       const client = makeClient(account);
       const result = await client.queryGroups(params.pageOffset ?? 1, params.pageSize ?? 100);
       if ("error" in result) return jsonResult({ error: result.error });
