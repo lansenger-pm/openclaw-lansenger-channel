@@ -88,6 +88,10 @@ export class LansengerClient {
     this.messageHandler = handler;
   }
 
+  isWsAlive(): boolean {
+    return this.ws !== null && this.ws.readyState === WebSocket.OPEN;
+  }
+
   async getAppToken(): Promise<string | null> {
     if (this.appToken && Date.now() / 1000 < this.tokenExpiry) {
       return this.appToken;

@@ -33,8 +33,14 @@ async function startAccount(api: OpenClawPluginApi, accountId?: string | null): 
 
   const key = account.appId || account.accountId || "__default__";
   if (runningAccounts.has(key)) {
-    log.info(`skip auto-start: already running (key=${key})`);
-    return true;
+    const entry = runningAccounts.get(key)!;
+    if (entry.client.isWsAlive()) {
+      log.info(`skip auto-start: WS alive (key=${key})`);
+      return true;
+    }
+    log.info(`auto-reconnect: WS dead, cleaning and reconnecting (key=${key})`);
+    try { await entry.client.disconnect(); } catch {}
+    runningAccounts.delete(key);
   }
 
   const client = makeClient(account, sdkLogger());
