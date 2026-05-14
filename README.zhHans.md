@@ -17,10 +17,10 @@
 - **文件/图片/语音附件** — 通过 `text` 消息类型上传媒体
 - **审批卡片** — 交互式审批流程，支持原地状态更新（待审批 → 已批准/已拒绝）
 - **语言检测** — 自动检测用户语言，提供本地化响应
-- **群消息路由** — 自动检测并路由到群聊/私聊 API
+- **msgTarget 自动路由** — 所有发送方法自动路由到群聊或私聊（DM）API；无需单独的群聊/私聊方法
 - **@提及** — 支持群聊中 @所有人 和 @指定用户
 - **入站媒体处理** — 下载图片/文件/语音，检测文件扩展名，向代理提供文件路径
-- **消息撤回** — 撤回已发送的消息
+- **消息撤回** — 撤回已发送的消息（chatType 仅支持 bot 和 group）
 - **自动启动** — 网关启动时自动连接所有已配置的机器人账户
 - **零核心修改** — 纯插件模式，`git diff HEAD` 保持纯净
 
@@ -32,6 +32,20 @@
 | `formatText`| ✓        | ✗     | ✗    |
 
 **默认策略**：优先使用 `formatText` 发送 Markdown 回复。附件使用 `text` 回退。
+
+## 代理工具（v2.5.1）
+
+| 工具 | 说明 |
+|------|------|
+| `lansenger_send_text` | 发送文本或 formatText 消息（默认 Markdown） |
+| `lansenger_send_file` | 发送文件/图片/视频/语音（工作区或外部路径） |
+| `lansenger_send_image_url` | 通过 URL 发送图片 |
+| `lansenger_send_link_card` | 发送富链接预览卡片 |
+| `lansenger_send_app_card` | 发送交互/审批卡片 |
+| `lansenger_send_app_articles` | 发送多文章卡片 |
+| `lansenger_update_dynamic_card` | 原地更新动态卡片状态 |
+| `lansenger_revoke_message` | 撤回已发送的消息 |
+| `lansenger_query_groups` | 查询可用群组 |
 
 ## 快速安装
 
@@ -253,7 +267,7 @@ openclaw config set bindings '[{"agentId":"main","match":{"channel":"lansenger",
 | `linkCard` | 富链接预览卡片 | `sendLinkCard()` | 出站 |
 | `i18nAppCard` | 保留供未来使用；5 语言卡片 | `sendI18nAppCard()` | 出站 |
 | `appCard` | 审批卡片（支持状态更新） | `sendAppCard()` | 出站 |
-| `appArticles` | 多文章卡片（图文卡片） | `sendAppArticles()` | 出站 |
+| `appArticles` | 多文章卡片（字段为 `summary`，不是 `description`） | `sendAppArticles()` | 出站 |
 | `position` | 位置/定位消息 | — | 仅入站 |
 | `card` | 通用卡片消息 | — | 仅入站 |
 | `sticker` | 贴纸/表情消息 | — | 仅入站 |
@@ -274,6 +288,20 @@ openclaw config set bindings '[{"agentId":"main","match":{"channel":"lansenger",
 - 状态更新（待审批 → 已通过/已拒绝）通过 **DynamicMsg** 原地更新卡片
 - 根据用户检测到的语言发送中文或英文卡片
 - **i18nAppCard**（5 语言）保留供未来使用，当前不用于审批
+
+## 重要说明
+
+- **无员工聊天概念** — 蓝信只有群聊和私聊（DM），没有"员工聊天"类型。
+- **撤回 chatType** — 仅支持 `bot` 和 `group`，没有 `staff` 类型。
+- **撤回无 sysMsg** — API 接受 `sysMsg` 但不会显示。
+- **无 deleteMessage** — API 返回错误码 10000，删除消息不可用。
+- **appArticles** — 使用 `summary` 字段（不是 `description`）。
+- **linkCard** — `description`、`iconLink`、`fromName`、`fromIconLink` 为必填字段（可用空字符串作为默认值）。
+- **msgTarget 自动路由** — 所有发送方法自动路由，无需单独调用群聊/私聊 API。
+- **网关 URL 因环境不同** — 如 `https://apigw.lx.qianxin.com` 用于奇安信部署，`https://open.e.lanxin.cn/open/apigw` 用于标准蓝信。
+- **reminder** — formatText 中可选字段；群聊中建议使用。提及用户时在文本中包含"@姓名"。
+- **媒体标签** — `<media>` 标签适用于工作区文件；外部路径请使用 `lansenger_send_file`。
+- **openclaw skill/message lansenger** — 这些 CLI 命令不存在；请使用代理工具。
 
 ## 开发
 

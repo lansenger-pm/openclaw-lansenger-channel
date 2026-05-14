@@ -17,10 +17,10 @@ Connecte OpenClaw à Lansenger — une plateforme de messagerie d'entreprise —
 - **Fichiers/Images/Vocaux** via le msgType `text` avec upload de médias
 - **Cartes d'approbation** — workflow d'approbation interactif avec mises à jour de statut en place (en attente → approuvé/refusé)
 - **Détection de langue** — détection automatique de la langue de l'utilisateur pour des réponses localisées
-- **Routage des messages de groupe** — détection automatique et routage vers les API groupe/privé
+- **Auto-routage via msgTarget** — toutes les méthodes d'envoi routent automatiquement vers les API groupe ou DM (privé) ; pas de méthodes groupe/privé séparées
 - **@Mentions** — support @tout et @utilisateurs spécifiques dans les chats de groupe
 - **Traitement des médias entrants** — téléchargement d'images/fichiers/vocaux, détection d'extension, chemins de fichiers pour l'agent
-- **Révocation de messages** — révoquer les messages précédemment envoyés
+- **Révocation de messages** — révoquer les messages précédemment envoyés (chatType : bot ou groupe uniquement)
 - **Démarrage automatique** — la passerelle connecte automatiquement tous les comptes de bots configurés au démarrage
 - **Zéro modification du core** — mode plugin pur, `git diff HEAD` reste INTACT
 
@@ -32,6 +32,20 @@ Connecte OpenClaw à Lansenger — une plateforme de messagerie d'entreprise —
 | `formatText`| ✓        | ✗        | ✗               |
 
 **Stratégie par défaut** : utiliser `formatText` en priorité pour les réponses Markdown. Revenir à `text` pour les pièces jointes.
+
+## Outils de l'agent (v2.5.1)
+
+| Outil | Description |
+|-------|-------------|
+| `lansenger_send_text` | Envoyer un message text ou formatText (Markdown par défaut) |
+| `lansenger_send_file` | Envoyer fichier/image/vidéo/audio (workspace ou chemin externe) |
+| `lansenger_send_image_url` | Envoyer une image par URL |
+| `lansenger_send_link_card` | Envoyer une carte de prévisualisation de lien |
+| `lansenger_send_app_card` | Envoyer une carte interactive/approbation |
+| `lansenger_send_app_articles` | Envoyer une carte multi-articles |
+| `lansenger_update_dynamic_card` | Mettre à jour le statut d'une carte dynamique |
+| `lansenger_revoke_message` | Révoquer un message précédemment envoyé |
+| `lansenger_query_groups` | Interroger les groupes disponibles |
 
 ## Installation rapide
 
@@ -254,7 +268,7 @@ openclaw config set bindings '[{"agentId":"main","match":{"channel":"lansenger",
 | `linkCard` | Carte de prévisualisation de lien enrichi | `sendLinkCard()` | Sortant |
 | `i18nAppCard` | Réservé pour usage futur ; carte 5 langues | `sendI18nAppCard()` | Sortant |
 | `appCard` | Cartes d'approbation avec mises à jour de statut | `sendAppCard()` | Sortant |
-| `appArticles` | Carte multi-articles | `sendAppArticles()` | Sortant |
+| `appArticles` | Carte multi-articles (champ : `summary`, pas `description`) | `sendAppArticles()` | Sortant |
 | `position` | Message de localisation/position | — | Entrant uniquement |
 | `card` | Message de carte générique | — | Entrant uniquement |
 | `sticker` | Message sticker/emoji | — | Entrant uniquement |
@@ -275,6 +289,20 @@ Le plugin supporte les cartes d'approbation :
 - Les mises à jour de statut (en attente → approuvé/refusé) mettent à jour la carte en place via **DynamicMsg**
 - La langue détectée automatiquement détermine la langue de la carte (chinois ou anglais)
 - **i18nAppCard** (5 langues) est réservé pour un usage futur et n'est pas utilisé pour l'approbation
+
+## Notes importantes
+
+- **Pas de chat staff** — Lansenger n'a que les chats de groupe et DM (privé) ; il n'existe pas de concept de « chat staff ».
+- **Révocation chatType** — uniquement `bot` ou `group` ; pas de chatType `staff`.
+- **Pas de sysMsg sur révocation** — l'API accepte `sysMsg` mais ne l'affiche pas.
+- **Pas de deleteMessage** — l'API retourne l'erreur 10000 ; la suppression n'est pas disponible.
+- **appArticles** — utilise le champ `summary` (pas `description`).
+- **linkCard** — `description`, `iconLink`, `fromName`, `fromIconLink` sont requis (chaînes vides comme valeurs par défaut).
+- **Auto-routage msgTarget** — toutes les méthodes d'envoi routent automatiquement ; pas d'appels API groupe/privé séparés.
+- **URL passerelle par environnement** — e.g. `https://apigw.lx.qianxin.com` pour 奇安信, `https://open.e.lanxin.cn/open/apigw` pour Lansenger standard.
+- **reminder** — champ optionnel dans formatText ; recommandé dans les chats de groupe. Inclure « @姓名 » dans le texte pour les mentions.
+- **Média** — les balises `<media>` fonctionnent pour les fichiers du workspace ; pour les chemins externes, utilisez `lansenger_send_file`.
+- **openclaw skill/message lansenger** — ces commandes CLI n'existent PAS ; utilisez les outils de l'agent.
 
 ## Développement
 

@@ -15,10 +15,10 @@ Lansenger (蓝信) channel plugin for OpenClaw — WebSocket inbound, HTTP API o
 - **File/Image/Voice attachments** via `text` msgType with media upload
 - **Approval cards** — interactive approval workflow with in-place status updates (pending → approved/denied)
 - **Language detection** — auto-detect user language from messages for localized responses
-- **Group message routing** — auto-detect and route to group/private chat APIs
+- **Auto-routing via msgTarget** — all send methods auto-route to group chat or DM (private chat); no separate group/private methods
 - **@Mentions** — support @all and @specific users in group chats
 - **Inbound media processing** — download images/files/voice, detect extension, provide file paths to agent
-- **Message revocation** — revoke previously sent messages
+- **Message revocation** — revoke previously sent messages (chatType: bot or group only)
 - **Auto-start** — gateway automatically connects all configured bot accounts on boot
 - **Zero core modification** — pure plugin mode, `git diff HEAD` stays PRISTINE
 
@@ -30,6 +30,20 @@ Lansenger (蓝信) channel plugin for OpenClaw — WebSocket inbound, HTTP API o
 | `formatText`| ✓        | ✗        | ✗           |
 
 **Default strategy**: Use `formatText` first for Markdown replies. Fall back to `text` for attachments.
+
+## Agent Tools (v2.5.1)
+
+| Tool | Description |
+|------|-------------|
+| `lansenger_send_text` | Send text or formatText message (Markdown by default) |
+| `lansenger_send_file` | Send file/image/video/voice from workspace or external path |
+| `lansenger_send_image_url` | Send image by URL |
+| `lansenger_send_link_card` | Send rich link preview card |
+| `lansenger_send_app_card` | Send interactive/approval card |
+| `lansenger_send_app_articles` | Send multi-article card |
+| `lansenger_update_dynamic_card` | Update dynamic card status in-place |
+| `lansenger_revoke_message` | Revoke a previously sent message |
+| `lansenger_query_groups` | Query available groups |
 
 ## Quick Install
 
@@ -253,7 +267,7 @@ openclaw config set bindings '[{"agentId":"main","match":{"channel":"lansenger",
 | `linkCard` | Rich link preview card | `sendLinkCard()` | Outbound |
 | `i18nAppCard` | Reserved for future use; 5-language card | `sendI18nAppCard()` | Outbound |
 | `appCard` | Approval cards with status updates | `sendAppCard()` | Outbound |
-| `appArticles` | Multi-article card | `sendAppArticles()` | Outbound |
+| `appArticles` | Multi-article card (field: `summary`, not `description`) | `sendAppArticles()` | Outbound |
 | `position` | Location/position message | — | Inbound-only |
 | `card` | Generic card message | — | Inbound-only |
 | `sticker` | Sticker/emoji message | — | Inbound-only |
@@ -274,6 +288,20 @@ The plugin supports approval workflow cards:
 - Status updates (pending → approved/denied) update the card in-place via **DynamicMsg**
 - Language detection: the card is sent in the user's detected language (Chinese or English)
 - **i18nAppCard** (5-language) is reserved for future use but not currently used for approval
+
+## Important Notes
+
+- **No staff chat** — Lansenger has group chat and DM (private chat) only; there is no "staff chat" concept.
+- **Revoke chatType** — only `bot` or `group`; no `staff` chatType.
+- **No sysMsg on revoke** — the API accepts `sysMsg` but does not display it.
+- **No deleteMessage** — the API returns error 10000; deletion is unavailable.
+- **appArticles** — uses `summary` field (not `description`).
+- **linkCard** — `description`, `iconLink`, `fromName`, `fromIconLink` are required (empty strings as defaults).
+- **msgTarget auto-routing** — all send methods route automatically; no separate group/private API calls.
+- **Gateway URL per-environment** — e.g. `https://apigw.lx.qianxin.com` for 奇安信, `https://open.e.lanxin.cn/open/apigw` for standard Lansenger.
+- **reminder** — optional in formatText; recommended in group chat. Include "@姓名" in text when mentioning.
+- **Media** — `<media>` tags work for workspace files; for external paths use `lansenger_send_file`.
+- **openclaw skill/message lansenger** — these CLI commands do NOT exist; use agent tools instead.
 
 ## Development
 

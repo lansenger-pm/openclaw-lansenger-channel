@@ -17,10 +17,10 @@
 - **檔案/圖片/語音附件** — 透過 `text` msgType 上傳媒體
 - **審批卡片**——互動式審批流程，支援原地狀態更新（待審批 → 已通過/已拒絕）
 - **語言偵測** — 自動偵測使用者語言，提供本地化回應
-- **群組訊息路由** — 自動偵測並路由至群組/私聊 API
+- **msgTarget 自動路由** — 所有發送方法自動路由至群組聊天或私聊（DM）API；無需分別的群組/私聊方法
 - **@提及** — 支援群組聊天中 @所有人 和 @指定使用者
 - **入站媒體處理** — 下載圖片/檔案/語音，偵測副檔名，向代理提供檔案路徑
-- **訊息撤回** — 撤回已發送的訊息
+- **訊息撤回** — 撤回已發送的訊息（chatType 僅支援 bot 與 group）
 - **自動啟動** — 網關啟動時自動連接所有已設定的機械人帳戶
 - **零核心修改** — 純插件模式，`git diff HEAD` 保持 PRISTINE
 
@@ -32,6 +32,20 @@
 | `formatText`| ✓        | ✗     | ✗    |
 
 **預設策略**：優先使用 `formatText` 發送 Markdown 回覆。附件使用 `text` 回退。
+
+## 代理工具（v2.5.1）
+
+| 工具 | 說明 |
+|------|------|
+| `lansenger_send_text` | 發送文字或 formatText 訊息（預設 Markdown） |
+| `lansenger_send_file` | 發送檔案/圖片/影片/語音（工作區或外部路徑） |
+| `lansenger_send_image_url` | 透過 URL 發送圖片 |
+| `lansenger_send_link_card` | 發送富連結預覽卡片 |
+| `lansenger_send_app_card` | 發送互動/審批卡片 |
+| `lansenger_send_app_articles` | 發送多文章卡片 |
+| `lansenger_update_dynamic_card` | 原地更新動態卡片狀態 |
+| `lansenger_revoke_message` | 撤回已發送的訊息 |
+| `lansenger_query_groups` | 查詢可用群組 |
 
 ## 快速安裝
 
@@ -254,7 +268,7 @@ openclaw config set bindings '[{"agentId":"main","match":{"channel":"lansenger",
 | `linkCard` | 富連結預覽卡片 | `sendLinkCard()` | 出站 |
 | `i18nAppCard` | 保留供未來使用；5 語言卡片 | `sendI18nAppCard()` | 出站 |
 | `appCard` | 審批卡片（支援狀態更新） | `sendAppCard()` | 出站 |
-| `appArticles` | 多文章卡片 | `sendAppArticles()` | 出站 |
+| `appArticles` | 多文章卡片（欄位為 `summary`，不是 `description`） | `sendAppArticles()` | 出站 |
 | `position` | 位置/定位訊息 | — | 僅入站 |
 | `card` | 通用卡片訊息 | — | 僅入站 |
 | `sticker` | 貼紙/表情訊息 | — | 僅入站 |
@@ -275,6 +289,20 @@ openclaw config set bindings '[{"agentId":"main","match":{"channel":"lansenger",
 - 狀態更新（待審批 → 已通過/已拒絕）透過 **DynamicMsg** 原地更新卡片
 - 根據使用者偵測到的語言發送中文或英文卡片
 - **i18nAppCard**（5 語言）保留供未來使用，目前不用於審批
+
+## 重要說明
+
+- **無員工聊天概念** — 藍信僅有群組聊天與私聊（DM），沒有「員工聊天」類型。
+- **撤回 chatType** — 僅支援 `bot` 與 `group`，沒有 `staff` 類型。
+- **撤回無 sysMsg** — API 接受 `sysMsg` 但不會顯示。
+- **無 deleteMessage** — API 回傳錯誤碼 10000，刪除訊息不可用。
+- **appArticles** — 使用 `summary` 欄位（不是 `description`）。
+- **linkCard** — `description`、`iconLink`、`fromName`、`fromIconLink` 為必填欄位（可用空字串作為預設值）。
+- **msgTarget 自動路由** — 所有發送方法自動路由，無需分別呼叫群組/私聊 API。
+- **網關 URL 因環境不同** — 如 `https://apigw.lx.qianxin.com` 用於奇安信部署，`https://open.e.lanxin.cn/open/apigw` 用於標準藍信。
+- **reminder** — formatText 中可選欄位；群組聊天中建議使用。提及使用者時在文字中包含「@姓名」。
+- **媒體標籤** — `<media>` 標籤適用於工作區檔案；外部路徑請使用 `lansenger_send_file`。
+- **openclaw skill/message lansenger** — 這些 CLI 命令不存在；請使用代理工具。
 
 ## 開發
 
