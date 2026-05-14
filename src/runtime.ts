@@ -27,6 +27,7 @@ type RunningAccount = {
 };
 
 const runningAccounts = new Map<string, RunningAccount>();
+const lastInboundChatIds = new Map<string, string>();
 
 async function startAccount(api: OpenClawPluginApi, accountId?: string | null): Promise<boolean> {
   const account = resolveAccount(api.config, accountId);
@@ -61,6 +62,21 @@ async function startAccount(api: OpenClawPluginApi, accountId?: string | null): 
   runningAccounts.set(key, { accountId: account.accountId, account, client });
   log.info(`auto-started: key=${key} (accountId=${account.accountId})`);
   return true;
+}
+
+export function getLastInboundChatId(): string {
+  for (const [, chatId] of lastInboundChatIds) return chatId;
+  return "";
+}
+
+export function getRunningClient(): LansengerClient | null {
+  for (const [, entry] of runningAccounts) return entry.client;
+  return null;
+}
+
+export function getRunningAccount(): ResolvedAccount | null {
+  for (const [, entry] of runningAccounts) return entry.account;
+  return null;
 }
 
 export function startLansengerGateway(api: OpenClawPluginApi): void {
@@ -266,6 +282,7 @@ async function handleInbound(
   const agentId = account.agentId ?? "default";
   const sessionKey = `lansenger:${event.chatId}:${chatType}`;
   const replyTo = event.chatId;
+  lastInboundChatIds.set(runningKey, event.chatId);
 
   log.info(`inbound: ${chatType} from=${event.senderId} bot=${account.appId.slice(0, 20)}... agent=${agentId}`);
 

@@ -1,38 +1,28 @@
 import { resolveAccount, makeClient } from "./channel.js";
 import type { ResolvedAccount } from "./channel.js";
+import { getLastInboundChatId, getRunningClient, getRunningAccount } from "./runtime.js";
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
 
-function resolveAccountFromApi(api: any): ResolvedAccount | null {
-  if (!api.config) return null;
-  const section = (api.config.channels as Record<string, any>)?.["lansenger"];
+function resolveAccountFromConfig(config: any): ResolvedAccount | null {
+  if (!config) return null;
+  const section = (config.channels as Record<string, any>)?.["lansenger"];
   if (!section) return null;
   const accounts = section.accounts as Record<string, any> | undefined;
   let account: ResolvedAccount;
   if (accounts && Object.keys(accounts).length > 0) {
     const firstKey = Object.keys(accounts)[0];
-    account = resolveAccount(api.config, firstKey);
+    account = resolveAccount(config, firstKey);
   } else {
-    account = resolveAccount(api.config, undefined);
+    account = resolveAccount(config, undefined);
   }
   if (!account.enabled || !account.appId) return null;
   return account;
 }
 
-function resolveSessionTarget(ctx: any, explicitTo?: string): string {
-  const sessionChatId = ctx.sessionKey
-    ? (() => {
-        const parts = String(ctx.sessionKey).split(":");
-        if (parts.length >= 3 && parts[2]) return parts[2];
-        return "";
-      })()
-    : "";
-  if (explicitTo) {
-    if (explicitTo.toLowerCase() === sessionChatId.toLowerCase()) return sessionChatId;
-    return explicitTo;
-  }
-  if (ctx.to) return ctx.to;
-  return sessionChatId || String(ctx.requesterSenderId ?? "");
+function resolveTarget(to?: string): string {
+  if (to) return to;
+  return getLastInboundChatId();
 }
 
 function jsonResult(data: unknown) {
@@ -44,7 +34,7 @@ const SendFileSchema = {
   properties: {
     filePath: { type: "string", description: "Absolute local path to the file to send. Any path works — Documents, Desktop, workspace, /tmp, etc." },
     caption: { type: "string", description: "Plain-text caption for the file (Markdown will NOT render on Lansenger). Optional." },
-    to: { type: "string", description: "LEAVE EMPTY — the current conversation target is auto-detected. Only fill this if you need to send to a different chat." },
+    to: { type: "string", description: "Chat ID to send to. Leave empty to auto-detect from current session." },
   },
   required: ["filePath"],
 };
@@ -54,7 +44,7 @@ const SendTextSchema = {
   properties: {
     content: { type: "string", description: "Plain text content. No Markdown support — use lansenger_send_file for file delivery, Markdown renders automatically in normal replies." },
     filePath: { type: "string", description: "Optional local file/image/video to attach. If provided, content becomes the caption." },
-    to: { type: "string", description: "LEAVE EMPTY — the current conversation target is auto-detected. Only fill this if you need to send to a different chat." },
+    to: { type: "string", description: "Chat ID to send to. Leave empty to auto-detect from current session." },
     reminderAll: { type: "boolean", description: "@mention all members in a group (only works in group chat, not DMs)." },
     reminderUserIds: { type: "array", items: { type: "string" }, description: "List of user IDs to @mention (group chat only). Include '@姓名' in the message text so users can see who was mentioned." },
   },
@@ -66,7 +56,7 @@ const SendImageUrlSchema = {
   properties: {
     imageUrl: { type: "string", description: "URL of the image to download and send." },
     caption: { type: "string", description: "Optional plain-text caption (no Markdown)." },
-    to: { type: "string", description: "LEAVE EMPTY — the current conversation target is auto-detected. Only fill this if you need to send to a different chat." },
+    to: { type: "string", description: "Chat ID to send to. Leave empty to auto-detect from current session." },
   },
   required: ["imageUrl"],
 };
@@ -91,7 +81,7 @@ const SendLinkCardSchema = {
     pcLink: { type: "string", description: "PC client link URL." },
     fromName: { type: "string", description: "Card source name (required by API, defaults to empty)." },
     fromIconLink: { type: "string", description: "Card source icon URL (required by API, defaults to empty)." },
-    to: { type: "string", description: "LEAVE EMPTY — the current conversation target is auto-detected. Only fill this if you need to send to a different chat." },
+    to: { type: "string", description: "Chat ID to send to. Leave empty to auto-detect from current session." },
   },
   required: ["title", "link"],
 };
@@ -114,7 +104,7 @@ const SendAppArticlesSchema = {
       },
       description: "List of article entries. Each must have imgUrl, title, url.",
     },
-    to: { type: "string", description: "LEAVE EMPTY — the current conversation target is auto-detected. Only fill this if you need to send to a different chat." },
+    to: { type: "string", description: "Chat ID to send to. Leave empty to auto-detect from current session." },
   },
   required: ["articles"],
 };
@@ -149,7 +139,7 @@ const SendAppCardSchema = {
     cardLink: { type: "string", description: "Card click-through link." },
     staffId: { type: "string", description: "Staff openId for showing sender avatar." },
     headIconUrl: { type: "string", description: "Header icon URL." },
-    to: { type: "string", description: "LEAVE EMPTY — the current conversation target is auto-detected. Only fill this if you need to send to a different chat." },
+    to: { type: "string", description: "Chat ID to send to. Leave empty to auto-detect from current session." },
   },
   required: ["bodyTitle"],
 };
@@ -184,20 +174,30 @@ const QueryGroupsSchema = {
   },
 };
 
+function makeToolClient(): { client: LansengerClient; account: ResolvedAccount } | null {
+  const account = getRunningAccount();
+  if (!account) return null;
+  const client = getRunningClient();
+  if (!client) return null;
+  return { client, account };
+}
+
+import { LansengerClient } from "./client.js";
+
 export function registerLansengerTools(api: any) {
-  api.registerTool((ctx: any) => ({
+  api.registerTool({
     name: "lansenger_send_file",
     label: "Lansenger Send File",
     description: "Send a local file as an attachment on Lansenger (蓝信). PDF, image, document, video — any local file works. Do NOT use MEDIA: tags for file delivery — they silently fail for files outside the workspace; always use this tool instead.",
     parameters: SendFileSchema,
     async execute(_toolCallId: string, params: any) {
-      const account = resolveAccountFromApi(api);
-      if (!account) return jsonResult({ error: "Lansenger account not configured. Check channels.lansenger in openclaw.json." });
+      const tc = makeToolClient();
+      if (!tc) return jsonResult({ error: "Lansenger account not configured or not running." });
       const filePath = params.filePath;
       const caption = params.caption ?? "";
-      const to = resolveSessionTarget(ctx, params.to);
+      const to = resolveTarget(params.to);
       if (!filePath) return jsonResult({ error: "filePath is required" });
-      if (!to) return jsonResult({ error: "No target specified and no active session context. Provide a 'to' parameter." });
+      if (!to) return jsonResult({ error: "No target specified. Provide a 'to' parameter (chat ID)." });
       const resolved = path.resolve(filePath);
       try {
         const stat = await fs.stat(resolved);
@@ -205,25 +205,24 @@ export function registerLansengerTools(api: any) {
       } catch {
         return jsonResult({ error: `File not found: ${filePath}` });
       }
-      const client = makeClient(account);
-      const result = await client.sendFile(to, resolved, caption);
+      const result = await tc.client.sendFile(to, resolved, caption);
       return jsonResult({ success: result.success, messageId: result.messageId ?? null });
     },
-  }), { name: "lansenger_send_file" });
+  });
 
-  api.registerTool((ctx: any) => ({
+  api.registerTool({
     name: "lansenger_send_text",
     label: "Lansenger Send Text",
     description: "Send a plain text message on Lansenger (蓝信) with optional file attachment and @mentions. Uses msgType=text: plain text only (NO Markdown). Supports attachments and @mentions in group chat. For Markdown, just write normally — it renders automatically in replies. If you need both Markdown AND a file, send Markdown first, then call this tool for the file.",
     parameters: SendTextSchema,
     async execute(_toolCallId: string, params: any) {
-      const account = resolveAccountFromApi(api);
-      if (!account) return jsonResult({ error: "Lansenger account not configured." });
+      const tc = makeToolClient();
+      if (!tc) return jsonResult({ error: "Lansenger account not configured or not running." });
       const content = params.content ?? "";
       const filePath = params.filePath ?? "";
-      const to = resolveSessionTarget(ctx, params.to);
-      if (!to) return jsonResult({ error: "No target specified and no active session context." });
-      const client = makeClient(account);
+      const to = resolveTarget(params.to);
+      if (!to) return jsonResult({ error: "No target specified. Provide a 'to' parameter (chat ID)." });
+      const client = tc.client;
       if (filePath) {
         const resolved = path.resolve(filePath);
         try {
@@ -246,35 +245,34 @@ export function registerLansengerTools(api: any) {
       const result = await client.sendText(to, content, reminder);
       return jsonResult({ success: result.success, messageId: result.messageId ?? null });
     },
-  }), { name: "lansenger_send_text" });
+  });
 
-  api.registerTool((ctx: any) => ({
+  api.registerTool({
     name: "lansenger_send_image_url",
     label: "Lansenger Send Image URL",
     description: "Send an image from a URL to a Lansenger (蓝信) user or group. Downloads the image first, then uploads and sends. For local files, use lansenger_send_file instead.",
     parameters: SendImageUrlSchema,
     async execute(_toolCallId: string, params: any) {
-      const account = resolveAccountFromApi(api);
-      if (!account) return jsonResult({ error: "Lansenger account not configured." });
+      const tc = makeToolClient();
+      if (!tc) return jsonResult({ error: "Lansenger account not configured or not running." });
       const imageUrl = params.imageUrl;
       const caption = params.caption ?? "";
-      const to = resolveSessionTarget(ctx, params.to);
+      const to = resolveTarget(params.to);
       if (!imageUrl) return jsonResult({ error: "imageUrl is required" });
-      if (!to) return jsonResult({ error: "No target specified and no active session context." });
-      const client = makeClient(account);
-      const result = await client.sendImageUrl(to, imageUrl, caption);
+      if (!to) return jsonResult({ error: "No target specified. Provide a 'to' parameter (chat ID)." });
+      const result = await tc.client.sendImageUrl(to, imageUrl, caption);
       return jsonResult({ success: result.success, messageId: result.messageId ?? null });
     },
-  }), { name: "lansenger_send_image_url" });
+  });
 
-  api.registerTool((ctx: any) => ({
+  api.registerTool({
     name: "lansenger_revoke_message",
     label: "Lansenger Revoke Message",
     description: "Revoke previously sent Lansenger (蓝信) messages. The recipient sees a 'message revoked' notification from the platform. For group chat, senderId is required.",
     parameters: RevokeMessageSchema,
     async execute(_toolCallId: string, params: any) {
-      const account = resolveAccountFromApi(api);
-      if (!account) return jsonResult({ error: "Lansenger account not configured." });
+      const tc = makeToolClient();
+      if (!tc) return jsonResult({ error: "Lansenger account not configured or not running." });
       const messageIds = params.messageIds;
       if (!messageIds || messageIds.length === 0) return jsonResult({ error: "messageIds is required" });
       const chatType = params.chatType ?? "bot";
@@ -282,27 +280,25 @@ export function registerLansengerTools(api: any) {
       if (chatType === "group" && !senderId) {
         return jsonResult({ error: "chatType='group' requires senderId" });
       }
-      const client = makeClient(account);
-      const result = await client.revokeMessage(messageIds, chatType, senderId);
+      const result = await tc.client.revokeMessage(messageIds, chatType, senderId);
       return jsonResult({ success: result.success });
     },
-  }), { name: "lansenger_revoke_message" });
+  });
 
-  api.registerTool((ctx: any) => ({
+  api.registerTool({
     name: "lansenger_send_link_card",
     label: "Lansenger Send Link Card",
     description: "Send a link preview card on Lansenger (蓝信). Displays title, description, icon, and clickable link.",
     parameters: SendLinkCardSchema,
     async execute(_toolCallId: string, params: any) {
-      const account = resolveAccountFromApi(api);
-      if (!account) return jsonResult({ error: "Lansenger account not configured." });
+      const tc = makeToolClient();
+      if (!tc) return jsonResult({ error: "Lansenger account not configured or not running." });
       const title = params.title;
       const link = params.link;
-      const to = resolveSessionTarget(ctx, params.to);
+      const to = resolveTarget(params.to);
       if (!title || !link) return jsonResult({ error: "title and link are required" });
-      if (!to) return jsonResult({ error: "No target specified and no active session context." });
-      const client = makeClient(account);
-      const result = await client.sendLinkCard(to, title, link, {
+      if (!to) return jsonResult({ error: "No target specified. Provide a 'to' parameter (chat ID)." });
+      const result = await tc.client.sendLinkCard(to, title, link, {
         description: params.description ?? "",
         iconLink: params.iconLink ?? "",
         pcLink: params.pcLink ?? "",
@@ -311,39 +307,37 @@ export function registerLansengerTools(api: any) {
       });
       return jsonResult({ success: result.success, messageId: result.messageId ?? null });
     },
-  }), { name: "lansenger_send_link_card" });
+  });
 
-  api.registerTool((ctx: any) => ({
+  api.registerTool({
     name: "lansenger_send_app_articles",
     label: "Lansenger Send App Articles",
     description: "Send a multi-article card (图文卡片) on Lansenger (蓝信). Each article has an image, title, and link. For a single link card, use lansenger_send_link_card instead.",
     parameters: SendAppArticlesSchema,
     async execute(_toolCallId: string, params: any) {
-      const account = resolveAccountFromApi(api);
-      if (!account) return jsonResult({ error: "Lansenger account not configured." });
+      const tc = makeToolClient();
+      if (!tc) return jsonResult({ error: "Lansenger account not configured or not running." });
       const articles = params.articles;
-      const to = resolveSessionTarget(ctx, params.to);
+      const to = resolveTarget(params.to);
       if (!articles || articles.length === 0) return jsonResult({ error: "articles is required" });
-      if (!to) return jsonResult({ error: "No target specified and no active session context." });
-      const client = makeClient(account);
-      const result = await client.sendAppArticles(to, articles);
+      if (!to) return jsonResult({ error: "No target specified. Provide a 'to' parameter (chat ID)." });
+      const result = await tc.client.sendAppArticles(to, articles);
       return jsonResult({ success: result.success, messageId: result.messageId ?? null });
     },
-  }), { name: "lansenger_send_app_articles" });
+  });
 
-  api.registerTool((ctx: any) => ({
+  api.registerTool({
     name: "lansenger_send_app_card",
     label: "Lansenger Send App Card",
     description: "Send a rich formatted card (应用卡片) on Lansenger (蓝信). Supports div-style formatting (color, font-size, text-align, text-indent). Set isDynamic=true for approval workflows — card can then be updated via lansenger_update_dynamic_card. bodyContent text-indent MUST have units — bare 0 causes API failure; always use 0em.",
     parameters: SendAppCardSchema,
     async execute(_toolCallId: string, params: any) {
-      const account = resolveAccountFromApi(api);
-      if (!account) return jsonResult({ error: "Lansenger account not configured." });
+      const tc = makeToolClient();
+      if (!tc) return jsonResult({ error: "Lansenger account not configured or not running." });
       const bodyTitle = params.bodyTitle;
-      const to = resolveSessionTarget(ctx, params.to);
+      const to = resolveTarget(params.to);
       if (!bodyTitle) return jsonResult({ error: "bodyTitle is required" });
-      if (!to) return jsonResult({ error: "No target specified and no active session context." });
-      const client = makeClient(account);
+      if (!to) return jsonResult({ error: "No target specified. Provide a 'to' parameter (chat ID)." });
       const cardData: Record<string, unknown> = {
         bodyTitle,
         headTitle: params.headTitle ?? "",
@@ -364,23 +358,22 @@ export function registerLansengerTools(api: any) {
           colour: "rgba(0,0,0,.47)",
         };
       }
-      const result = await client.sendAppCard(to, cardData as any);
+      const result = await tc.client.sendAppCard(to, cardData as any);
       return jsonResult({ success: result.success, messageId: result.messageId ?? null });
     },
-  }), { name: "lansenger_send_app_card" });
+  });
 
-  api.registerTool((ctx: any) => ({
+  api.registerTool({
     name: "lansenger_update_dynamic_card",
     label: "Lansenger Update Dynamic Card",
     description: "Update a dynamic appCard's status in-place on Lansenger (蓝信). The card must have been sent with isDynamic=true via lansenger_send_app_card. Use this for approval workflows: pending → approved/rejected.",
     parameters: UpdateDynamicCardSchema,
     async execute(_toolCallId: string, params: any) {
-      const account = resolveAccountFromApi(api);
-      if (!account) return jsonResult({ error: "Lansenger account not configured." });
+      const tc = makeToolClient();
+      if (!tc) return jsonResult({ error: "Lansenger account not configured or not running." });
       const msgId = params.msgId;
       if (!msgId) return jsonResult({ error: "msgId is required" });
-      const client = makeClient(account);
-      const result = await client.updateDynamicCard(
+      const result = await tc.client.updateDynamicCard(
         msgId,
         params.headStatusInfo,
         params.links,
@@ -388,20 +381,19 @@ export function registerLansengerTools(api: any) {
       );
       return jsonResult({ success: result.success });
     },
-  }), { name: "lansenger_update_dynamic_card" });
+  });
 
-  api.registerTool((ctx: any) => ({
+  api.registerTool({
     name: "lansenger_query_groups",
     label: "Lansenger Query Groups",
     description: "Query the bot's group list on Lansenger (蓝信). Returns total count and group IDs. Use this to discover available group chat IDs.",
     parameters: QueryGroupsSchema,
     async execute(_toolCallId: string, params: any) {
-      const account = resolveAccountFromApi(api);
-      if (!account) return jsonResult({ error: "Lansenger account not configured." });
-      const client = makeClient(account);
-      const result = await client.queryGroups(params.pageOffset ?? 1, params.pageSize ?? 100);
+      const tc = makeToolClient();
+      if (!tc) return jsonResult({ error: "Lansenger account not configured or not running." });
+      const result = await tc.client.queryGroups(params.pageOffset ?? 1, params.pageSize ?? 100);
       if ("error" in result) return jsonResult({ error: result.error });
       return jsonResult({ success: true, totalGroupIds: result.totalGroupIds, groupIds: result.groupIds });
     },
-  }), { name: "lansenger_query_groups" });
+  });
 }
