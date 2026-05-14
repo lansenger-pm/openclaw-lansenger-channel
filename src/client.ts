@@ -126,11 +126,11 @@ export class LansengerClient {
     const token = await this.getAppToken();
     if (!token) return { success: false, error: "No access token" };
     try {
-      const url = `${this.apiGatewayUrl}${API_ENDPOINTS.privateMessage}?app_token=${token}`;
+      const { url, wrap } = this.msgTarget(chatId);
       const textData: Record<string, unknown> = { content };
       if (reminder) textData.reminder = reminder;
-      const payload = { userIdList: [chatId], msgType: "text", msgData: { text: textData } };
-      const data = await this.postJson(url, payload);
+      const payload = wrap({ text: textData, msgType: "text" });
+      const data = await this.postJson(`${url}?app_token=${token}`, payload);
       if (data.errCode !== 0) {
         this.log.error(`sendText: errCode=${data.errCode} errMsg=${data.errMsg ?? "n/a"}`);
         return { success: false, error: data.errMsg ?? undefined };
@@ -146,13 +146,9 @@ export class LansengerClient {
     const token = await this.getAppToken();
     if (!token) return { success: false, error: "No access token" };
     try {
-      const url = `${this.apiGatewayUrl}${API_ENDPOINTS.privateMessage}?app_token=${token}`;
-      const payload = {
-        userIdList: [chatId],
-        msgType: "formatText",
-        msgData: { formatText: { formatType: 1, text: content } },
-      };
-      const data = await this.postJson(url, payload);
+      const { url, wrap } = this.msgTarget(chatId);
+      const payload = wrap({ formatText: { formatType: 1, text: content }, msgType: "formatText" });
+      const data = await this.postJson(`${url}?app_token=${token}`, payload);
       if (data.errCode !== 0) {
         this.log.error(`sendFormatText: errCode=${data.errCode} errMsg=${data.errMsg ?? "n/a"}`);
         return { success: false, error: data.errMsg ?? undefined };
@@ -168,11 +164,11 @@ export class LansengerClient {
     const token = await this.getAppToken();
     if (!token) return { success: false, error: "No access token" };
     try {
-      const url = `${this.apiGatewayUrl}${API_ENDPOINTS.privateMessage}?app_token=${token}`;
+      const { url, wrap } = this.msgTarget(chatId);
       const textData: Record<string, unknown> = { content, mediaType, mediaIds };
       if (reminder) textData.reminder = reminder;
-      const payload = { userIdList: [chatId], msgType: "text", msgData: { text: textData } };
-      const data = await this.postJson(url, payload);
+      const payload = wrap({ text: textData, msgType: "text" });
+      const data = await this.postJson(`${url}?app_token=${token}`, payload);
       if (data.errCode !== 0) return { success: false, error: data.errMsg ?? undefined };
       return { success: true, messageId: data.data?.msgId ?? undefined, rawResponse: data };
     } catch (e: any) {
@@ -246,23 +242,20 @@ export class LansengerClient {
     const token = await this.getAppToken();
     if (!token) return { success: false, error: "No access token" };
     try {
-      const url = `${this.apiGatewayUrl}${API_ENDPOINTS.privateMessage}?app_token=${token}`;
-      const payload = {
-        userIdList: [chatId],
-        msgType: "linkCard",
-        msgData: {
-          linkCard: {
-            title,
-            link,
-            description: options?.description ?? "",
-            iconLink: options?.iconLink ?? "",
-            pcLink: options?.pcLink ?? "",
-            fromName: options?.fromName ?? "",
-            fromIconLink: options?.fromIconLink ?? "",
-          },
+      const { url, wrap } = this.msgTarget(chatId);
+      const payload = wrap({
+        linkCard: {
+          title,
+          link,
+          description: options?.description ?? "",
+          iconLink: options?.iconLink ?? "",
+          pcLink: options?.pcLink ?? "",
+          fromName: options?.fromName ?? "",
+          fromIconLink: options?.fromIconLink ?? "",
         },
-      };
-      const data = await this.postJson(url, payload);
+        msgType: "linkCard",
+      });
+      const data = await this.postJson(`${url}?app_token=${token}`, payload);
       if (data.errCode !== 0) return { success: false, error: data.errMsg ?? undefined };
       return { success: true, messageId: data.data?.msgId ?? undefined, rawResponse: data };
     } catch (e: any) {
@@ -274,13 +267,9 @@ export class LansengerClient {
     const token = await this.getAppToken();
     if (!token) return { success: false, error: "No access token" };
     try {
-      const url = `${this.apiGatewayUrl}${API_ENDPOINTS.privateMessage}?app_token=${token}`;
-      const payload = {
-        userIdList: [chatId],
-        msgType: "i18nAppCard",
-        msgData: { i18nAppCard: cardData },
-      };
-      const data = await this.postJson(url, payload);
+      const { url, wrap } = this.msgTarget(chatId);
+      const payload = wrap({ i18nAppCard: cardData, msgType: "i18nAppCard" });
+      const data = await this.postJson(`${url}?app_token=${token}`, payload);
       if (data.errCode !== 0) return { success: false, error: data.errMsg ?? undefined };
       return { success: true, messageId: data.data?.msgId ?? undefined, rawResponse: data };
     } catch (e: any) {
@@ -299,13 +288,9 @@ export class LansengerClient {
           colour: "rgba(0,0,0,.47)",
         };
       }
-      const url = `${this.apiGatewayUrl}${API_ENDPOINTS.privateMessage}?app_token=${token}`;
-      const payload = {
-        userIdList: [chatId],
-        msgType: "appCard",
-        msgData: { appCard: resolvedCard },
-      };
-      const data = await this.postJson(url, payload);
+      const { url, wrap } = this.msgTarget(chatId);
+      const payload = wrap({ appCard: resolvedCard, msgType: "appCard" });
+      const data = await this.postJson(`${url}?app_token=${token}`, payload);
       if (data.errCode !== 0) return { success: false, error: data.errMsg ?? undefined };
       return { success: true, messageId: data.data?.msgId ?? undefined, rawResponse: data };
     } catch (e: any) {
@@ -317,25 +302,23 @@ export class LansengerClient {
     const token = await this.getAppToken();
     if (!token) return { success: false, error: "No access token" };
     try {
-      const url = `${this.apiGatewayUrl}${API_ENDPOINTS.privateMessage}?app_token=${token}`;
-      const payload = {
-        userIdList: [chatId],
-        msgType: "appArticles",
-        msgData: {
-          appArticles: {
-            articles: articles.map(a => ({
-              title: a.title,
-              description: a.description ?? "",
-              imgUrl: a.imgUrl,
-              url: a.url,
-              pcUrl: a.pcUrl ?? "",
-            })),
-            sourceName: options?.sourceName ?? "",
-            sourceIcon: options?.sourceIcon ?? "",
-          },
+      const { url, wrap } = this.msgTarget(chatId);
+      const payload = wrap({
+        text: { operation: "appArticles", content: "" },
+        appArticles: {
+          articles: articles.map(a => ({
+            title: a.title,
+            description: a.description ?? "",
+            imgUrl: a.imgUrl,
+            url: a.url,
+            pcUrl: a.pcUrl ?? "",
+          })),
+          sourceName: options?.sourceName ?? "",
+          sourceIcon: options?.sourceIcon ?? "",
         },
-      };
-      const data = await this.postJson(url, payload);
+        msgType: "text",
+      });
+      const data = await this.postJson(`${url}?app_token=${token}`, payload);
       if (data.errCode !== 0) return { success: false, error: data.errMsg ?? undefined };
       return { success: true, messageId: data.data?.msgId ?? undefined, rawResponse: data };
     } catch (e: any) {
@@ -415,40 +398,6 @@ export class LansengerClient {
       };
     } catch (e: any) {
       return { error: e.message };
-    }
-  }
-
-  async sendGroupText(groupId: string, content: string, reminder?: ReminderParams): Promise<ApiResult> {
-    const token = await this.getAppToken();
-    if (!token) return { success: false, error: "No access token" };
-    try {
-      const url = `${this.apiGatewayUrl}${API_ENDPOINTS.groupMessage}?app_token=${token}`;
-      const textData: Record<string, unknown> = { content };
-      if (reminder) textData.reminder = reminder;
-      const payload = { groupId, msgType: "text", msgData: { text: textData } };
-      const data = await this.postJson(url, payload);
-      if (data.errCode !== 0) return { success: false, error: data.errMsg ?? undefined };
-      return { success: true, messageId: data.data?.msgId ?? undefined, rawResponse: data };
-    } catch (e: any) {
-      return { success: false, error: e.message };
-    }
-  }
-
-  async sendGroupFormatText(groupId: string, content: string): Promise<ApiResult> {
-    const token = await this.getAppToken();
-    if (!token) return { success: false, error: "No access token" };
-    try {
-      const url = `${this.apiGatewayUrl}${API_ENDPOINTS.groupMessage}?app_token=${token}`;
-      const payload = {
-        groupId,
-        msgType: "formatText",
-        msgData: { formatText: { formatType: 1, text: content } },
-      };
-      const data = await this.postJson(url, payload);
-      if (data.errCode !== 0) return { success: false, error: data.errMsg ?? undefined };
-      return { success: true, messageId: data.data?.msgId ?? undefined, rawResponse: data };
-    } catch (e: any) {
-      return { success: false, error: e.message };
     }
   }
 
@@ -715,6 +664,16 @@ export class LansengerClient {
       this.heartbeatTimer = null;
     }
     this.clearPongTimeout();
+  }
+
+  private msgTarget(chatId: string): { url: string; wrap: (msgData: Record<string, unknown>) => Record<string, unknown> } {
+    const isGroup = this.isGroupChat(chatId);
+    const endpoint = isGroup ? API_ENDPOINTS.groupMessage : API_ENDPOINTS.privateMessage;
+    const url = `${this.apiGatewayUrl}${endpoint}`;
+    if (isGroup) {
+      return { url, wrap: (msgData) => ({ groupId: chatId, msgType: msgData.msgType ?? "text", msgData }) };
+    }
+    return { url, wrap: (msgData) => ({ userIdList: [chatId], msgType: msgData.msgType ?? "text", msgData }) };
   }
 
   private async extractText(msgData: Record<string, any>): Promise<{ text: string | null; mediaPaths?: string[] }> {

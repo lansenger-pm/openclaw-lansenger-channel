@@ -322,7 +322,7 @@ async function handleInbound(
                 const messageIds: string[] = [];
 
                 if (text?.trim()) {
-                  const result = await deliverReply(client, to, text, event.isGroup);
+                  const result = await deliverReply(client, to, text);
                   if (result.messageId) messageIds.push(result.messageId);
                 }
 
@@ -369,17 +369,11 @@ async function handleInbound(
   }
 }
 
-async function deliverReply(client: LansengerClient, to: string, text: string, isGroup?: boolean): Promise<ApiResult> {
+async function deliverReply(client: LansengerClient, to: string, text: string): Promise<ApiResult> {
   log.info(`deliverReply: to=${to} textLen=${text.length} preview="${text.slice(0, 100)}"`);
   if (!text.trim()) {
     log.warn(`deliverReply: empty text after OpenClaw MEDIA processing, skipping delivery`);
     return { success: true, messageId: undefined };
-  }
-  if (isGroup || client.isGroupChat(to)) {
-    const fmtResult = await client.sendGroupFormatText(to, text);
-    if (fmtResult.success) return fmtResult;
-    log.info(`group formatText failed (${fmtResult.error ?? "unknown"}), falling back to text`);
-    return client.sendGroupText(to, text);
   }
   const fmtResult = await client.sendFormatText(to, text);
   if (fmtResult.success) return fmtResult;
