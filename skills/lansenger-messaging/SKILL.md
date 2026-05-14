@@ -10,6 +10,8 @@ trigger: When the current session channel is lansenger, or when you need to send
 
 You are communicating on Lansenger, an enterprise messaging platform. Understanding its message type rules is critical — choosing the wrong type causes silent feature loss (Markdown ignored, attachments dropped, @mentions invisible).
 
+**This SKILL is reference documentation, NOT a CLI command.** Do NOT generate commands like `openclaw skill lansenger-messaging --message ...` — that command does not exist and will fail. To send messages, use the agent tools (`lansenger_send_file`, `lansenger_send_text`, etc.) directly.
+
 ## Auto-Routing: msgTarget(chatId)
 
 All outbound methods use the `msgTarget` helper internally — **no separate group/private methods exist**. Just pass the chatId and routing happens automatically:
@@ -200,6 +202,7 @@ openclaw pairing approve lansenger <code>
 - **`text-indent` MUST have units** — bare `0` causes empty API response; use `0em`
 - **Dynamic cards require `headStatusInfo`** — auto-filled if omitted, but explicit is better
 - **Gateway URL is per-environment** — the plugin uses whatever `apiGatewayUrl` is configured (e.g. `https://apigw.lx.qianxin.com` for 奇安信 environments, or `https://open.e.lanxin.cn/open/apigw` for standard Lansenger). All API endpoints are appended to this base URL. Do NOT assume the default gateway — always use the configured value.
+- **`openclaw skill` and `openclaw message lansenger` do NOT exist** — this SKILL is documentation only, not a CLI command. Third-party plugin channels are not in `openclaw message send --channel`. To send messages, use agent tools directly.
 - **Message length limit** ~4000 characters
 - **File size limits** depend on organization's Lansenger configuration
 - **Credentials** in Lansenger Desktop → Contacts → Bots → Personal Bot → ℹ️ icon
