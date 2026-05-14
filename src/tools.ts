@@ -86,8 +86,11 @@ const SendLinkCardSchema = {
   properties: {
     title: { type: "string", description: "Card title." },
     link: { type: "string", description: "Card click-through link URL." },
-    description: { type: "string", description: "Card description text." },
-    iconLink: { type: "string", description: "Card icon image URL." },
+    description: { type: "string", description: "Card description text (required by API, defaults to empty)." },
+    iconLink: { type: "string", description: "Card icon image URL (required by API, defaults to empty)." },
+    pcLink: { type: "string", description: "PC client link URL." },
+    fromName: { type: "string", description: "Card source name (required by API, defaults to empty)." },
+    fromIconLink: { type: "string", description: "Card source icon URL (required by API, defaults to empty)." },
     to: { type: "string", description: "LEAVE EMPTY — the current conversation target is auto-detected. Only fill this if you need to send to a different chat." },
   },
   required: ["title", "link"],
@@ -105,7 +108,7 @@ const SendAppArticlesSchema = {
           title: { type: "string", description: "Article title." },
           url: { type: "string", description: "Article content link URL." },
           pcUrl: { type: "string", description: "PC client content link URL." },
-          description: { type: "string", description: "Optional article description/summary." },
+          summary: { type: "string", description: "Optional article summary (摘要)." },
         },
         required: ["imgUrl", "title", "url"],
       },
@@ -295,6 +298,9 @@ export function registerLansengerTools(api: any) {
       const result = await client.sendLinkCard(to, title, link, {
         description: params.description ?? "",
         iconLink: params.iconLink ?? "",
+        pcLink: params.pcLink ?? "",
+        fromName: params.fromName ?? "",
+        fromIconLink: params.fromIconLink ?? "",
       });
       return jsonResult({ success: result.success, messageId: result.messageId ?? null });
     },

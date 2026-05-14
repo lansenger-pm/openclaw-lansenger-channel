@@ -304,19 +304,15 @@ export class LansengerClient {
     try {
       const { url, wrap } = this.msgTarget(chatId);
       const payload = wrap({
-        text: { operation: "appArticles", content: "" },
-        appArticles: {
-          articles: articles.map(a => ({
-            title: a.title,
-            description: a.description ?? "",
-            imgUrl: a.imgUrl,
-            url: a.url,
-            pcUrl: a.pcUrl ?? "",
-          })),
-          sourceName: options?.sourceName ?? "",
-          sourceIcon: options?.sourceIcon ?? "",
-        },
-        msgType: "text",
+        appArticles: articles.map(a => ({
+          imgUrl: a.imgUrl,
+          title: a.title,
+          summary: a.summary ?? "",
+          url: a.url,
+          pcUrl: a.pcUrl ?? "",
+          padUrl: a.padUrl ?? "",
+        })),
+        msgType: "appArticles",
       });
       const data = await this.postJson(`${url}?app_token=${token}`, payload);
       if (data.errCode !== 0) return { success: false, error: data.errMsg ?? undefined };
@@ -671,9 +667,19 @@ export class LansengerClient {
     const endpoint = isGroup ? API_ENDPOINTS.groupMessage : API_ENDPOINTS.privateMessage;
     const url = `${this.apiGatewayUrl}${endpoint}`;
     if (isGroup) {
-      return { url, wrap: (msgData) => ({ groupId: chatId, msgType: msgData.msgType ?? "text", msgData }) };
+      return { url, wrap: (msgData) => {
+        const mt = msgData.msgType ?? "text";
+        const data: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(msgData)) { if (k !== "msgType") data[k] = v; }
+        return { groupId: chatId, msgType: mt, msgData: data };
+      } };
     }
-    return { url, wrap: (msgData) => ({ userIdList: [chatId], msgType: msgData.msgType ?? "text", msgData }) };
+    return { url, wrap: (msgData) => {
+      const mt = msgData.msgType ?? "text";
+      const data: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(msgData)) { if (k !== "msgType") data[k] = v; }
+      return { userIdList: [chatId], msgType: mt, msgData: data };
+    } };
   }
 
   private async extractText(msgData: Record<string, any>): Promise<{ text: string | null; mediaPaths?: string[] }> {
@@ -801,10 +807,11 @@ export type AppCardOptions = {
 
 export type AppArticle = {
   title: string;
-  description?: string;
+  summary?: string;
   imgUrl: string;
   url: string;
   pcUrl?: string;
+  padUrl?: string;
 };
 
 export type ArticleCardOptions = {
