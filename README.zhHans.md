@@ -149,7 +149,6 @@ openclaw pairing approve lansenger <配对码>
         "your-appid": {
           "appId": "your-appid",
           "appSecret": "...",
-          "agentId": "main",
           "apiGatewayUrl": "https://open.e.lanxin.cn/open/apigw"
         }
       }
@@ -168,6 +167,9 @@ openclaw pairing approve lansenger <配对码>
 | `allowFrom` | 允许私聊的用户 ID | `[]` |
 | `dmSecurity` | 私聊策略：`paired`、`allowlist`、`open` | `paired` |
 | `accounts` | 多机器人配置 | — |
+| `groupPolicy` | 群聊策略：`open`（所有群）、`allowlist`（仅允许列表群）、`disabled`（禁止群消息） | `allowlist` |
+| `groupAllowFrom` | 允许触发机器人的群 ID | `[]` |
+| `groups` | 群级配置（requireMention、enabled、allowFrom） | — |
 
 ### 多机器人配置
 
@@ -180,10 +182,6 @@ openclaw pairing approve lansenger <配对码>
 openclaw config set channels.lansenger.accounts.your-appid-2.appId "your-appid-2"
 openclaw config set channels.lansenger.accounts.your-appid-2.appSecret "your-appsecret"
 openclaw config set channels.lansenger.accounts.your-appid-2.apiGatewayUrl "https://apigw.lx.qianxin.com"
-
-# 将不同机器人绑定到不同代理
-openclaw config set channels.lansenger.accounts.your-appid-2.agentId "main"
-openclaw config set channels.lansenger.accounts.your-appid-1.agentId "test"
 
 # 重启生效
 openclaw gateway restart
@@ -202,19 +200,18 @@ openclaw gateway restart
         "your-appid-2": {
           "appId": "your-appid-2",
           "appSecret": "...",
-          "agentId": "main",
           "apiGatewayUrl": "https://apigw.lx.qianxin.com"
         },
         "your-appid-1": {
           "appId": "your-appid-1",
           "appSecret": "...",
-          "agentId": "test",
           "apiGatewayUrl": "https://apigw.lx.qianxin.com"
         }
       }
     }
   }
 }
+```
 
 ## 使用
 
@@ -240,21 +237,45 @@ openclaw channels status
 openclaw gateway call lansenger.status
 ```
 
-### 绑定机器人至代理（配置方式）
+### 多 Agent 路由
 
-机器人与代理的绑定通过账户配置的 `agentId` 或 OpenClaw `bindings[]` 实现：
+使用 `bindings` 将蓝信私聊或群聊路由到不同的 Agent（与飞书/WhatsApp 等相同模式）：
 
-```bash
-# 按账号设置 agentId（推荐）
-openclaw config set channels.lansenger.accounts.your-appid.agentId "main"
-
-# 或通过 OpenClaw bindings[]
-openclaw config set bindings '[{"agentId":"main","match":{"channel":"lansenger","peer":{"kind":"direct","id":"your-userid"}}}]'
+```json5
+{
+  agents: {
+    list: [
+      { id: "main" },
+      { id: "agent-a", workspace: "/home/user/agent-a" },
+    ],
+  },
+  bindings: [
+    {
+      agentId: "agent-a",
+      match: {
+        channel: "lansenger",
+        peer: { kind: "direct", id: "2285568-xxx" },
+      },
+    },
+    {
+      agentId: "agent-a",
+      match: {
+        channel: "lansenger",
+        peer: { kind: "group", id: "group-chat-id" },
+      },
+    },
+  ],
+}
 ```
 
-> 多代理路由见[多机器人配置](#多机器人配置)。
+路由字段：
+* `match.channel`: `"lansenger"`
+* `match.peer.kind`: `"direct"`（私聊）或 `"group"`（群聊）
+* `match.peer.id`: 用户 ID（`2285568-xxx`）或群聊 ID
 
-## 支持的消息类型
+单 Agent 模式下，所有消息自动路由到默认 Agent（`main`），无需 bindings 配置。
+
+### 群聊策略
 
 | 类型 | 说明 | API 方法 | 方向 |
 |------|------|----------|------|
@@ -332,8 +353,7 @@ openclaw-lansenger-channel/
 │   ├── client.ts       # 蓝信 API 客户端（WS、HTTP、媒体）
 │   ├── channel.ts      # OpenClaw 频道插件
 │   ├── channel.test.ts # 频道插件测试
-│   ├── runtime.ts      # 网关运行时（方法、入站处理器）
-│   └── bindings.ts     # 多机器人绑定管理器
+│   └── runtime.ts      # 网关运行时（方法、入站处理器）
 ├── skills/
 │   └── lansenger-messaging/
 │       └── SKILL.md    # 代理消息策略
@@ -353,7 +373,7 @@ openclaw-lansenger-channel/
 
 ### "No binding for botId"
 
-在账户配置中设置 `agentId`，或使用 OpenClaw `bindings[]` 配置多代理路由。
+Agent 路由由 OpenClaw 的 `bindings[]` 配置管理——见[多 Agent 路由](#多-agent-路由)。单 Agent 模式下无需 bindings，消息自动路由到默认 Agent。
 
 ### WebSocket 断连
 
@@ -372,8 +392,7 @@ openclaw-lansenger-channel/
 
 ## 更新日志
 
-## 更新日志
-
+- **v2.8.0** — 多 Agent 路由改用 OpenClaw `bindings[]`（替代 per-account `agentId`）；新增 groupPolicy/groupAllowFrom/groups 群聊准入控制；使用 `resolveAgentRoute` SDK 处理 inbound 路由
 - **v2.7.2** — 新增 VERSION 文件；补全 5 个 README changelog；重新生成 package-lock.json
 - **v2.7.0** — 工具注册改为纯对象（非工厂函数）；使用运行时状态获取 client/target — 修复外部插件工具注册
 - **v2.6.0** — 无条件注册工具（执行时解析账号）；移除幽灵 delete_message 注册

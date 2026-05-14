@@ -175,20 +175,21 @@ Returns `totalGroupIds` (count) and `groupIds` (list). Use to discover group cha
 
 Multiple Lansenger bots can run simultaneously, each bound to a different OpenClaw agent:
 
-```json
+```json5
 {
-  "channels": {
-    "lansenger": {
-      "accounts": {
-        "bot-alpha": { "appId": "xxx", "agentId": "security-agent" },
-        "bot-beta":  { "appId": "aaa", "agentId": "hr-agent" }
-      }
-    }
-  }
+  agents: {
+    list: [
+      { id: "main" },
+      { id: "agent-a", workspace: "/home/user/agent-a" },
+    ],
+  },
+  bindings: [
+    { agentId: "agent-a", match: { channel: "lansenger", peer: { kind: "direct", id: "2285568-xxx" } } },
+  ],
 }
 ```
 
-Binding is **config-based** — set `agentId` per account in config.
+Multi-agent routing uses OpenClaw's **bindings** config — same pattern as Feishu/WhatsApp. In single-agent mode, messages route to the default agent (`main`) automatically.
 
 ## DM Security
 

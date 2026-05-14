@@ -279,12 +279,39 @@ async function handleInbound(
   runningKey: string,
 ): Promise<void> {
   const chatType = event.isGroup ? "group" : "dm";
-  const agentId = account.agentId ?? "default";
-  const sessionKey = `lansenger:${event.chatId}:${chatType}`;
+
+  if (event.isGroup) {
+    const groupPolicy = api.runtime.channel.groups.resolveGroupPolicy({
+      cfg: api.config,
+      channel: "lansenger",
+      groupId: event.chatId,
+      accountId: account.accountId,
+    });
+    if (!groupPolicy.allowed) {
+      log.info(`inbound: group dropped — groupPolicy not allowed for chatId=${event.chatId}`);
+      return;
+    }
+    const requireMention = api.runtime.channel.groups.resolveRequireMention({
+      cfg: api.config,
+      channel: "lansenger",
+      groupId: event.chatId,
+      accountId: account.accountId,
+    });
+    log.info(`inbound: group allowed — chatId=${event.chatId} requireMention=${requireMention}`);
+  }
+
+  const route = api.runtime.channel.routing.resolveAgentRoute({
+    cfg: api.config,
+    channel: "lansenger",
+    accountId: account.accountId,
+    peer: { kind: chatType as "direct" | "group" | "channel", id: event.chatId },
+  });
+  const agentId = route.agentId;
+  const sessionKey = route.sessionKey;
   const replyTo = event.chatId;
   lastInboundChatIds.set(runningKey, event.chatId);
 
-  log.info(`inbound: ${chatType} from=${event.senderId} bot=${account.appId.slice(0, 20)}... agent=${agentId}`);
+  log.info(`inbound: ${chatType} from=${event.senderId} bot=${account.appId.slice(0, 20)}... agent=${agentId} matchedBy=${route.matchedBy}`);
 
   let agentText = event.text;
   if (event.mediaPaths?.length) {
@@ -292,7 +319,7 @@ async function handleInbound(
   }
 
   try {
-    log.info(`turn.run starting: sessionKey=${sessionKey} agentId=${agentId} accountId=${account.accountId}`);
+    log.info(`turn.run starting: sessionKey=${sessionKey} agentId=${agentId} accountId=${account.accountId} matchedBy=${route.matchedBy}`);
     await api.runtime.channel.turn.run({
       channel: "lansenger",
       accountId: account.accountId ?? undefined,

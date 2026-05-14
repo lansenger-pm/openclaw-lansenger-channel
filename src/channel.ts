@@ -20,7 +20,6 @@ type LansengerAccount = {
   dmSecurity?: string;
   homeChannel?: string;
   enabled?: boolean;
-  agentId?: string;
 };
 
 type ResolvedAccount = {
@@ -32,7 +31,6 @@ type ResolvedAccount = {
   dmPolicy: string | undefined;
   homeChannel: string | undefined;
   enabled: boolean;
-  agentId?: string;
 };
 
 function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): ResolvedAccount {
@@ -60,7 +58,6 @@ function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): Resolve
   const dmPolicy = account?.dmSecurity;
   const homeChannel = account?.homeChannel;
   const enabled = Boolean(appId && appSecret);
-  const agentId = account?.agentId;
 
   return {
     accountId: resolvedAccountId || appId || null,
@@ -71,7 +68,6 @@ function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): Resolve
     dmPolicy,
     homeChannel,
     enabled,
-    agentId,
   };
 }
 
@@ -155,7 +151,6 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
           configured: Boolean(account?.appId && account?.appSecret),
           appIdStatus: account?.appId ? "available" : "missing",
           appSecretStatus: account?.appSecret ? "available" : "missing",
-          agentId: account?.agentId,
           apiGatewayUrl: account?.apiGatewayUrl,
         };
       },

@@ -150,7 +150,6 @@ Ajoutez ces variables à `~/.openclaw/.env` ou à votre environnement :
         "your-appid": {
           "appId": "your-appid",
           "appSecret": "...",
-          "agentId": "main",
           "apiGatewayUrl": "https://open.e.lanxin.cn/open/apigw"
         }
       }
@@ -169,6 +168,9 @@ Ajoutez ces variables à `~/.openclaw/.env` ou à votre environnement :
 | `allowFrom` | IDs d'utilisateurs autorisés en DM | `[]` |
 | `dmSecurity` | Politique DM : `paired`, `allowlist`, `open` | `paired` |
 | `accounts` | Configuration multi-bot | — |
+| `groupPolicy` | Politique de groupe : `open` (tous les groupes), `allowlist` (groupes autorisés uniquement), `disabled` (messages de groupe désactivés) | `allowlist` |
+| `groupAllowFrom` | IDs de groupes autorisés à déclencher le bot | `[]` |
+| `groups` | Configuration par groupe (requireMention, enabled, allowFrom) | — |
 
 ### Configuration multi-bot
 
@@ -181,10 +183,6 @@ Après avoir ajouté le premier compte via `channels add`, ajoutez des bots supp
 openclaw config set channels.lansenger.accounts.your-appid-2.appId "your-appid-2"
 openclaw config set channels.lansenger.accounts.your-appid-2.appSecret "your-appsecret"
 openclaw config set channels.lansenger.accounts.your-appid-2.apiGatewayUrl "https://apigw.lx.qianxin.com"
-
-# Lier chaque bot à un agent différent
-openclaw config set channels.lansenger.accounts.your-appid-2.agentId "main"
-openclaw config set channels.lansenger.accounts.your-appid-1.agentId "test"
 
 # Redémarrer pour appliquer
 openclaw gateway restart
@@ -203,19 +201,18 @@ Structure de configuration résultante :
         "your-appid-2": {
           "appId": "your-appid-2",
           "appSecret": "...",
-          "agentId": "main",
           "apiGatewayUrl": "https://apigw.lx.qianxin.com"
         },
         "your-appid-1": {
           "appId": "your-appid-1",
           "appSecret": "...",
-          "agentId": "test",
           "apiGatewayUrl": "https://apigw.lx.qianxin.com"
         }
       }
     }
   }
 }
+```
 
 ## Utilisation
 
@@ -241,21 +238,45 @@ openclaw channels status
 openclaw gateway call lansenger.status
 ```
 
-### Lier un bot à un agent (configuration)
+### Routage multi-agent
 
-La liaison bot-agent utilise `agentId` dans la configuration du compte ou OpenClaw `bindings[]` :
+Utilisez `bindings` pour router les DM Lansenger ou les conversations de groupe vers différents agents (même principe que Feishu/WhatsApp/etc.) :
 
-```bash
-# agentId par compte (recommandé)
-openclaw config set channels.lansenger.accounts.your-appid.agentId "main"
-
-# Ou via OpenClaw bindings[]
-openclaw config set bindings '[{"agentId":"main","match":{"channel":"lansenger","peer":{"kind":"direct","id":"your-userid"}}}]'
+```json5
+{
+  agents: {
+    list: [
+      { id: "main" },
+      { id: "agent-a", workspace: "/home/user/agent-a" },
+    ],
+  },
+  bindings: [
+    {
+      agentId: "agent-a",
+      match: {
+        channel: "lansenger",
+        peer: { kind: "direct", id: "2285568-xxx" },
+      },
+    },
+    {
+      agentId: "agent-a",
+      match: {
+        channel: "lansenger",
+        peer: { kind: "group", id: "group-chat-id" },
+      },
+    },
+  ],
+}
 ```
 
-> Voir [Configuration multi-bot](#configuration-multi-bot) pour le routage multi-agent.
+Champs de routage :
+* `match.channel`: `"lansenger"`
+* `match.peer.kind`: `"direct"` (DM) ou `"group"` (chat de groupe)
+* `match.peer.id`: ID utilisateur (`2285568-xxx`) ou ID de chat de groupe
 
-## Types de messages supportés
+En mode mono-agent, tous les messages routent vers l'agent par défaut (`main`) automatiquement — pas de bindings nécessaires.
+
+### Politique de groupe
 
 | Type | Description | Méthode API | Direction |
 |------|-------------|-------------|-----------|
@@ -333,8 +354,7 @@ openclaw-lansenger-channel/
 │   ├── client.ts       # Client API Lansenger (WS, HTTP, médias)
 │   ├── channel.ts      # Plugin de canal OpenClaw
 │   ├── channel.test.ts # Tests du plugin de canal
-│   ├── runtime.ts      # Runtime passerelle (méthodes, handler entrant)
-│   └── bindings.ts     # Gestionnaire de liaisons multi-bot
+│   └── runtime.ts      # Runtime passerelle (méthodes, handler entrant)
 ├── skills/
 │   └── lansenger-messaging/
 │       └── SKILL.md    # Stratégie de messagerie de l'agent
@@ -354,7 +374,7 @@ Utilisez uniquement le **client Lansenger (desktop)**. L'application mobile n'af
 
 ### "No binding for botId"
 
-Configurez `agentId` dans la configuration du compte, ou utilisez OpenClaw `bindings[]` pour le routage multi-agent.
+Le routage des agents est géré par la configuration `bindings[]` d'OpenClaw — voir [Routage multi-agent](#routage-multi-agent). En mode mono-agent, aucun binding est nécessaire ; les messages routent automatiquement vers l'agent par défaut.
 
 ### Déconnexions WebSocket
 
@@ -373,6 +393,7 @@ Les mises à jour de statut d'approbation utilisent le format DynamicMsg appCard
 
 ## Journal des modifications
 
+- **v2.8.0** — Routage multi-agent via OpenClaw `bindings[]` (remplace `agentId` par compte) ; ajout groupPolicy/groupAllowFrom/groups pour contrôle d'accès groupe ; utilisation de `resolveAgentRoute` SDK pour routage inbound
 - **v2.7.2** — Ajout fichier VERSION ; complétion changelog dans 5 READMEs ; régénération package-lock.json
 - **v2.7.0** — Enregistrement des outils comme objets simples (pas fonctions factory) ; utilisation de l'état runtime pour client/target — correction de l'enregistrement des outils de plugin externe
 - **v2.6.0** — Enregistrement inconditionnel des outils (résolution du compte à l'exécution) ; suppression du ghost delete_message
