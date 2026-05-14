@@ -26,7 +26,6 @@ const API_ENDPOINTS = {
   uploadMedia: "/v1/medias/create",
   fetchMedia: "/v1/medias",
   revokeMessage: "/v1/messages/revoke",
-  deleteMessage: "/v1/messages/delete",
   dynamicUpdate: "/v1/messages/dynamic/update",
 };
 
@@ -233,7 +232,7 @@ export class LansengerClient {
     }
   }
 
-  async revokeMessage(messageIds: string[], chatType: string = "bot", senderId?: string, sysMsg?: { content?: string; mediaId?: string }): Promise<ApiResult> {
+  async revokeMessage(messageIds: string[], chatType: string = "bot", senderId?: string): Promise<ApiResult> {
     const token = await this.getAppToken();
     if (!token) return { success: false, error: "No access token" };
     if (!["bot", "group"].includes(chatType)) {
@@ -246,21 +245,6 @@ export class LansengerClient {
       const url = `${this.apiGatewayUrl}${API_ENDPOINTS.revokeMessage}?app_token=${token}`;
       const payload: Record<string, unknown> = { chatType, messageIds };
       if (senderId) payload.senderId = senderId;
-      if (sysMsg) payload.sysMsg = sysMsg;
-      const data = await this.postJson(url, payload);
-      if (data.errCode !== 0) return { success: false, error: data.errMsg ?? undefined };
-      return { success: true, rawResponse: data };
-    } catch (e: any) {
-      return { success: false, error: e.message };
-    }
-  }
-
-  async deleteMessage(messageIds: string[]): Promise<ApiResult> {
-    const token = await this.getAppToken();
-    if (!token) return { success: false, error: "No access token" };
-    try {
-      const url = `${this.apiGatewayUrl}${API_ENDPOINTS.deleteMessage}?app_token=${token}`;
-      const payload: Record<string, unknown> = { chatType: "bot", messageIds };
       const data = await this.postJson(url, payload);
       if (data.errCode !== 0) return { success: false, error: data.errMsg ?? undefined };
       return { success: true, rawResponse: data };

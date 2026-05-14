@@ -22,7 +22,6 @@
       "lansenger_send_text",
       "lansenger_send_image_url",
       "lansenger_revoke_message",
-      "lansenger_delete_message",
       "lansenger_send_link_card",
       "lansenger_send_app_articles",
       "lansenger_send_app_card",
@@ -41,9 +40,6 @@
       "configSignals": [{ "rootPath": "channels.lansenger", "required": ["appId", "appSecret"] }]
     },
     "lansenger_revoke_message": {
-      "configSignals": [{ "rootPath": "channels.lansenger", "required": ["appId", "appSecret"] }]
-    },
-    "lansenger_delete_message": {
       "configSignals": [{ "rootPath": "channels.lansenger", "required": ["appId", "appSecret"] }]
     },
     "lansenger_send_link_card": {
