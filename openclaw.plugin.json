@@ -20,6 +20,7 @@
     "tools": [
       "lansenger_send_file",
       "lansenger_send_text",
+      "lansenger_send_format_text",
       "lansenger_send_image_url",
       "lansenger_revoke_message",
       "lansenger_send_link_card",
@@ -34,6 +35,9 @@
       "configSignals": [{ "rootPath": "channels.lansenger", "required": ["appId", "appSecret"] }]
     },
     "lansenger_send_text": {
+      "configSignals": [{ "rootPath": "channels.lansenger", "required": ["appId", "appSecret"] }]
+    },
+    "lansenger_send_format_text": {
       "configSignals": [{ "rootPath": "channels.lansenger", "required": ["appId", "appSecret"] }]
     },
     "lansenger_send_image_url": {

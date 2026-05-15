@@ -23,9 +23,11 @@ export default defineChannelPluginEntry({
         ],
       },
     );
+    if (api.registrationMode === "full") {
+      registerLansengerTools(api);
+    }
   },
   registerFull(api) {
     startLansengerGateway(api);
-    registerLansengerTools(api);
   },
 });

@@ -4,22 +4,6 @@ import { getLastInboundChatId, getRunningClient, getRunningAccount } from "./run
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
 
-function resolveAccountFromConfig(config: any): ResolvedAccount | null {
-  if (!config) return null;
-  const section = (config.channels as Record<string, any>)?.["lansenger"];
-  if (!section) return null;
-  const accounts = section.accounts as Record<string, any> | undefined;
-  let account: ResolvedAccount;
-  if (accounts && Object.keys(accounts).length > 0) {
-    const firstKey = Object.keys(accounts)[0];
-    account = resolveAccount(config, firstKey);
-  } else {
-    account = resolveAccount(config, undefined);
-  }
-  if (!account.enabled || !account.appId) return null;
-  return account;
-}
-
 function resolveTarget(to?: string): string {
   if (to) return to;
   return getLastInboundChatId();
@@ -42,7 +26,7 @@ const SendFileSchema = {
 const SendTextSchema = {
   type: "object",
   properties: {
-    content: { type: "string", description: "Plain text content. No Markdown support — use lansenger_send_file for file delivery, Markdown renders automatically in normal replies." },
+    content: { type: "string", description: "Plain text content. No Markdown support — Markdown renders automatically in normal replies. Use this for text + file attachment or text + @mentions." },
     filePath: { type: "string", description: "Optional local file/image/video to attach. If provided, content becomes the caption." },
     to: { type: "string", description: "Chat ID to send to. Leave empty to auto-detect from current session." },
     reminderAll: { type: "boolean", description: "@mention all members in a group (only works in group chat, not DMs)." },
@@ -51,10 +35,21 @@ const SendTextSchema = {
   required: ["content"],
 };
 
+const SendFormatTextSchema = {
+  type: "object",
+  properties: {
+    content: { type: "string", description: "Markdown-formatted text. Renders as rich text on Lansenger. Use this when you need Markdown + @mention. Does NOT support file attachments." },
+    to: { type: "string", description: "Chat ID to send to. Leave empty to auto-detect from current session." },
+    reminderAll: { type: "boolean", description: "@mention all members in a group (group chat only)." },
+    reminderUserIds: { type: "array", items: { type: "string" }, description: "List of user IDs to @mention (group chat only). Include '@姓名' in text so the mention is visible." },
+  },
+  required: ["content"],
+};
+
 const SendImageUrlSchema = {
   type: "object",
   properties: {
-    imageUrl: { type: "string", description: "URL of the image to download and send." },
+    imageUrl: { type: "string", description: "URL of the image to download and send. Must be directly reachable from the gateway host." },
     caption: { type: "string", description: "Optional plain-text caption (no Markdown)." },
     to: { type: "string", description: "Chat ID to send to. Leave empty to auto-detect from current session." },
   },
@@ -76,11 +71,11 @@ const SendLinkCardSchema = {
   properties: {
     title: { type: "string", description: "Card title." },
     link: { type: "string", description: "Card click-through link URL." },
-    description: { type: "string", description: "Card description text (required by API, defaults to empty)." },
-    iconLink: { type: "string", description: "Card icon image URL (required by API, defaults to empty)." },
+    description: { type: "string", description: "Card description text (API-required, defaults to empty)." },
+    iconLink: { type: "string", description: "Card icon image URL (API-required, defaults to empty)." },
     pcLink: { type: "string", description: "PC client link URL." },
-    fromName: { type: "string", description: "Card source name (required by API, defaults to empty)." },
-    fromIconLink: { type: "string", description: "Card source icon URL (required by API, defaults to empty)." },
+    fromName: { type: "string", description: "Card source name (API-required, defaults to empty)." },
+    fromIconLink: { type: "string", description: "Card source icon URL (API-required, defaults to empty)." },
     to: { type: "string", description: "Chat ID to send to. Leave empty to auto-detect from current session." },
   },
   required: ["title", "link"],
@@ -98,7 +93,7 @@ const SendAppArticlesSchema = {
           title: { type: "string", description: "Article title." },
           url: { type: "string", description: "Article content link URL." },
           pcUrl: { type: "string", description: "PC client content link URL." },
-          summary: { type: "string", description: "Optional article summary (摘要)." },
+          summary: { type: "string", description: "Optional article summary (摘要). NOT 'description' — that field is ignored by the API." },
         },
         required: ["imgUrl", "title", "url"],
       },
@@ -115,16 +110,16 @@ const SendAppCardSchema = {
     bodyTitle: { type: "string", description: "Card body title. Supports div-style: color, font-size, text-align." },
     headTitle: { type: "string", description: "Card header title." },
     bodySubTitle: { type: "string", description: "Card body subtitle. Supports div-style formatting." },
-    bodyContent: { type: "string", description: "Card body content. Supports div-style formatting. Always use text-indent:0em to avoid unwanted indentation." },
+    bodyContent: { type: "string", description: "Card body content. Supports div-style formatting. Always use text-indent:0em — bare 0 causes API failure." },
     signature: { type: "string", description: "Card signature line. Supports color." },
     isDynamic: { type: "boolean", description: "Enable dynamic card updates (default: false). When true, card can be updated via lansenger_update_dynamic_card.", default: false },
     headStatusInfo: {
       type: "object",
       properties: {
-        description: { type: "string", description: "Status description (max 30 bytes). Supports color div-style." },
+        description: { type: "string", description: "Status text (max 30 bytes). Supports div-style for color: e.g. '<div style=\"color:#FFB116\">待审批</div>'. Plain text also works." },
         colour: { type: "string", description: "Status color (e.g. #FFB116 amber, #198754 green, #dc3545 red)." },
       },
-      description: "Dynamic card status info. Required when isDynamic=true.",
+      description: "Dynamic card status info. Required when isDynamic=true. description = text supporting div-style color (max 30 bytes). colour = status dot color (hex). These are TWO different things: description text color vs dot color.",
     },
     fields: {
       type: "array",
@@ -151,7 +146,7 @@ const UpdateDynamicCardSchema = {
     headStatusInfo: {
       type: "object",
       properties: {
-        description: { type: "string", description: "Updated status description. Supports color div-style." },
+        description: { type: "string", description: "Updated status text. Supports div-style for color." },
         colour: { type: "string", description: "Updated status color (e.g. #198754 green, #dc3545 red)." },
       },
       description: "Updated status info for the card header.",
@@ -187,8 +182,7 @@ import { LansengerClient } from "./client.js";
 export function registerLansengerTools(api: any) {
   api.registerTool({
     name: "lansenger_send_file",
-    label: "Lansenger Send File",
-    description: "Send a local file as an attachment on Lansenger (蓝信). PDF, image, document, video — any local file works. Do NOT use MEDIA: tags for file delivery — they silently fail for files outside the workspace; always use this tool instead.",
+    description: "Send a local file as an attachment on Lansenger (蓝信). Any local file works — workspace, Documents, /tmp, etc. Do NOT use MEDIA: tags for files outside the workspace; they silently fail. Always use this tool instead.",
     parameters: SendFileSchema,
     async execute(_toolCallId: string, params: any) {
       const tc = makeToolClient();
@@ -208,12 +202,11 @@ export function registerLansengerTools(api: any) {
       const result = await tc.client.sendFile(to, resolved, caption);
       return jsonResult({ success: result.success, messageId: result.messageId ?? null });
     },
-  });
+});
 
   api.registerTool({
     name: "lansenger_send_text",
-    label: "Lansenger Send Text",
-    description: "Send a plain text message on Lansenger (蓝信) with optional file attachment and @mentions. Uses msgType=text: plain text only (NO Markdown). Supports attachments and @mentions in group chat. For Markdown, just write normally — it renders automatically in replies. If you need both Markdown AND a file, send Markdown first, then call this tool for the file.",
+    description: "Send plain text on Lansenger (蓝信) with optional file attachment and @mentions. Uses msgType=text: plain text ONLY (NO Markdown). For Markdown, just write normally — it renders automatically in replies. If you need both Markdown AND a file, send Markdown first, then call this tool for the file.",
     parameters: SendTextSchema,
     async execute(_toolCallId: string, params: any) {
       const tc = makeToolClient();
@@ -248,9 +241,26 @@ export function registerLansengerTools(api: any) {
   });
 
   api.registerTool({
+    name: "lansenger_send_format_text",
+    description: "Send Markdown-formatted text on Lansenger (蓝信) with optional @mentions. Uses msgType=formatText: Markdown renders as rich text. Supports @mentions via reminder params. Does NOT support file attachments — for Markdown + file, write the Markdown reply normally first, then use lansenger_send_file separately.",
+    parameters: SendFormatTextSchema,
+    async execute(_toolCallId: string, params: any) {
+      const tc = makeToolClient();
+      if (!tc) return jsonResult({ error: "Lansenger account not configured or not running." });
+      const content = params.content ?? "";
+      const to = resolveTarget(params.to);
+      if (!to) return jsonResult({ error: "No target specified. Provide a 'to' parameter (chat ID)." });
+      const reminder = (params.reminderAll || (params.reminderUserIds && params.reminderUserIds.length > 0))
+        ? { all: Boolean(params.reminderAll), userIds: params.reminderUserIds ?? [] }
+        : undefined;
+      const result = await tc.client.sendFormatText(to, content, reminder);
+      return jsonResult({ success: result.success, messageId: result.messageId ?? null });
+    },
+  });
+
+  api.registerTool({
     name: "lansenger_send_image_url",
-    label: "Lansenger Send Image URL",
-    description: "Send an image from a URL to a Lansenger (蓝信) user or group. Downloads the image first, then uploads and sends. For local files, use lansenger_send_file instead.",
+    description: "Send an image from a URL to a Lansenger (蓝信) user or group. Downloads the image first, then uploads and sends. URL must be directly reachable from the gateway host. For local files, use lansenger_send_file instead.",
     parameters: SendImageUrlSchema,
     async execute(_toolCallId: string, params: any) {
       const tc = makeToolClient();
@@ -267,8 +277,7 @@ export function registerLansengerTools(api: any) {
 
   api.registerTool({
     name: "lansenger_revoke_message",
-    label: "Lansenger Revoke Message",
-    description: "Revoke previously sent Lansenger (蓝信) messages. The recipient sees a 'message revoked' notification from the platform. For group chat, senderId is required.",
+    description: "Revoke previously sent Lansenger (蓝信) messages. The recipient sees a 'message revoked' notification. For group chat, senderId is required.",
     parameters: RevokeMessageSchema,
     async execute(_toolCallId: string, params: any) {
       const tc = makeToolClient();
@@ -287,8 +296,7 @@ export function registerLansengerTools(api: any) {
 
   api.registerTool({
     name: "lansenger_send_link_card",
-    label: "Lansenger Send Link Card",
-    description: "Send a link preview card on Lansenger (蓝信). Displays title, description, icon, and clickable link.",
+    description: "Send a link preview card on Lansenger (蓝信). Displays title, description, icon, and clickable link. API requires description, iconLink, fromName, fromIconLink (defaults to empty string if omitted).",
     parameters: SendLinkCardSchema,
     async execute(_toolCallId: string, params: any) {
       const tc = makeToolClient();
@@ -311,8 +319,7 @@ export function registerLansengerTools(api: any) {
 
   api.registerTool({
     name: "lansenger_send_app_articles",
-    label: "Lansenger Send App Articles",
-    description: "Send a multi-article card (图文卡片) on Lansenger (蓝信). Each article has an image, title, and link. For a single link card, use lansenger_send_link_card instead.",
+    description: "Send a multi-article card (图文卡片) on Lansenger (蓝信). Each article has an image, title, and link. Article summary field is 'summary' (NOT 'description' — that field is silently ignored by the API). For a single link card, use lansenger_send_link_card instead.",
     parameters: SendAppArticlesSchema,
     async execute(_toolCallId: string, params: any) {
       const tc = makeToolClient();
@@ -328,8 +335,7 @@ export function registerLansengerTools(api: any) {
 
   api.registerTool({
     name: "lansenger_send_app_card",
-    label: "Lansenger Send App Card",
-    description: "Send a rich formatted card (应用卡片) on Lansenger (蓝信). Supports div-style formatting (color, font-size, text-align, text-indent). Set isDynamic=true for approval workflows — card can then be updated via lansenger_update_dynamic_card. bodyContent text-indent MUST have units — bare 0 causes API failure; always use 0em.",
+    description: "Send a rich formatted card (应用卡片) on Lansenger (蓝信). Supports div-style formatting (color, font-size, text-align, text-indent). Set isDynamic=true for approval workflows. ⚠️ font-size MUST use pt units (12pt–36pt) — px causes 'invalid bodyContent'. ⚠️ text-indent MUST have units — bare 0 causes silent failure, use 0em. ⚠️ headStatusInfo: description is status TEXT (supports div-style for color, max 30 bytes), colour is the DOT/圆点 color (hex like #FFB116). These are TWO different things — text color vs dot color. ⚠️ Group chat does NOT support appCard msgType — falls back to plain text.",
     parameters: SendAppCardSchema,
     async execute(_toolCallId: string, params: any) {
       const tc = makeToolClient();
@@ -365,8 +371,7 @@ export function registerLansengerTools(api: any) {
 
   api.registerTool({
     name: "lansenger_update_dynamic_card",
-    label: "Lansenger Update Dynamic Card",
-    description: "Update a dynamic appCard's status in-place on Lansenger (蓝信). The card must have been sent with isDynamic=true via lansenger_send_app_card. Use this for approval workflows: pending → approved/rejected.",
+    description: "Update a dynamic appCard's status in-place on Lansenger (蓝信). The card must have been sent with isDynamic=true via lansenger_send_app_card. Use this for approval workflows: pending → approved/rejected. headStatusInfo: description supports div-style for color, colour is the status dot color.",
     parameters: UpdateDynamicCardSchema,
     async execute(_toolCallId: string, params: any) {
       const tc = makeToolClient();
@@ -385,8 +390,7 @@ export function registerLansengerTools(api: any) {
 
   api.registerTool({
     name: "lansenger_query_groups",
-    label: "Lansenger Query Groups",
-    description: "Query the bot's group list on Lansenger (蓝信). Returns total count and group IDs. Use this to discover available group chat IDs.",
+    description: "Query the bot's group list on Lansenger (蓝信). Returns total count and group IDs. ⚠️ May return errCode=10005 'API服务无权限' on enterprise deployments where /v2/groups/fetch is not authorized. If permission denied, ask the user for group chatIds manually.",
     parameters: QueryGroupsSchema,
     async execute(_toolCallId: string, params: any) {
       const tc = makeToolClient();
@@ -396,11 +400,4 @@ export function registerLansengerTools(api: any) {
       return jsonResult({ success: true, totalGroupIds: result.totalGroupIds, groupIds: result.groupIds });
     },
   });
-
-  const registered = [
-    "lansenger_send_file", "lansenger_send_text", "lansenger_send_image_url",
-    "lansenger_send_link_card", "lansenger_send_app_articles", "lansenger_send_app_card",
-    "lansenger_update_dynamic_card", "lansenger_revoke_message", "lansenger_query_groups",
-  ];
-  console.log(`[lansenger] tools registered: ${registered.join(", ")}`);
 }

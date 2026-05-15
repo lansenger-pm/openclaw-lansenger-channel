@@ -1,221 +1,227 @@
 ---
 name: lansenger-messaging
-description: How to communicate effectively on Lansenger (蓝信) — message types, formatting rules, media, cards, approvals, and pitfalls
+description: How to communicate on Lansenger (蓝信) — choose the right tool, when, send rich content, and pitfalls
 metadata: {"openclaw":{"requires":{"config":["channels.lansenger"]},"primaryEnv":"LANSENGER_APP_ID"}}
 ---
 
-# Lansenger (蓝信) Messaging Guide for Agents
+# Lansenger (蓝信) Messaging — Agent Quick Reference
 
-You are communicating on Lansenger, an enterprise messaging platform. Understanding its message type rules is critical — choosing the wrong type causes silent feature loss (Markdown ignored, attachments dropped, @mentions invisible).
+You are on Lansenger. This skill tells you **what tool to use, when, and how**.
 
-**This SKILL is reference documentation, NOT a CLI command.** Do NOT generate commands like `openclaw skill lansenger-messaging --message ...` — that command does not exist and will fail. To send messages, use the agent tools (`lansenger_send_file`, `lansenger_send_text`, etc.) directly.
+> ⚠️ This is reference documentation, NOT a CLI command. `openclaw skill lansenger-messaging` does not exist. Use the agent tools listed below directly.
 
-## Auto-Routing: msgTarget(chatId)
+---
 
-All outbound methods use the `msgTarget` helper internally — **no separate group/private methods exist**. Just pass the chatId and routing happens automatically:
+## Quick Decision: What Tool Do I Use?
+```
+Need to send something? Follow this decision tree:
 
-- Group chatId → `/v1/messages/group/create` (payload wrapped with `groupId`)
-- Private chatId → `/v1/bot/messages/create` (payload wrapped with `userIdList`)
-- Detection: `chatTypeMap.get(chatId) === "group"` OR `chatId.startsWith("group:")`
+1. Normal reply with formatting (bold, lists, code, tables) → JUST WRITE IT. Markdown renders automatically. No tool needed.
+2. Need Markdown + @mention someone → lansenger_send_format_text (with reminder)
+3. Need plain text + @mention + file → lansenger_send_text (with reminder + filePath)
+4. Need just a FILE (any local file) → lansenger_send_file
+5. Need image from URL → lansenger_send_image_url
+6. Need a link card → lansenger_send_link_card
+7. Need multi-article card (图文) → lansenger_send_app_articles
+8. Need a rich formatted card → lansenger_send_app_card
+9. Need approval workflow → lansenger_send_app_card (isDynamic=true) → update via lansenger_update_dynamic_card
+10. Need to revoke a message → lansenger_revoke_message
+11. Need group IDs → lansenger_query_groups
+```
+> ⚠️ Group chat: appCard/linkCard/appArticles/formatText may be rejected by API. Fall back to lansenger_send_text.
+```
+---
 
-## The #1 Rule: Markdown Is Automatic
+## #1 Rule: Markdown Is Automatic
+In a Lansenger session, **just write your reply normally** — Markdown is automatically rendered as formatText. You never need to call a tool for formatted text unless you also need @mentions.
 
-When you write a reply in a Lansenger session, **your Markdown is automatically rendered**. You don't need to pick a message type or call any special function — just write normally with headings, bold, code blocks, lists, tables, links, etc. The plugin handles delivery.
+However: Markdown and file attachments are **mutually exclusive**. If you need both formatting AND a file, send the Markdown reply first, then call `lansenger_send_file separately.
+Never put raw Markdown in lansenger_send_text — it displays as ugly source code.
 
-**However**, Markdown and other features are mutually exclusive. See below.
+---
 
-## Message Type Rules (Critical)
-
-Lansenger has two outbound text types that cannot be combined:
-
+## Message Type Capability Matrix
 ```
 ┌──────────────┬──────────────┬──────────────┬──────────────┐
 │  Type        │  Markdown    │  @mention    │  Attachments │
-├──────────────┼──────────────┼──────────────┤──────────────┤
-│  formatText  │  ✓ (default) │  ✓ (reminder)│  ✗           │
+├──────────────┼──────────────┼──────────────┼──────────────┤
+│  formatText  │  ✓ (auto)    │  ✓ (reminder)│  ✗           │
 │  text        │  ✗           │  ✓           │  ✓           │
 └──────────────┴──────────────┴──────────────┴──────────────┘
 ```
+- formatText: default outbound type. Markdown renders automatically. Also supports @mentions via `reminder` param (auto-fallback if API rejects). No file attachments.
+- text: plain text only. Supports @mentions + file attachments. No Markdown rendering.
 
-> **reminder** is the newer API parameter for @mention in formatText. It works on newer Lansenger versions; older versions silently accept it without showing a notification. The plugin auto-falls back: if the API rejects reminder, it retries without it. When using reminder, always include "@姓名" in the text content so the mention is visible regardless of API version.
+- These two types are **mutually exclusive** — pick one based on what you need.
+```
+---
 
-### What this means for you
-
-- **Normal replies** → just write Markdown. It's automatically sent as formatText.
-- **@mention in group chat is recommended** → When replying to someone in a group, @mention them so they know the message is directed at them. Both `formatText` and `text` support @mention via the `reminder` parameter:
-  - **formatText**: `sendFormatText` accepts optional `reminder` with `{ all: boolean, userIds: string[] }`. Always include "@姓名" in the text content. Example: `"@张三 明天开会"` with `reminder: { userIds: ["staffId-of-张三"] }`. If the API version doesn't support reminder, the plugin auto-retries without it.
-  - **text**: `sendText` / `lansenger_send_text` also supports `reminderAll` and `reminderUserIds` params. Same rule: include "@姓名" in text content.
-  - **Critical rule**: When using reminder, you MUST include "@姓名" in the message text. Without it, the mention notification may not be meaningful to the recipient. The API sends the push notification via `reminder`, but the visible "@姓名" in text ensures clarity regardless of API version.
-  - **reminder is optional** — you don't have to use it every time, but in group chat it's recommended so the mentioned person actually sees your reply.
-- **Need to attach a file/image/video** → Markdown won't work. Use `lansenger_send_file`. If you need both formatting AND a file, send the Markdown reply first, then call `lansenger_send_file` separately.
-- **Never put raw Markdown in a plain-text message** — it displays as ugly source code to the user.
-
-## Available Tools
-
-| Tool | Purpose | Message Type |
-|------|---------|-------------|
-| `lansenger_send_file` | Send a local file/image/video | text (with attachment) |
-| `lansenger_send_text` | Send plain text with optional attachment + @mentions | text |
-| `lansenger_send_image_url` | Send an image from a URL | text (with attachment) |
-| `lansenger_send_link_card` | Send a link preview card | linkCard |
-| `lansenger_send_app_articles` | Send a multi-article card (图文卡片) | appArticles |
-| `lansenger_send_app_card` | Send a rich formatted card (应用卡片) | appCard |
-| `lansenger_update_dynamic_card` | Update a dynamic card's status | dynamic update |
-| `lansenger_revoke_message` | Revoke previously sent messages | — |
-| `lansenger_query_groups` | List bot's group IDs | — |
-
-All tools accept an optional `to` parameter (chat ID). **LEAVE EMPTY** to auto-detect the current conversation target — only fill it if you need to send to a different chat. chatId is case-sensitive.
-
-**How to get a chatId**: The chatId comes from the inbound message's `conversationId` / `senderId` field. In DM it's the user's staffId (e.g. `2285568-WyuVXUdwyRr1cpPrXdaT66YMtmArYn`). In group chat it's the group's chatId. **Never truncate or modify a chatId** — it must be used exactly as received.
-
-## DM vs Group
-
-The plugin auto-routes via `msgTarget(chatId)` — you never need to specify which endpoint:
-- **DM (1:1 chat)** → private message endpoint (`userIdList: [chatId]`)
-- **Group chat** → group message endpoint (`groupId: chatId`)
-- Detection is automatic from session context or `group:` prefix in chatId
-
-**Group API limitation**: The Lansenger group endpoint (4.6.2) officially only supports `text` and `oacard` msgTypes. The plugin routes all msgTypes via msgTarget, but `appCard`, `linkCard`, `appArticles`, `formatText` may be rejected by the API in group context. If a group send fails, try falling back to plain text.
-
-## Sending Files
-
-Two ways to send files, depending on location:
-
-1. **Workspace files** → MEDIA: tags work fine. The plugin's `delivery.deliver` processes `payload.mediaUrls` and sends them via `client.sendFile`. Just write normally and reference files with MEDIA: syntax.
-
-2. **Non-workspace files** (Documents, Desktop, /tmp, external paths) → MEDIA: tags are silently dropped by `mediaLocalRoots` restrictions. Use `lansenger_send_file` instead:
+## Tool Reference
+All tools accept optional `to` (chatId). Leave empty to auto-detect current conversation. Only fill for different chat. chatId is case-sensitive.
+```
+How to get chatId: Inbound message senderId/conversationId. Never truncate or modify a chatId.
 
 ```
-lansenger_send_file(filePath=<absolute local path>, caption=<optional plain-text>, to=<optional chatId>)
+---
+
+### lansenger_send_file
+| Param | Required | Description |
+|-------|----------|-------------|
+| filePath | ✅ | Absolute local path (workspace, /tmp, Desktop, etc.) |
+| caption | ❌ | Plain-text caption (no Markdown) |
+| to | ❌ | Target chatId (auto if omitted) |
+> Use this instead of MEDIA: tags for non-workspace files. MEDIA: silently fails outside workspace.
+
+### lansenger_send_text
+| Param | Required | Description |
+|-------|----------|-------------|
+| content | ✅ | Plain text only (NO Markdown) |
+| filePath | ❌ | Optional file to attach (content becomes caption) |
+| to | ❌ | Target chatId |
+| reminderAll | ❌ | @mention all members (group only) |
+| reminderUserIds | ❌ | @mention specific users (group only) |
+
+### lansenger_send_format_text
+| Param | Required | Description |
+|-------|----------|-------------|
+| content | ✅ | Markdown text |
+| to | ❌ | Target chatId |
+| reminderAll | ❌ | @mention all (group only) |
+| reminderUserIds | ❌ | @mention specific users (group only) |
+
+> Use when you need Markdown + @mention. No file attachments. Plugin auto-fallback if API rejects reminder.
+
+Always include "@姓名" in text when mentioning someone.
+
+### lansenger_send_image_url
+| Param | Required | Description |
+|-------|----------|-------------|
+| imageUrl | ✅ | Directly reachable image URL |
+| caption | ❌ | Plain-text caption (no Markdown) |
+| to | ❌ | Target chatId |
+
+> URL must be reachable from gateway host. For local files use lansenger_send_file.
+
+### lansenger_send_link_card
+| Param | Required | Description |
+|-------|----------|-------------|
+| title | ✅ | Card title |
+| link | ✅ | Click-through URL |
+| description | ❌ | Card description (API-required, defaults empty) |
+| iconLink | ❌ | Icon URL (defaults empty) |
+| fromName | ❌ | Source name (defaults empty) |
+| fromIconLink | ❌ | Source icon URL (defaults empty) |
+| to | ❌ | Target chatId |
+
+### lansenger_send_app_articles
+| Param | Required | Description |
+|-------|----------|-------------|
+| articles | ✅ | Each: { imgUrl, title, url, summary? } |
+| to | ❌ | Target chatId |
+
+> ⚠️ Article summary field is `summary`, NOT `description`. `description` is silently ignored.
+
+### lansenger_send_app_card
+| Param | Required | Description |
+|-------|----------|-------------|
+| bodyTitle | ✅ | Card title (supports div-style) |
+| headTitle | ❌ | Header title |
+| bodyContent | ❌ | Content (supports div-style) |
+| isDynamic | ❌ | Enable approval workflow (default: false) |
+| headStatusInfo | ❌ | { description, colour } — description is status TEXT (supports div-style for color, e.g. `<div style="color:#FFB116">待审批</div>`, max 30 bytes), colour is the DOT/圆点 color (hex, e.g. #FFB116). These are TWO different things: text color vs dot color. |
+| fields | ❌ | Key-value pairs (max 10) |
+| links | ❌ | Links (max 3) |
+| to | ❌ | Target chatId |
+
+> ⚠️ **Group chat does NOT support appCard** — falls back to plain text. Approval workflows won't work in group chat.
+
+```
+---
+
+div-style formatting rules:
+- `color`: hex (e.g. #333, #007BFF)
+- `font-size`: **MUST use pt** (12pt–36pt). px causes "invalid bodyContent" error.
+- `text-align`: left, center, right
+- `text-indent`: **MUST use 0em** — bare 0 causes silent failure
 ```
 
-- Any local path works — workspace, Documents, Desktop, /tmp, etc.
-- `caption` is plain text only (Markdown will NOT render)
-- If you need both formatted explanation AND a file, send the Markdown reply first, then call `lansenger_send_file` separately
+Example: `<div style="color:#333;font-size:14pt;text-indent:0em;text-align:left">Content here</div>`
+```
+---
 
-## Sending Text with Attachments or @Mentions
+### lansenger_update_dynamic_card
+| Param | Required | Description |
+|-------|----------|-------------|
+| msgId | ✅ | Message ID from original send_app_card response |
+| headStatusInfo | ❌ | { description, colour } — description is text (supports div-style for color; `<div style="color:#198754">已批准</div>`), max 30 bytes. colour is the DOT/圆点 color (hex like #198754). These are TWO different things: text color vs dot color. |
+| isLastUpdate | ❌ | True = final state (default: false) |
 
-When you need plain text + attachment or @mentions in group chat, use `lansenger_send_text`:
+> headStatusInfo.description supports div-style for coloring the text. headStatusInfo.colour controls the status dot color. They are independent.
+
+### lansenger_revoke_message
+| Param | Required | Description |
+|-------|----------|-------------|
+| messageIds | ✅ | List of message IDs |
+| chatType | ❌ | bot (default) or group |
+| senderId | ❌ | Required if chatType=group |
+
+### lansenger_query_groups
+| Param | Required | Description |
+|-------|----------|-------------|
+| pageOffset | ❌ | Page number (default: 1) |
+| pageSize | ❌ | Groups per page (default: 100) |
+
+> ⚠️ May return errCode=10005 "API服务无权限" on enterprise deployments. Ask user for group IDs manually.
+
+---
+
+## Approval Workflow Pattern
+```
+1. Send: lansenger_send_app_card(bodyTitle="...", isDynamic=true, headStatusInfo={description: '<div style="color:#FFB116">待审批</div>', colour: "#FFB116"})
+2. User approves/denies → OpenClaw processes approval
+3. Update: lansenger_update_dynamic_card(msgId="<from step 1>", headStatusInfo={description: '<div style="color:#198754">已批准</div>', colour: "#198754"}, isLastUpdate=true)
+```
+Status colors: #FFB116 (pending), #198754 (approved) #dc3545 (denied)
+
+⚠️ **Approval only works in DM (1:1 chat)** — group chat de appCard falls back to plain text.
 
 ```
-lansenger_send_text(content=<plain text>, filePath=<optional local path>, to=<optional chatId>,
-                    reminderAll=<bool>, reminderUserIds=<list>)
-```
+---
 
-- **NO Markdown** — content is plain text only
-- `filePath` optional — if provided, content becomes caption for the attachment
-- `reminderAll` / `reminderUserIds` — optional @mention. In group chat, recommended to @mention the person you're replying to so they know the message is for them. When using reminder, include "@姓名" in the text. (works in both DM and group, but usually only needed in group)
+## @Mention Rules
+Both formatText and text support @mentions:
+- formatText: `reminderAll` + `reminderUserIds` params
+- text: `reminderAll` + `reminderUserIds` params
 
-## Sending Images from URLs
+Two rules:
+1. Always include "@姓名" in message text — reminder sends the push, "@姓名" makes it visible
+2. reminder is optional — use it in group chat when replying to someone so they notice your message
 
-```
-lansenger_send_image_url(imageUrl=<URL>, caption=<optional plain-text>, to=<optional chatId>)
-```
+---
 
-Downloads the image first, then uploads and sends. For local files, use `lansenger_send_file` instead. **URL must be directly reachable** — the plugin downloads from the URL server-side, so firewalled/internal URLs will fail. Common errors:
-- HTTP 404 → image not found at that URL
-- Timeout (15s) → URL unreachable from the gateway host
-- Non-image content-type → URL returns HTML/JSON instead of an image
-
-## Rich Content Types
-
-### Link Card (`lansenger_send_link_card`)
-A rich link preview card. Requires `title` + `link`. Optional: `description`, `iconLink`, `pcLink`, `fromName`, `fromIconLink`.
-
-### AppArticles (`lansenger_send_app_articles`)
-Multi-article card (图文卡片). Each article needs `imgUrl`, `title`, `url`. Optional: `summary` (article summary/摘要 — NOT `description`), `pcUrl` (PC link).
-
-### AppCard (`lansenger_send_app_card`)
-Rich formatted card (应用卡片). Supports div-style HTML in body fields (color, font-size, text-align, text-indent).
-- ⚠️ **`font-size` MUST use `pt` units** — `px` causes API to return "invalid bodyContent" and the entire message fails. Allowed range: **12pt–36pt**. The plugin auto-converts `px` to `pt` (1px ≈ 0.75pt) and clamps to the allowed range, but always use `pt` explicitly to avoid surprises.
-- ⚠️ **`text-indent` MUST have units** — bare `0` causes silent API failure; always use `0em`
-- ⚠️ **Dynamic cards (`isDynamic=true`) require `headStatusInfo`** — plugin auto-fills "Active" default if omitted
-- Card content should be **single-language** based on user's detected language
-- Optional: `headTitle`, `bodySubTitle`, `signature`, `fields` (key-value pairs, max 10), `links` (max 3), `cardLink`, `staffId`, `headIconUrl`
-
-### i18nAppCard
-Internal method only — no agent tool exposes this. For non-approval cards needing 5-locale rendering. Does NOT support dynamic updates.
-
-## Approval Workflow
-
-The plugin integrates with OpenClaw's approval system:
-
-1. **Pending card** sent via `lansenger_send_app_card` (isDynamic=true)
-2. **User clicks approve/deny** → approval processed by OpenClaw runtime
-3. **Card updates in-place** via `lansenger_update_dynamic_card` — status badge changes, card locks on final decision
-
-Card status text is language-aware (CJK ratio ≥ 0.6 = Chinese).
-
-## Revoking Messages
-
-```
-lansenger_revoke_message(messageIds=<list of IDs>, chatType=<bot|group>, senderId=<optional>)
-
-For group chat, `senderId` is required.
-
-## Querying Groups
-
-```
-lansenger_query_groups(pageOffset=<1>, pageSize=<100>)
-```
-
-Returns `totalGroupIds` (count) and `groupIds` (list). Use to discover group chat IDs before sending messages to groups.
-
-⚠️ **This API may require admin authorization** — on some enterprise deployments (e.g. 奇安信), `/v2/groups/fetch` returns `errCode=10005 "API服务无权限"` if the endpoint is not enabled. If you get a permission error, ask the user to provide group chatIds manually or request admin to enable the API.
-
-## What You Receive (Inbound Messages)
-
+## Inbound Messages
 | Type | What you see |
 |------|-------------|
-| text | Plain text content |
-| formatText | Markdown text content |
-| image | `[Image]` or `[Image: 3 files]` + local file paths |
-| video | `[Video]` or `[Video: 2 files]` + local file paths |
-| file | `[File]` or `[File: 2 files]` + local file paths |
-| voice | `[Voice]` + local file path (AMR/WAV) |
-| position | `[Location] name address lat,long link` |
-| card | `[Contact Card] staffId` |
-| sticker | `[Sticker] stickerId` |
+| text | Plain text |
+| formatText | Markdown text |
+| image | [Image] + local file paths |
+| video | [Video] + local file paths |
+| file | [File] + local file paths |
+| voice | [Voice] + local file path |
+| position | [Location] name address lat,long |
+| card | [Contact Card] staffId |
 
-## Multi-Bot / Agent Binding
+---
 
-Multiple Lansenger bots can run simultaneously, each bound to a different OpenClaw agent:
-
-```json5
-{
-  agents: {
-    list: [
-      { id: "main" },
-      { id: "agent-a", workspace: "/home/user/agent-a" },
-    ],
-  },
-  bindings: [
-    { agentId: "agent-a", match: { channel: "lansenger", peer: { kind: "direct", id: "2285568-xxx" } } },
-  ],
-}
-```
-
-Multi-agent routing uses OpenClaw's **bindings** config — same pattern as Feishu/WhatsApp. In single-agent mode, messages route to the default agent (`main`) automatically.
-
-## DM Security
-
-Default policy is **paired** — the first DM from a new user triggers a pairing code. The user must get approval via:
-```
-openclaw pairing approve Lansenger <code>
-```
-
-## Critical Pitfalls
-
-- **Markdown is default** — write normally, it renders automatically
-- **Never put Markdown in a plain-text message** — displays as raw source code
-- **@mention via `reminder` works in both formatText and text** — `sendFormatText` supports optional `reminder: { all, userIds }` (auto-fallback if API rejects). `sendText`/`lansenger_send_text` also has `reminderAll`/`reminderUserIds`. Always include "@姓名" in text content when mentioning — the reminder param sends the push, but "@姓名" ensures the mention is visible in the message itself.
-- **MEDIA: tags work for workspace files** — for non-workspace paths (Documents, /tmp, etc.), use `lansenger_send_file` instead
-- **AppArticles uses `summary` not `description`** — the article summary field is called `summary`, not `description`. Using `description` will cause the field to be ignored by the API.
-- **`text-indent` MUST have units** — bare `0` causes empty API response; use `0em`
-- **`font-size` MUST use `pt`** — `px` causes "invalid bodyContent" error; use 12pt–36pt. Plugin auto-converts px→pt, but prefer pt explicitly.
-- **Dynamic cards require `headStatusInfo`** — auto-filled if omitted, but explicit is better
-- **Gateway URL is per-environment** — the plugin uses whatever `apiGatewayUrl` is configured (e.g. `https://apigw.lx.qianxin.com` for 奇安信 environments, or `https://open.e.lanxin.cn/open/apigw` for standard Lansenger). All API endpoints are appended to this base URL. Do NOT assume the default gateway — always use the configured value.
-- **`openclaw skill` and `openclaw message lansenger` do NOT exist** — this SKILL is documentation only, not a CLI command. Third-party plugin channels are not in `openclaw message send --channel`. To send messages, use agent tools directly.
-- **Message length limit** ~4000 characters
-- **File size limits** depend on organization's Lansenger configuration
-- **Credentials** in Lansenger Desktop → Contacts → Bots → Personal Bot → ℹ️ icon
+## Common Pitfalls
+| Pitfall | Fix |
+|---------|-----|
+| Raw Markdown in text tool | Never do this — shows as ugly source code. Write normally for Markdown. |
+| MEDIA: tag for non-workspace file | Use lansenger_send_file. MEDIA: silently fails outside workspace. |
+| AppArticles `description` field | Use `summary`, not `description`. `description` is ignored. |
+| AppCard `font-size: 14px` | Use `font-size: 14pt`. px causes "invalid bodyContent". Range: 12pt–36pt. |
+| AppCard `text-indent: 0` | Use `text-indent: 0em`. Bare 0 causes silent failure. |
+| Dynamic card headStatusInfo div wrapping   │ description SUPPORTS div-style for color. colour is for the dot/圆点 only. They are separate. |
+| Group chat appCard | Falls back to plain text. Approval workflows won't work. Use text + /approve. |
+| Message too long | ~4000 character limit. Split long content into multiple messages. |
+| `openclaw skill` command | Does NOT exist. Use agent tools directly. |
