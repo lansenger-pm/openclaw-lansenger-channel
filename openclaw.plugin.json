@@ -71,6 +71,15 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
+          "enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable or disable this channel / 启用或禁用此频道"
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name for this account / 此账号的显示名称"
+          },
           "appId": {
             "type": "string",
             "description": "Lansenger bot App ID / 蓝信机器人 App ID（格式：2285568-xxx）"
@@ -127,19 +136,28 @@
             "additionalProperties": {
               "type": "object",
               "properties": {
+                "enabled": { "type": "boolean", "description": "Whether this bot is enabled / 是否启用" },
+                "name": { "type": "string", "description": "Display name for this account / 此账号的显示名称" },
                 "appId": { "type": "string", "description": "Bot App ID / 机器人 App ID" },
                 "appSecret": { "type": "string", "description": "Bot App Secret / 机器人 App Secret" },
                 "apiGatewayUrl": { "type": "string", "description": "API Gateway URL / API 网关地址" },
-                
                 "allowFrom": { "type": "array", "items": { "type": "string" }, "description": "Allowed user IDs / 允许的用户 ID 列表" },
-                "dmSecurity": { "type": "string", "description": "DM security policy / 私聊安全策略" },
-                "enabled": { "type": "boolean", "description": "Whether this bot is enabled / 是否启用" }
+                "dmSecurity": { "type": "string", "description": "DM security policy / 私聊安全策略" }
               }
             }
           }
         }
       },
       "uiHints": {
+        "enabled": {
+          "label": "Enabled / 启用",
+          "help": "Enable or disable the Lansenger channel / 启用或禁用蓝信频道"
+        },
+        "name": {
+          "label": "Display Name / 显示名称",
+          "placeholder": "e.g. QAX Bot / 奇安信机器人",
+          "help": "Optional display name for this channel account / 此频道账号的可选显示名称"
+        },
         "appId": {
           "label": "App ID / 蓝信 App ID",
           "placeholder": "e.g. 2285568-10117376",
@@ -202,7 +220,15 @@
         "accounts": {
           "label": "Multi-Bot Accounts / 多机器人账号",
           "sensitive": false,
-          "help": "Configure multiple bots with independent App IDs. Route to different agents using top-level bindings config (see Multi-agent routing section). / 配置多个机器人，每个机器人有独立的 App ID。多 Agent 路由使用顶层 bindings 配置（参见多 Agent 路由章节）。"
+          "help": "Configure multiple bots with independent App IDs. Route to different agents using top-level bindings config. / 配置多个机器人，每个机器人有独立的 App ID。多 Agent 路由使用顶层 bindings 配置。"
+        },
+        "accounts.*.enabled": {
+          "label": "Enabled / 启用",
+          "help": "Enable/disable this bot account / 启用/禁用该机器人账号"
+        },
+        "accounts.*.name": {
+          "label": "Display Name / 显示名称",
+          "help": "Display name for this bot account / 此机器人账号的显示名称"
         },
         "accounts.*.appId": {
           "label": "App ID / 蓝信 App ID",
@@ -232,11 +258,6 @@
             "open": "Open to All / 对所有人开放"
           },
           "help": "DM security policy for this bot / 该机器人的私聊安全策略"
-        },
-        "accounts.*.enabled": {
-          "label": "Enabled / 启用",
-          "sensitive": false,
-          "help": "Enable/disable this bot account / 启用/禁用该机器人账号"
         }
       }
     }
