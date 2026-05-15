@@ -325,6 +325,53 @@ async function handleInbound(
     agentText = `${event.text}\n\nAttached files saved locally — use the read tool to view:\n${event.mediaPaths.map((p, i) => `${i + 1}. ${p}`).join("\n")}`;
   }
 
+  const rawText = event.text;
+  const allowTextCommands = api.runtime.channel.commands.shouldHandleTextCommands({
+    cfg: api.config,
+    surface: "lansenger",
+  });
+  const shouldComputeAuth = api.runtime.channel.commands.shouldComputeCommandAuthorized(rawText, api.config);
+  const hasCommand = api.runtime.channel.commands.isControlCommandMessage(rawText, api.config);
+
+  let commandAuthorized: boolean | undefined = undefined;
+
+  if (shouldComputeAuth) {
+    const commandsCfg = (api.config as any).commands ?? {};
+    const useAccessGroups = commandsCfg.useAccessGroups !== false;
+
+    const explicitAllowFrom: string[] | undefined = (() => {
+      const af = commandsCfg.allowFrom;
+      if (!af || typeof af !== "object") return undefined;
+      return af["lansenger"] ?? af["*"] ?? undefined;
+    })();
+
+    const ownerAllowFrom: string[] = commandsCfg.ownerAllowFrom ?? [];
+    const senderId = event.senderId;
+
+    const senderMatches = (id: string) => {
+      const bare = id.replace(/^lansenger:/, "");
+      return bare === senderId || id === senderId;
+    };
+
+    if (explicitAllowFrom) {
+      commandAuthorized = explicitAllowFrom.some(senderMatches);
+    } else {
+      const channelAllowFrom = account.allowFrom;
+      commandAuthorized = api.runtime.channel.commands.resolveCommandAuthorizedFromAuthorizers({
+        useAccessGroups,
+        authorizers: [
+          { configured: ownerAllowFrom.length > 0, allowed: ownerAllowFrom.some(senderMatches) },
+          { configured: channelAllowFrom.length > 0, allowed: channelAllowFrom.some(senderMatches) },
+        ],
+      });
+    }
+  }
+
+  if (allowTextCommands && hasCommand && commandAuthorized !== true) {
+    log.info(`inbound: command blocked — sender=${event.senderId} not authorized: ${rawText.slice(0, 60)}`);
+    return;
+  }
+
   try {
     log.info(`turn.run starting: sessionKey=${sessionKey} agentId=${agentId} accountId=${account.accountId} matchedBy=${route.matchedBy}`);
     await api.runtime.channel.turn.run({
@@ -353,6 +400,9 @@ async function handleInbound(
             ctxPayload: {
               Body: event.text,
               BodyForAgent: agentText,
+              CommandBody: rawText,
+              CommandAuthorized: commandAuthorized,
+              CommandSource: "text",
               From: event.senderId,
               FromName: event.userName,
               SessionKey: sessionKey,
