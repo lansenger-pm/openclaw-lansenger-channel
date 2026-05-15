@@ -1,6 +1,6 @@
 {
   "name": "@lansenger-pm/openclaw-lansenger-channel",
-  "version": "3.2.3",
+  "version": "3.2.4",
   "type": "module",
   "main": "dist/index.js",
   "exports": {
@@ -40,12 +40,12 @@
   ],
   "openclaw": {
     "extensions": [
-      "./src/index.ts"
+      "./dist/index.js"
     ],
     "runtimeExtensions": [
       "./dist/index.js"
     ],
-    "setupEntry": "./src/setup-entry.ts",
+    "setupEntry": "./dist/setup-entry.js",
     "runtimeSetupEntry": "./dist/setup-entry.js",
     "channel": {
       "id": "lansenger",
@@ -98,7 +98,7 @@
     "vitest": "^4.1.6"
   },
   "peerDependencies": {
-    "@lansenger-pm/openclaw-lansenger-tools": ">=3.0.0"
+    "@lansenger-pm/openclaw-lansenger-tools": ">=1.0.0"
   },
   "peerDependenciesMeta": {
     "@lansenger-pm/openclaw-lansenger-tools": {
