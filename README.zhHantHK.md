@@ -67,7 +67,7 @@ openclaw channels add
 openclaw gateway restart
 ```
 
-`package.json` 中的 `openclaw.install` 元資料（`npmSpec`、`localPath`、`defaultChoice`）支援**按需安裝**：如果使用者在 `openclaw channels add` 靈中選擇 Lansenger 但插件未安裝，OpenClaw 可自動安裝該插件。
+`package.json` 中的 `openclaw.install` 元資料（`npmSpec`、`localPath`、`defaultChoice`）支援**按需安裝**：如果使用者在 `openclaw channels add` 精靈中選擇 Lansenger 但插件未安裝，OpenClaw 可自動安裝該插件。
 
 > **自訂閘道**：企業私有化部署（如奇安信）需在設定後透過 `openclaw.json` 或環境變數設定 `apiGatewayUrl` — 見[可選設定](#可選設定)。
 
