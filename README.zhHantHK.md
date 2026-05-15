@@ -374,7 +374,10 @@ Agent 路由由 OpenClaw 的 `bindings[]` 設定管理——見[多 Agent 路由
 
 ## 更新日誌
 
-- **v2.9.11** — 新增狀態適配器（probeAccount / buildChannelSummary / buildAccountSnapshot）；`channels status --probe` 顯示「configured」和「works」；環境變數回退支援憑證（LANSENGER_APP_ID / LANSENGER_APP_SECRET / LANSENGER_API_GATEWAY_URL）
+- **v3.0.0** — 新增 `lansenger_send_format_text` 工具（Markdown + @提及）；重寫 SKILL.md（決策樹格式，修正 headStatusInfo description+colour 語義——description 支援 div-style 標顏色，colour 是圓點顏色）；移除除錯代碼；更新 manifest contracts
+- **v2.10.0** — appCard font-size px→pt 自動轉換；sendImageUrl 錯誤分類；工具註冊 info 級別日誌
+- **v2.9.12** — 移除 `defaultAccount`；uiHints（中文標籤）；README 精簡（5 語言）
+- **v2.9.11** — 新增狀態適配器；環境變數回退支援憑證；`channels status --probe` 顯示「configured」和「works」
 - **v2.8.1** — 修復 README：4 步安裝流程；SKILL.md frontmatter（AgentSkills 規範）；頻道識別符改為小寫 `lansenger`
 - **v2.8.0** — OpenClaw `bindings[]` 多 Agent 路由；groupPolicy/groupAllowFrom/groups 羣聊准入控制
 - **v2.7.0** — 純物件工具註冊；運行時狀態取得 client/target

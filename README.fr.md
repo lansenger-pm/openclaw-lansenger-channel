@@ -372,7 +372,10 @@ Les mises à jour de statut d'approbation utilisent le format DynamicMsg appCard
 
 ## Journal des modifications
 
-- **v2.9.11** — Adaptateur de statut (probeAccount / buildChannelSummary / buildAccountSnapshot) ; `channels status --probe` affiche « configured » et « works » ; repli sur variables d'environnement pour les identifiants (LANSENGER_APP_ID / LANSENGER_APP_SECRET / LANSENGER_API_GATEWAY_URL)
+- **v3.0.0** — Ajout de `lansenger_send_format_text` (Markdown + @mention) ; réécriture SKILL.md (format arbre de décision, correction headStatusInfo description+colour — description supporte div-style pour couleur, couleur est la couleur du point) ; suppression du code de debug ; mise à jour manifest contracts
+- **v2.10.0** — Conversion automatique px→pt pour appCard ; classification erreurs sendImageUrl ; journalisation info pour inscription outils
+- **v2.9.12** — Suppression `defaultAccount` ; uiHints (labels chinois) ; nettoyage README (5 langues)
+- **v2.9.11** — Adaptateur de statut ; repli sur variables d'environnement ; `channels status --probe` affiche « configured » et « works »
 - **v2.8.1** — Correction README : flux d'installation 4 étapes ; SKILL.md frontmatter (spec AgentSkills) ; identifiant de canal en minuscules `lansenger`
 - **v2.8.0** — Routage multi-agent OpenClaw `bindings[]` ; groupPolicy/groupAllowFrom/groups contrôle d'accès groupe
 - **v2.7.0** — Enregistrement outils comme objets simples ; état runtime pour client/target

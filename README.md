@@ -364,7 +364,10 @@ Approval status updates use the DynamicMsg appCard format. The `updateCardStatus
 
 ## Changelog
 
-- **v2.9.11** — Add status adapter (probeAccount / buildChannelSummary / buildAccountSnapshot); `channels status --probe` shows "configured" and "works"; env var fallback for credentials (LANSENGER_APP_ID / LANSENGER_APP_SECRET / LANSENGER_API_GATEWAY_URL)
+- **v3.0.0** — Add `lansenger_send_format_text` tool (Markdown + @mention); rewrite SKILL.md (decision tree format, fix headStatusInfo description+colour semantics — description supports div-style for color, colour is dot color); remove debug code; update manifest contracts
+- **v2.10.0** — font-size px→pt auto-conversion in appCard; sendImageUrl error classification; tool registration info-level logging
+- **v2.9.12** — Removed `defaultAccount`; uiHints (Chinese labels); README cleanup (5 locales)
+- **v2.9.11** — Add status adapter; env var fallback for credentials; `channels status --probe` shows "configured" and "works"
 - **v2.8.1** — Fix README: proper 4-step install flow; SKILL.md frontmatter (AgentSkills spec); channel identifier to lowercase `lansenger`
 - **v2.8.0** — OpenClaw `bindings[]` multi-agent routing; groupPolicy/groupAllowFrom/groups access control
 - **v2.7.0** — Plain-object tool registration; runtime state for client/target
