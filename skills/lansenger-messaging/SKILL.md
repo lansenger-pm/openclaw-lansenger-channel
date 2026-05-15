@@ -1,19 +1,19 @@
 ---
 name: lansenger-messaging
-description: How to communicate on Lansenger (蓝信) — choose the right tool or CLI command, send rich content, approvals, and pitfalls
-metadata: {"openclaw":{"requires":{"config":["channels.lansenger"],"plugins":["lansenger-tools"]},"primaryEnv":"LANSENGER_APP_ID"}}
+description: How to communicate on Lansenger (蓝信) — send rich content via CLI (primary) or agent tools (fallback), approvals, and pitfalls
+metadata: {"openclaw":{"requires":{"config":["channels.lansenger"],"plugins":["lansenger-tools"],"cli":["lansenger"]},"primaryEnv":"LANSENGER_APP_ID"}}
 ---
 
 # Lansenger (蓝信) Messaging — Agent Quick Reference
 
-> ⚠️ **Agent tools require the `lansenger-tools` plugin** — install with `openclaw plugins install @lansenger-pm/openclaw-lansenger-tools`. Without it, only normal Markdown replies and CLI commands work.
-
 In a Lansenger session, **just write your reply normally** — Markdown renders automatically as formatText. No tool needed for formatted text unless you also need @mentions.
 
-You can send messages via **agent tools** or **CLI commands**. Both work. Choose whichever is available:
+You can send messages via **CLI commands** (primary, always works) or **agent tools** (fallback, may not inject properly in some Gateway versions):
 
-- **Agent tools**: `lansenger_send_file`, `lansenger_send_text`, etc. — available when `lansenger-tools` plugin is installed.
-- **CLI commands**: `lansenger message send-file`, `lansenger message send-text`, etc. — available via bash.
+- **CLI commands** (PRIMARY): `lansenger message send-file`, `lansenger message send-text`, etc. — via bash exec. Requires `pipx install lansenger-cli` or `pip install lansenger-cli`.
+- **Agent tools** (FALLBACK): `lansenger_send_file`, `lansenger_send_text`, etc. — available ONLY when `lansenger-tools` plugin is installed AND Gateway successfully injects them. If `toolNames: []`, tools are unavailable — use CLI instead.
+
+> ⚠️ **Install CLI first**: `pipx install lansenger-cli` (or `pip install lansenger-cli`). This is the reliable path. Agent tools may not inject in some OpenClaw versions — always verify availability before relying on them.
 
 However, Markdown and file attachments are **mutually exclusive**. If you need both formatting AND a file, send the Markdown reply first, then call `lansenger_send_file` or `lansenger message send-file` separately.
 
@@ -261,4 +261,5 @@ Status colors: #FFB116 (pending), #198754 (approved), #dc3545 (denied)
 | AppCard `text-indent: 0`       | Use `0em` with unit. Bare 0 causes silent failure.                               |
 | headStatusInfo div wrapping    | description supports div-style for color. colour is the DOT/圆点 color. Separate. |
 | Message too long               | ~4000 character limit. Split into multiple messages.                              |
-| Tools not available            | Install `lansenger-tools` plugin: `openclaw plugins install @lansenger-pm/openclaw-lansenger-tools` |
+| Tools not available            | **Use CLI as fallback**: `pipx install lansenger-cli`, then `lansenger message send-text <chatId> <content>`. Agent tools may not inject in some Gateway versions. |
+| CLI command not found          | Install: `pipx install lansenger-cli` or `pip install lansenger-cli`. Then verify: `lansenger --help`. |

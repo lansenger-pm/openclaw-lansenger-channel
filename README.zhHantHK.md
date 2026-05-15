@@ -35,14 +35,16 @@
 
 ## 代理工具 & CLI
 
-訊息可以透過**代理工具**、**CLI 命令**或兩者發送：
+**CLI 是主要方式** — 始終透過 bash 呼叫即可使用。代理工具為備選方式 — 在某些網關版本中可能無法正確注入。
+
+訊息可以透過**CLI 命令**（主要）或**代理工具**（備選）發送：
 
 | 方式 | 安裝方法 | 使用 |
 |------|----------|------|
-| 代理工具 | `openclaw plugins install @lansenger-pm/openclaw-lansenger-tools` | `lansenger_send_file`、`lansenger_send_text` 等 |
-| CLI 命令 | `pip install lansenger-cli` | `lansenger message send-file`、`lansenger message send-text` 等 |
+| **CLI 命令**（主要） | `pipx install lansenger-cli`（`pip install lansenger-cli` 為替代） | `lansenger message send-file`、`lansenger message send-text` 等 |
+| 代理工具（備選） | `openclaw plugins install @lansenger-pm/openclaw-lansenger-tools` | `lansenger_send_file`、`lansenger_send_text` 等 |
 
-> ⚠️ **代理工具需要 `lansenger-tools` 插件** — 需單獨安裝。CLI 命令需要 `lansenger-cli`（Python）。兩者均未安裝時，代理只能透過普通 Markdown 文字回覆。
+> ⚠️ **代理工具需要 `lansenger-tools` 插件且網關注入成功** — 若工具不可用，請使用 CLI 作為備選。CLI 命令需要 `lansenger-cli`（Python）。兩者均未安裝時，代理只能透過普通 Markdown 文字回覆。
 
 ## 安裝與設定
 
@@ -52,15 +54,15 @@
 # 1. 安裝頻道插件
 openclaw plugins install @lansenger-pm/openclaw-lansenger-channel
 
-# 2. 安裝工具插件或 CLI（至少需要一個來發送訊息）
-#    方案 A：OpenClaw 代理工具插件
+# 2. 安裝 CLI 或工具插件（至少需要一個來發送訊息）
+#    方案 A：Python CLI（主要 — 始終可透過 bash 呼叫）
+pipx install lansenger-cli   # 或：pip install lansenger-cli
+#    方案 B：OpenClaw 代理工具插件（備選 — 需網關注入）
 openclaw plugins install @lansenger-pm/openclaw-lansenger-tools
-#    方案 B：Python CLI（透過 bash 呼叫）
-pip install lansenger-cli
 
 # 3. 啟用插件（如未自動啟用）
 openclaw config set plugins.entries.lansenger.enabled true
-openclaw config set plugins.entries.lansenger-tools.enabled true  # 使用方案 A 時
+openclaw config set plugins.entries.lansenger-tools.enabled true  # 使用方案 B 時
 
 # 4. 配置頻道（互動式精靈）
 openclaw channels add
@@ -68,6 +70,8 @@ openclaw channels add
 # 5. 重啟網關
 openclaw gateway restart
 ```
+
+> **注意**：代理工具（方案 B）在某些網關版本中可能無法正確注入 — 請務必檢查代理工具列表中是否出現 `lansenger_send_*` 工具。若工具缺失，請使用 CLI（方案 A）。
 
 `package.json` 的 `peerDependencies` 在 npm install 時會警告缺少 tools 插件。設定精靈也會提醒安裝。
 
@@ -307,7 +311,7 @@ openclaw channels status --probe
 - **reminder** — formatText 中可選欄位；群組聊天中建議使用。提及使用者時在文字中包含「@姓名」。
 - **媒體標籤** — `<media>` 標籤適用於工作區檔案；外部路徑請使用 `lansenger_send_file`。
 - **openclaw skill/message lansenger** — 這些 CLI 命令不存在；請使用代理工具。
-- **工具插件** — 代理工具（`lansenger_send_*`）需要單獨安裝 `@lansenger-pm/openclaw-lansenger-tools` 插件。CLI 命令（`lansenger message send-*`）需要 `pip install lansenger-cli`。至少安裝其中一個。
+- **代理工具** — 代理工具（`lansenger_send_*`）需要工具插件且網關注入成功 — 若工具不可用，請使用 CLI 作為備選。CLI 命令（`lansenger message send-*`）需要 `pipx install lansenger-cli`。
 
 ## 開發
 

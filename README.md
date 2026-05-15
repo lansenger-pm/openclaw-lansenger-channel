@@ -33,14 +33,16 @@ Lansenger (蓝信) channel plugin for OpenClaw — WebSocket inbound, HTTP API o
 
 ## Agent Tools & CLI
 
-Messages can be sent via **agent tools**, **CLI commands**, or both:
+**CLI is the PRIMARY method** — it always works via bash. Agent tools are a FALLBACK — they may not inject properly in some Gateway versions.
+
+Messages can be sent via **CLI commands** (primary) or **agent tools** (fallback):
 
 | Method | How to install | Usage |
 |--------|---------------|-------|
-| Agent tools | `openclaw plugins install @lansenger-pm/openclaw-lansenger-tools` | `lansenger_send_file`, `lansenger_send_text`, etc. |
-| CLI commands | `pip install lansenger-cli` | `lansenger message send-file`, `lansenger message send-text`, etc. |
+| **CLI commands** (primary) | `pipx install lansenger-cli` (`pip install lansenger-cli` as alternative) | `lansenger message send-file`, `lansenger message send-text`, etc. |
+| Agent tools (fallback) | `openclaw plugins install @lansenger-pm/openclaw-lansenger-tools` | `lansenger_send_file`, `lansenger_send_text`, etc. |
 
-> ⚠️ **Agent tools require the `lansenger-tools` plugin** — install separately. CLI commands require `lansenger-cli` (Python). Without either, only normal Markdown replies work.
+> ⚠️ **Agent tools require the `lansenger-tools` plugin AND successful Gateway injection** — if tools are not available, use CLI as fallback. CLI commands require `lansenger-cli` (Python). Without either, only normal Markdown replies work.
 
 | Tool | Description |
 |------|-------------|
@@ -64,15 +66,15 @@ Tools are also available via CLI: `lansenger message send-text`, `lansenger mess
 # 1. Install the channel plugin
 openclaw plugins install @lansenger-pm/openclaw-lansenger-channel
 
-# 2. Install the tools plugin OR the CLI (at least one is needed for messaging)
-#    Option A: OpenClaw agent tools plugin
+# 2. Install the CLI OR the tools plugin (at least one is needed for messaging)
+#    Option A: Python CLI (primary — always works via bash)
+pipx install lansenger-cli   # or: pip install lansenger-cli
+#    Option B: OpenClaw agent tools plugin (fallback — requires Gateway injection)
 openclaw plugins install @lansenger-pm/openclaw-lansenger-tools
-#    Option B: Python CLI (works via bash)
-pip install lansenger-cli
 
 # 3. Enable the plugins (if not auto-enabled)
 openclaw config set plugins.entries.lansenger.enabled true
-openclaw config set plugins.entries.lansenger-tools.enabled true  # if using Option A
+openclaw config set plugins.entries.lansenger-tools.enabled true  # if using Option B
 
 # 4. Configure the channel (interactive wizard)
 openclaw channels add
@@ -80,6 +82,8 @@ openclaw channels add
 # 5. Restart the gateway
 openclaw gateway restart
 ```
+
+> **Note**: Agent tools (Option B) may not inject properly in some Gateway versions — always verify by checking if `lansenger_send_*` tools appear in the agent's tool list. If tools are missing, use CLI (Option A) instead.
 
 The `package.json` `peerDependencies` will warn during npm install if the tools plugin is missing. The setup wizard also reminds you to install it.
 
@@ -311,7 +315,7 @@ The plugin supports approval workflow cards:
 - **reminder** — optional in formatText; recommended in group chat. Include "@姓名" in text when mentioning.
 - **Media** — `<media>` tags work for workspace files; for external paths use `lansenger_send_file`.
 - **openclaw skill/message lansenger** — these CLI commands do NOT exist; use agent tools instead.
-- **Tools plugin** — agent tools (`lansenger_send_*`) require `@lansenger-pm/openclaw-lansenger-tools` plugin installed separately. CLI commands (`lansenger message send-*`) require `pip install lansenger-cli`. Install at least one.
+- **Agent tools** — agent tools (`lansenger_send_*`) require the tools plugin AND successful Gateway injection — if tools are not available, use CLI as fallback. CLI commands (`lansenger message send-*`) require `pipx install lansenger-cli`.
 
 ## Development
 

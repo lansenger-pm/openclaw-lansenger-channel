@@ -35,14 +35,16 @@ Connecte OpenClaw à Lansenger — une plateforme de messagerie d'entreprise —
 
 ## Outils de l'agent & CLI
 
-Les messages peuvent être envoyés via les **outils de l'agent**, les **commandes CLI**, ou les deux :
+**La CLI est la méthode PRINCIPALE** — elle fonctionne toujours via bash. Les outils agent sont un REPLI — ils peuvent ne pas s'injecter correctement dans certaines versions de la passerelle.
+
+Les messages peuvent être envoyés via les **commandes CLI** (principal) ou les **outils agent** (repli) :
 
 | Méthode | Installation | Utilisation |
 |---------|-------------|-------------|
-| Outils agent | `openclaw plugins install @lansenger-pm/openclaw-lansenger-tools` | `lansenger_send_file`, `lansenger_send_text`, etc. |
-| Commandes CLI | `pip install lansenger-cli` | `lansenger message send-file`, `lansenger message send-text`, etc. |
+| **Commandes CLI** (principal) | `pipx install lansenger-cli` (`pip install lansenger-cli` comme alternative) | `lansenger message send-file`, `lansenger message send-text`, etc. |
+| Outils agent (repli) | `openclaw plugins install @lansenger-pm/openclaw-lansenger-tools` | `lansenger_send_file`, `lansenger_send_text`, etc. |
 
-> ⚠️ **Les outils agent nécessitent le plugin `lansenger-tools`** — installation séparée. Les commandes CLI nécessitent `lansenger-cli` (Python). Sans aucun des deux, seules les réponses Markdown normales fonctionnent.
+> ⚠️ **Les outils agent nécessitent le plugin `lansenger-tools` ET une injection réussie de la passerelle** — si les outils ne sont pas disponibles, utilisez la CLI comme repli. Les commandes CLI nécessitent `lansenger-cli` (Python). Sans aucun des deux, seules les réponses Markdown normales fonctionnent.
 
 ## Installation et Configuration
 
@@ -52,15 +54,15 @@ Les messages peuvent être envoyés via les **outils de l'agent**, les **command
 # 1. Installer le plugin de canal
 openclaw plugins install @lansenger-pm/openclaw-lansenger-channel
 
-# 2. Installer le plugin outils OU le CLI (au moins un est nécessaire pour les messages)
-#    Option A : Plugin outils agent OpenClaw
+# 2. Installer le CLI OU le plugin outils (au moins un est nécessaire pour les messages)
+#    Option A : CLI Python (principal — fonctionne toujours via bash)
+pipx install lansenger-cli   # ou : pip install lansenger-cli
+#    Option B : Plugin outils agent OpenClaw (repli — nécessite injection passerelle)
 openclaw plugins install @lansenger-pm/openclaw-lansenger-tools
-#    Option B : CLI Python (fonctionne via bash)
-pip install lansenger-cli
 
 # 3. Activer les plugins (si non auto-activés)
 openclaw config set plugins.entries.lansenger.enabled true
-openclaw config set plugins.entries.lansenger-tools.enabled true  # si Option A
+openclaw config set plugins.entries.lansenger-tools.enabled true  # si Option B
 
 # 4. Configurer le canal (assistant interactif)
 openclaw channels add
@@ -68,6 +70,8 @@ openclaw channels add
 # 5. Redémarrer la passerelle
 openclaw gateway restart
 ```
+
+> **Note** : Les outils agent (Option B) peuvent ne pas s'injecter correctement dans certaines versions de la passerelle — vérifiez toujours que les outils `lansenger_send_*` apparaissent dans la liste des outils de l'agent. Si les outils sont absents, utilisez la CLI (Option A).
 
 Les `peerDependencies` de `package.json` avertiront lors de npm install si le plugin tools est absent. L'assistant de configuration vous rappelle également de l'installer.
 
@@ -305,7 +309,7 @@ Le plugin supporte les cartes d'approbation :
 - **reminder** — champ optionnel dans formatText ; recommandé dans les chats de groupe. Inclure « @姓名 » dans le texte pour les mentions.
 - **Média** — les balises `<media>` fonctionnent pour les fichiers du workspace ; pour les chemins externes, utilisez `lansenger_send_file`.
 - **openclaw skill/message lansenger** — ces commandes CLI n'existent PAS ; utilisez les outils de l'agent.
-- **Plugin outils** — les outils agent (`lansenger_send_*`) nécessitent le plugin `@lansenger-pm/openclaw-lansenger-tools` installé séparément. Les commandes CLI (`lansenger message send-*`) nécessitent `pip install lansenger-cli`. Installez au moins l'un des deux.
+- **Outils agent** — les outils agent (`lansenger_send_*`) nécessitent le plugin outils ET une injection réussie de la passerelle — si les outils ne sont pas disponibles, utilisez la CLI comme repli. Les commandes CLI (`lansenger message send-*`) nécessitent `pipx install lansenger-cli`.
 
 ## Développement
 
