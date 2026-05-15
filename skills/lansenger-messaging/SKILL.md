@@ -66,6 +66,8 @@ Lansenger has two outbound text types that cannot be combined:
 
 All tools accept an optional `to` parameter (chat ID). **LEAVE EMPTY** to auto-detect the current conversation target — only fill it if you need to send to a different chat. chatId is case-sensitive.
 
+**How to get a chatId**: The chatId comes from the inbound message's `conversationId` / `senderId` field. In DM it's the user's staffId (e.g. `2285568-WyuVXUdwyRr1cpPrXdaT66YMtmArYn`). In group chat it's the group's chatId. **Never truncate or modify a chatId** — it must be used exactly as received.
+
 ## DM vs Group
 
 The plugin auto-routes via `msgTarget(chatId)` — you never need to specify which endpoint:
@@ -110,7 +112,10 @@ lansenger_send_text(content=<plain text>, filePath=<optional local path>, to=<op
 lansenger_send_image_url(imageUrl=<URL>, caption=<optional plain-text>, to=<optional chatId>)
 ```
 
-Downloads the image first, then uploads and sends. For local files, use `lansenger_send_file` instead.
+Downloads the image first, then uploads and sends. For local files, use `lansenger_send_file` instead. **URL must be directly reachable** — the plugin downloads from the URL server-side, so firewalled/internal URLs will fail. Common errors:
+- HTTP 404 → image not found at that URL
+- Timeout (15s) → URL unreachable from the gateway host
+- Non-image content-type → URL returns HTML/JSON instead of an image
 
 ## Rich Content Types
 
@@ -122,6 +127,7 @@ Multi-article card (图文卡片). Each article needs `imgUrl`, `title`, `url`. 
 
 ### AppCard (`lansenger_send_app_card`)
 Rich formatted card (应用卡片). Supports div-style HTML in body fields (color, font-size, text-align, text-indent).
+- ⚠️ **`font-size` MUST use `pt` units** — `px` causes API to return "invalid bodyContent" and the entire message fails. Allowed range: **12pt–36pt**. The plugin auto-converts `px` to `pt` (1px ≈ 0.75pt) and clamps to the allowed range, but always use `pt` explicitly to avoid surprises.
 - ⚠️ **`text-indent` MUST have units** — bare `0` causes silent API failure; always use `0em`
 - ⚠️ **Dynamic cards (`isDynamic=true`) require `headStatusInfo`** — plugin auto-fills "Active" default if omitted
 - Card content should be **single-language** based on user's detected language
@@ -154,6 +160,8 @@ lansenger_query_groups(pageOffset=<1>, pageSize=<100>)
 ```
 
 Returns `totalGroupIds` (count) and `groupIds` (list). Use to discover group chat IDs before sending messages to groups.
+
+⚠️ **This API may require admin authorization** — on some enterprise deployments (e.g. 奇安信), `/v2/groups/fetch` returns `errCode=10005 "API服务无权限"` if the endpoint is not enabled. If you get a permission error, ask the user to provide group chatIds manually or request admin to enable the API.
 
 ## What You Receive (Inbound Messages)
 
@@ -204,6 +212,7 @@ openclaw pairing approve Lansenger <code>
 - **MEDIA: tags work for workspace files** — for non-workspace paths (Documents, /tmp, etc.), use `lansenger_send_file` instead
 - **AppArticles uses `summary` not `description`** — the article summary field is called `summary`, not `description`. Using `description` will cause the field to be ignored by the API.
 - **`text-indent` MUST have units** — bare `0` causes empty API response; use `0em`
+- **`font-size` MUST use `pt`** — `px` causes "invalid bodyContent" error; use 12pt–36pt. Plugin auto-converts px→pt, but prefer pt explicitly.
 - **Dynamic cards require `headStatusInfo`** — auto-filled if omitted, but explicit is better
 - **Gateway URL is per-environment** — the plugin uses whatever `apiGatewayUrl` is configured (e.g. `https://apigw.lx.qianxin.com` for 奇安信 environments, or `https://open.e.lanxin.cn/open/apigw` for standard Lansenger). All API endpoints are appended to this base URL. Do NOT assume the default gateway — always use the configured value.
 - **`openclaw skill` and `openclaw message lansenger` do NOT exist** — this SKILL is documentation only, not a CLI command. Third-party plugin channels are not in `openclaw message send --channel`. To send messages, use agent tools directly.

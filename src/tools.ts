@@ -396,4 +396,11 @@ export function registerLansengerTools(api: any) {
       return jsonResult({ success: true, totalGroupIds: result.totalGroupIds, groupIds: result.groupIds });
     },
   });
+
+  const registered = [
+    "lansenger_send_file", "lansenger_send_text", "lansenger_send_image_url",
+    "lansenger_send_link_card", "lansenger_send_app_articles", "lansenger_send_app_card",
+    "lansenger_update_dynamic_card", "lansenger_revoke_message", "lansenger_query_groups",
+  ];
+  console.log(`[lansenger] tools registered: ${registered.join(", ")}`);
 }

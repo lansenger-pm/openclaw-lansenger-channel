@@ -13,6 +13,24 @@ const silentLogger: ClientLogger = { info: () => {}, error: () => {} };
 
 const DEFAULT_API_GATEWAY_URL = "https://open.e.lanxin.cn/open/apigw";
 const MAX_MESSAGE_LENGTH = 4000;
+
+function convertPxToPt(str: string): string {
+  return str.replace(/font-size:\s*(\d+(?:\.\d+)?)px/gi, (_match, num) => {
+    const pt = Math.max(12, Math.min(36, Math.round(parseFloat(num) * 0.75)));
+    return `font-size:${pt}pt`;
+  });
+}
+
+function convertPxToPtDeep(obj: unknown): unknown {
+  if (typeof obj === "string") return convertPxToPt(obj);
+  if (Array.isArray(obj)) return obj.map(convertPxToPtDeep);
+  if (obj && typeof obj === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(obj)) out[k] = convertPxToPtDeep(v);
+    return out;
+  }
+  return obj;
+}
 const RECONNECT_BACKOFF = [2, 5, 10, 30, 60];
 const HEARTBEAT_INTERVAL_MS = 30_000;
 const PONG_TIMEOUT_MS = 10_000;
@@ -217,10 +235,18 @@ export class LansengerClient {
 
   async sendImageUrl(chatId: string, imageUrl: string, caption?: string): Promise<ApiResult> {
     try {
-      const resp = await fetch(imageUrl);
-      if (!resp.ok) return { success: false, error: `Download HTTP error: ${resp.status}` };
-      const buffer = Buffer.from(await resp.arrayBuffer());
+      const resp = await fetch(imageUrl, { signal: AbortSignal.timeout(15000) });
+      if (!resp.ok) {
+        const ct = resp.headers.get("content-type") ?? "";
+        if (resp.status === 404) return { success: false, error: `Image URL not found (HTTP 404): ${imageUrl}` };
+        if (resp.status >= 500) return { success: false, error: `Image server error (HTTP ${resp.status}): ${imageUrl}` };
+        return { success: false, error: `Download HTTP error: ${resp.status} (content-type: ${ct}): ${imageUrl}` };
+      }
       const contentType = resp.headers.get("content-type") ?? "";
+      if (!contentType.startsWith("image/") && !contentType.includes("octet-stream")) {
+        return { success: false, error: `URL returned non-image content (content-type: ${contentType}): ${imageUrl}` };
+      }
+      const buffer = Buffer.from(await resp.arrayBuffer());
       const ext = contentType.includes("png") ? ".png" : contentType.includes("gif") ? ".gif" : contentType.includes("webp") ? ".webp" : ".jpg";
       const tmpPath = path.join(os.tmpdir(), `lansenger_url_image_${crypto.randomUUID()}${ext}`);
       await fs.writeFile(tmpPath, buffer);
@@ -228,7 +254,9 @@ export class LansengerClient {
       try { await fs.unlink(tmpPath); } catch {}
       return result;
     } catch (e: any) {
-      return { success: false, error: e.message };
+      const msg = e.message ?? String(e);
+      if (e.name === "AbortError" || msg.includes("timeout")) return { success: false, error: `Image URL unreachable (timeout after 15s): ${imageUrl}` };
+      return { success: false, error: `Failed to fetch image URL: ${msg}` };
     }
   }
 
@@ -296,7 +324,7 @@ export class LansengerClient {
     const token = await this.getAppToken();
     if (!token) return { success: false, error: "No access token" };
     try {
-      const resolvedCard: AppCardData = { ...cardData };
+      const resolvedCard: AppCardData = convertPxToPtDeep(cardData) as AppCardData;
       if (resolvedCard.isDynamic && !resolvedCard.headStatusInfo) {
         resolvedCard.headStatusInfo = {
           description: '<div style="color:rgba(0,0,0,.47);text-align:left">Active</div>',
