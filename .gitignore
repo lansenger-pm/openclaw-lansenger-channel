@@ -31,3 +31,13 @@ temp/
 
 # Test coverage
 coverage/
+
+# Local-only tests (not for GitHub)
+src/client.test.ts
+src/setup-wizard.test.ts
+coverage/
+
+# Local-only tests (not for GitHub)
+src/client.test.ts
+src/setup-wizard.test.ts
+src/channel.test.ts

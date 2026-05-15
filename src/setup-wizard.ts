@@ -41,6 +41,10 @@ const HELP_LINES = [
   "Personal Bots only — organization bots not supported / 仅支持个人机器人",
   "Mobile client does NOT support viewing credentials / 移动端不支持查看凭证",
   `Docs: ${formatDocsLink("https://open.e.lanxin.cn/docs", "lansenger")}`,
+  "",
+  "⚠️ Agent tools require a separate plugin, CLI requires a Python package: / 代理工具或 CLI 需单独安装：",
+  "  Option A: openclaw plugins install @lansenger-pm/openclaw-lansenger-tools",
+  "  Option B: pip install lansenger-cli",
 ];
 
 function makeInspect(field: string, envVar: string) {
@@ -251,4 +255,20 @@ finalize: async ({ cfg, accountId }: any) => {
   }),
 
   disable: (cfg: any) => setSetupChannelEnabled(cfg, CHANNEL, false),
+
+  companionNote: {
+    title: "Install Messaging Tools / 安装消息工具",
+    lines: [
+      "To send files, cards, and formatted messages, install one of: / 发送文件、卡片和格式化消息，安装以下任一：",
+      "",
+      "  Option A: OpenClaw agent tools plugin / 方案 A：OpenClaw 代理工具插件",
+      "    openclaw plugins install @lansenger-pm/openclaw-lansenger-tools",
+      "",
+      "  Option B: Python CLI (works via bash) / 方案 B：Python CLI（通过 bash 调用）",
+      "    pip install lansenger-cli",
+      "",
+      "Without either, the agent can only reply via normal Markdown text. / 未安装任一时，代理只能通过普通 Markdown 文本回复。",
+    ],
+    shouldShow: () => true,
+  },
 };

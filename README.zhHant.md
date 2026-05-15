@@ -33,41 +33,43 @@
 
 **預設策略**：優先使用 `formatText` 傳送 Markdown 回覆。附件使用 `text` 回退。兩種類型均支援 @mention（透過 `reminder` 參數）—提及使用者時在文字中包含「@姓名」。
 
-## 代理工具
+## 代理工具 & CLI
 
-| 工具 | 說明 |
-|------|------|
-| `lansenger_send_text` | 傳送文字或 formatText 訊息（預設 Markdown） |
-| `lansenger_send_file` | 傳送檔案/圖片/影片/語音（工作區或外部路徑） |
-| `lansenger_send_image_url` | 透過 URL 傳送圖片 |
-| `lansenger_send_link_card` | 傳送富連結預覽卡片 |
-| `lansenger_send_app_card` | 傳送互動/審批卡片 |
-| `lansenger_send_app_articles` | 傳送多文章卡片 |
-| `lansenger_update_dynamic_card` | 原地更新動態卡片狀態 |
-| `lansenger_revoke_message` | 撤回已傳送的訊息 |
-| `lansenger_query_groups` | 查詢可用群組 |
+訊息可以透過**代理工具**、**CLI 命令**或兩者傳送：
+
+| 方式 | 安裝方法 | 使用 |
+|------|----------|------|
+| 代理工具 | `openclaw plugins install @lansenger-pm/openclaw-lansenger-tools` | `lansenger_send_file`、`lansenger_send_text` 等 |
+| CLI 命令 | `pip install lansenger-cli` | `lansenger message send-file`、`lansenger message send-text` 等 |
+
+> ⚠️ **代理工具需要 `lansenger-tools` 插件** — 需單獨安裝。CLI 命令需要 `lansenger-cli`（Python）。兩者均未安裝時，代理只能透過普通 Markdown 文字回覆。
 
 ## 安裝與設定
 
-### 建議 4 步流程
+### 建議安裝流程
 
 ```bash
-# 1. 安裝插件
+# 1. 安裝頻道插件
 openclaw plugins install @lansenger-pm/openclaw-lansenger-channel
 
-# 2. 啟用插件（如未自動啟用）
+# 2. 安裝工具插件或 CLI（至少需要一個來傳送訊息）
+#    方案 A：OpenClaw 代理工具插件
+openclaw plugins install @lansenger-pm/openclaw-lansenger-tools
+#    方案 B：Python CLI（透過 bash 呼叫）
+pip install lansenger-cli
+
+# 3. 啟用插件（如未自動啟用）
 openclaw config set plugins.entries.lansenger.enabled true
+openclaw config set plugins.entries.lansenger-tools.enabled true  # 使用方案 A 時
 
-# 3. 配置頻道（互動式精靈）
+# 4. 配置頻道（互動式精靈）
 openclaw channels add
-#   或快速新增（建立空設定，再執行上面的精靈）：
-#   openclaw channels add --channel lansenger
 
-# 4. 重啟閘道
+# 5. 重啟閘道
 openclaw gateway restart
 ```
 
-`package.json` 中的 `openclaw.install` 元資料（`npmSpec`、`localPath`、`defaultChoice`）支援**按需安裝**：如果使用者在 `openclaw channels add` 精靈中選擇 Lansenger 但插件未安裝，OpenClaw 可自動安裝該插件。
+`package.json` 的 `peerDependencies` 在 npm install 時會警告缺少 tools 插件。設定精靈也會提醒安裝。
 
 > **自訂閘道**：企業私有化部署（如奇安信）需在設定後透過 `openclaw.json` 或環境變數設定 `apiGatewayUrl` — 見[可選設定](#可選設定)。
 
@@ -303,6 +305,7 @@ openclaw channels status --probe
 - **reminder**——formatText 中可選欄位；群組聊天中建議使用。提及使用者時在文字中包含「@姓名」。
 - **媒體標籤**——`<media>` 標籤適用於工作區檔案；外部路徑請使用 `lansenger_send_file`。
 - **openclaw skill/message lansenger**——這些 CLI 命令不存在；請使用代理工具。
+- **工具插件**——代理工具（`lansenger_send_*`）需要單獨安裝 `@lansenger-pm/openclaw-lansenger-tools` 插件。CLI 命令（`lansenger message send-*`）需要 `pip install lansenger-cli`。至少安裝其中一個。
 
 ## 開發
 
@@ -336,7 +339,7 @@ openclaw-lansenger-channel/
 │   └── runtime.ts      # 閘道運行時（方法、入站處理器）
 ├── skills/
 │   └── lansenger-messaging/
-│       └── SKILL.md    # 代理訊息策略
+│       └── SKILL.md    # 代理訊息策略（工具 + CLI）
 ├── dist/               # 編譯後的 JavaScript
 ├── index.ts            # 插件入口
 ├── setup-entry.ts      # 設定精靈入口
