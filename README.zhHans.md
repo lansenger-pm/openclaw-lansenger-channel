@@ -372,20 +372,18 @@ Agent 路由由 OpenClaw 的 `bindings[]` 配置管理——见[多 Agent 路由
 
 ## 更新日志
 
-- **v3.0.0** — 新增 `lansenger_send_format_text` 工具（Markdown + @提及）；重写 SKILL.md（决策树格式，修正 headStatusInfo description+colour 语义——description 支持 div-style 标颜色，colour 是圆点颜色）；移除调试代码；更新 manifest contracts
-- **v2.10.0** — appCard font-size px→pt 自动转换；sendImageUrl 错误分类；工具注册 info 级别日志
-- **v2.9.12** — 移除 `defaultAccount`；uiHints（中文标签）；README 精简（5 语言）
-- **v2.9.11** — 新增状态适配器；环境变量回退支持凭证；`channels status --probe` 显示"configured"和"works"
-- **v2.8.1** — 修复 README：4 步安装流程；SKILL.md frontmatter（AgentSkills 规范）；频道标识符改为小写 `lansenger`
-- **v2.8.0** — OpenClaw `bindings[]` 多 Agent 路由；groupPolicy/groupAllowFrom/groups 群聊准入控制
-- **v2.7.0** — 纯对象工具注册；运行时状态获取 client/target
-- **v2.6.0** — 无条件注册工具；移除幽灵 delete_message
-- **v2.5.2** — formatText reminder 支持；AppArticles `summary` 字段；移除 delete_message
-- **v2.5.1** — 回滚 sysMsg/deleteMessage（API 不可用）；撤回 chatType 仅 bot/group
-- **v2.4.0** — 修复消息体组装：wrap() 剥离 msgType；appArticles/linkCard 字段修复
-- **v2.3.0** — 移除遗留群聊/私聊发送；全部通过 msgTarget 路由
-- **v2.2.0** — 添加 9 个 agent 工具
-- **v2.0.0** — 初始发布
+- **v3.1** — 多账号设置向导；dmPolicy 对齐 OpenClaw 标准（dmSecurity→dmPolicy + paired→pairing）；中英双语提示文案；凭证 shouldPrompt 跳过已配置步骤；多账号配置迁移清理
+- **v3.0** — 新增 `lansenger_send_format_text` 工具（Markdown + @提及）；重写 SKILL.md；修正 headStatusInfo description+colour 语义
+- **v2.10** — appCard font-size px→pt 自动转换；sendImageUrl 错误分类；工具注册日志
+- **v2.9** — 状态适配器；环境变量回退；uiHints 中文标签；README 精简（5 语言）
+- **v2.8** — OpenClaw `bindings[]` 多 Agent 路由；groupPolicy/groupAllowFrom/groups 群聊准入；SKILL.md AgentSkills 规范
+- **v2.7** — 纯对象工具注册；运行时状态获取 client/target
+- **v2.6** — 无条件注册工具；移除幽灵 delete_message
+- **v2.5** — formatText reminder；AppArticles `summary`；撤回仅 bot/group
+- **v2.4** — 修复消息体组装；appArticles/linkCard 字段修复
+- **v2.3** — 移除遗留群聊/私聊发送；全部通过 msgTarget 路由
+- **v2.2** — 添加 9 个 agent 工具
+- **v2.0** — 初始发布
 
 ## 许可证
 

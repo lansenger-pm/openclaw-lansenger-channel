@@ -227,18 +227,18 @@ describe("LansengerOnboarding", () => {
     expect(lansengerOnboarding.configuredCheck(cfg)).toBe(false);
   });
 
-  it("setDmPolicy merges dmSecurity into config", () => {
+  it("setDmPolicy merges dmPolicy into config", () => {
     const cfg = { channels: { lansenger: { appId: "id", appSecret: "secret" } } };
     const result = lansengerOnboarding.setDmPolicy(cfg, "open");
-    expect(result.channels.lansenger.dmSecurity).toBe("open");
+    expect(result.channels.lansenger.dmPolicy).toBe("open");
   });
 
   it("setDmPolicy preserves existing fields", () => {
     const cfg = { channels: { lansenger: { appId: "id", appSecret: "secret", allowFrom: ["u1"] } } };
-    const result = lansengerOnboarding.setDmPolicy(cfg, "paired");
+    const result = lansengerOnboarding.setDmPolicy(cfg, "pairing");
     expect(result.channels.lansenger.appId).toBe("id");
     expect(result.channels.lansenger.allowFrom).toEqual(["u1"]);
-    expect(result.channels.lansenger.dmSecurity).toBe("paired");
+    expect(result.channels.lansenger.dmPolicy).toBe("pairing");
   });
 
   it("promptAllowFrom adds new ID with dedup", async () => {
@@ -252,7 +252,7 @@ describe("LansengerOnboarding", () => {
     const result = await lansengerOnboarding.promptAllowFrom({ cfg, prompter: mockPrompter, accountId: null });
     expect(result.channels.lansenger.allowFrom).toEqual(["user-old", "user-new"]);
     expect(result.channels.lansenger.enabled).toBe(true);
-    expect(result.channels.lansenger.dmSecurity).toBe("paired");
+    expect(result.channels.lansenger.dmPolicy).toBe("pairing");
   });
 
   it("promptAllowFrom deduplicates existing entries", async () => {
@@ -267,7 +267,7 @@ describe("LansengerOnboarding", () => {
     expect(result.channels.lansenger.allowFrom).toEqual(["user-old"]);
   });
 
-  it("promptAllowFrom sets dmSecurity to paired when missing", async () => {
+  it("promptAllowFrom sets dmPolicy to pairing when missing", async () => {
     const mockPrompter = {
       text: async () => "u1",
       confirm: async () => true,
@@ -276,7 +276,7 @@ describe("LansengerOnboarding", () => {
     };
     const cfg = { channels: { lansenger: { appId: "id", appSecret: "secret" } } };
     const result = await lansengerOnboarding.promptAllowFrom({ cfg, prompter: mockPrompter, accountId: null });
-    expect(result.channels.lansenger.dmSecurity).toBe("paired");
+    expect(result.channels.lansenger.dmPolicy).toBe("pairing");
   });
 
   it("noteSetupHelp calls prompter.note", async () => {
@@ -303,7 +303,7 @@ describe("LansengerOnboarding", () => {
     expect(result.channels.lansenger.appId).toBe("my-app-id");
     expect(result.channels.lansenger.appSecret).toBe("my-secret");
     expect(result.channels.lansenger.enabled).toBe(true);
-    expect(result.channels.lansenger.dmSecurity).toBe("paired");
+    expect(result.channels.lansenger.dmPolicy).toBe("pairing");
     expect(result.channels.lansenger.approval.enabled).toBe(true);
   });
 

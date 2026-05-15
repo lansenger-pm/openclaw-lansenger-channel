@@ -63,11 +63,11 @@ export const lansengerSetupWizard: any = {
   channel: CHANNEL,
 
   status: createStandardChannelSetupStatus({
-    channelLabel: "Lansenger",
-    configuredLabel: "configured",
-    unconfiguredLabel: "needs App ID and App Secret",
-    configuredHint: "configured",
-    unconfiguredHint: "needs setup",
+    channelLabel: "Lansenger (蓝信)",
+    configuredLabel: "已配置 / configured",
+    unconfiguredLabel: "需要 App ID 和 App Secret / needs App ID and App Secret",
+    configuredHint: "已配置 / configured",
+    unconfiguredHint: "需要配置 / needs setup",
     configuredScore: 1,
     unconfiguredScore: 10,
     resolveConfigured: ({ cfg }: any) => {
@@ -101,10 +101,14 @@ export const lansengerSetupWizard: any = {
       credentialLabel: "Lansenger App ID",
       preferredEnvVar: "LANSENGER_APP_ID",
       helpTitle: "Lansenger App ID / 蓝信 App ID",
-      helpLines: HELP_LINES,
-      envPrompt: "LANSENGER_APP_ID detected. Use env var?",
-      keepPrompt: "App ID already configured. Keep it?",
-      inputPrompt: "Enter Lansenger App ID / 输入蓝信 App ID",
+      helpLines: [
+        "App ID from your Lansenger Personal Bot / 个人机器人的 App ID",
+        "Found alongside App Secret → Contacts → Bots → Personal Bots / 通讯录 → 智能机器人 → 个人机器人",
+      ],
+      envPrompt: "检测到环境变量 LANSENGER_APP_ID，是否使用？/ LANSENGER_APP_ID detected. Use env var?",
+      keepPrompt: "App ID 已配置，是否保留？/ App ID already configured. Keep it?",
+      inputPrompt: "输入蓝信 App ID / Enter Lansenger App ID",
+      shouldPrompt: ({ state }: any) => !state.hasConfiguredValue,
       allowEnv: ({ accountId }: any) => !accountId || accountId === "default" || accountId === DEFAULT_ACCOUNT_ID,
       inspect: makeInspect("appId", "LANSENGER_APP_ID"),
       applySet: ({ cfg, accountId, resolvedValue }: any) => patchChannelConfigForAccount({
@@ -122,9 +126,10 @@ export const lansengerSetupWizard: any = {
         "App Secret from your Lansenger Personal Bot / 个人机器人的 App Secret",
         "Found alongside App ID → Contacts → Bots → Personal Bots / 通讯录 → 智能机器人 → 个人机器人",
       ],
-      envPrompt: "LANSENGER_APP_SECRET detected. Use env var?",
-      keepPrompt: "App Secret already configured. Keep it?",
-      inputPrompt: "Enter Lansenger App Secret / 输入蓝信 App Secret",
+      envPrompt: "检测到环境变量 LANSENGER_APP_SECRET，是否使用？/ LANSENGER_APP_SECRET detected. Use env var?",
+      keepPrompt: "App Secret 已配置，是否保留？/ App Secret already configured. Keep it?",
+      inputPrompt: "输入蓝信 App Secret / Enter Lansenger App Secret",
+      shouldPrompt: ({ state }: any) => !state.hasConfiguredValue,
       allowEnv: ({ accountId }: any) => !accountId || accountId === "default" || accountId === DEFAULT_ACCOUNT_ID,
       inspect: makeInspect("appSecret", "LANSENGER_APP_SECRET"),
       applySet: ({ cfg, accountId, resolvedValue }: any) => patchChannelConfigForAccount({
@@ -137,7 +142,7 @@ export const lansengerSetupWizard: any = {
   textInputs: [
     {
       inputKey: "baseUrl",
-      message: "API Gateway URL / API 网关地址（可选，默认蓝信公有云）",
+      message: "API 网关地址（可选，默认蓝信公有云）/ API Gateway URL (optional, default Lansenger public cloud)",
       placeholder: "https://open.e.lanxin.cn/open/apigw",
       required: false,
       initialValue: ({ cfg, accountId }: any) => {
@@ -168,13 +173,13 @@ finalize: async ({ cfg, accountId }: any) => {
       } else if (defaultAppId && Object.keys(defaultAcc).length > 0) {
         const existing = accounts[defaultAppId] ?? {};
         const merged = { ...existing };
-        for (const key of ["appId", "appSecret", "apiGatewayUrl", "allowFrom", "dmSecurity", "enabled", "name"]) {
+        for (const key of ["appId", "appSecret", "apiGatewayUrl", "allowFrom", "dmPolicy", "enabled", "name"]) {
           const val = defaultAcc[key] || section[key];
           if (val && !merged[key]) merged[key] = val;
         }
         merged.appId = merged.appId || defaultAppId;
         merged.enabled = true;
-        merged.dmSecurity = merged.dmSecurity ?? "paired";
+        merged.dmPolicy = merged.dmPolicy ?? merged.dmSecurity ?? "pairing";
         accounts[defaultAppId] = merged;
         delete accounts.default;
       }
@@ -186,7 +191,7 @@ finalize: async ({ cfg, accountId }: any) => {
           appSecret: section.appSecret,
           apiGatewayUrl: section.apiGatewayUrl,
           enabled: true,
-          dmSecurity: section.dmSecurity ?? "paired",
+          dmPolicy: section.dmPolicy ?? section.dmSecurity ?? "pairing",
         };
       }
 
@@ -194,12 +199,13 @@ finalize: async ({ cfg, accountId }: any) => {
       delete section.appSecret;
       delete section.apiGatewayUrl;
       delete section.allowFrom;
+      delete section.dmPolicy;
       delete section.dmSecurity;
       section.enabled = true;
-      section.dmSecurity = "paired";
+      section.dmPolicy = "pairing";
     } else {
       section.enabled = true;
-      section.dmSecurity = section.dmSecurity ?? "paired";
+      section.dmPolicy = section.dmPolicy ?? section.dmSecurity ?? "pairing";
     }
 
     channels[CHANNEL] = section;
@@ -211,7 +217,7 @@ finalize: async ({ cfg, accountId }: any) => {
 
     return patchChannelConfigForAccount({
       cfg, channel: CHANNEL, accountId: effectiveAccountId,
-      patch: { enabled: true, dmSecurity: "paired" },
+      patch: { enabled: true, dmPolicy: "pairing" },
     });
   },
 
@@ -222,9 +228,9 @@ finalize: async ({ cfg, accountId }: any) => {
       "Lansenger user IDs have format: appId-userId (e.g. 2285568-xxxxxxx)",
       "蓝信用户 ID 格式：appId-userId（如 2285568-xxxxxxx）",
     ],
-    message: "Lansenger allowFrom (user IDs, format: 2285568-xxx)",
+    message: "蓝信允许的用户 ID（格式：2285568-xxx）/ Lansenger allowFrom (user IDs, format: 2285568-xxx)",
     placeholder: "2285568-xxxxxxx",
-    invalidWithoutCredentialNote: "Lansenger allowFrom requires user IDs in format appId-userId.",
+    invalidWithoutCredentialNote: "蓝信 allowFrom 需要格式为 appId-userId 的用户 ID。/ Lansenger allowFrom requires user IDs in format appId-userId.",
     parseId: (entry: string) => entry.trim() || null,
     resolveEntries: async ({ entries }: any) => entries.map((entry: string) => ({
       input: entry,
@@ -236,11 +242,11 @@ finalize: async ({ cfg, accountId }: any) => {
   dmPolicy: createTopLevelChannelDmPolicy({
     label: "Lansenger",
     channel: CHANNEL,
-    policyKey: "channels.lansenger.dmSecurity",
+    policyKey: "channels.lansenger.dmPolicy",
     allowFromKey: "channels.lansenger.allowFrom",
     getCurrent: (cfg: any) => {
       const section = getSection(cfg);
-      return (section?.dmSecurity ?? "paired") as any;
+      return (section?.dmPolicy ?? section?.dmSecurity ?? "pairing") as any;
     },
   }),
 

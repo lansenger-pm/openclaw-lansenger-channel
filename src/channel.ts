@@ -29,6 +29,7 @@ type LansengerAccount = {
   appSecret?: string;
   apiGatewayUrl?: string;
   allowFrom?: string[];
+  dmPolicy?: string;
   dmSecurity?: string;
   homeChannel?: string;
   enabled?: boolean;
@@ -78,7 +79,7 @@ function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): Resolve
   const appSecret = account?.appSecret ?? process.env.LANSENGER_APP_SECRET ?? "";
   const apiGatewayUrl = account?.apiGatewayUrl ?? process.env.LANSENGER_API_GATEWAY_URL ?? DEFAULT_API_GATEWAY_URL;
   const allowFrom: string[] = account?.allowFrom ?? [];
-  const dmPolicy = account?.dmSecurity;
+  const dmPolicy = account?.dmPolicy ?? account?.dmSecurity;
   const homeChannel = account?.homeChannel;
   const enabled = Boolean(appId && appSecret);
 
@@ -231,9 +232,9 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
   security: {
     dm: {
       channelKey: "lansenger",
-      resolvePolicy: (account) => account.dmPolicy ?? "paired",
+      resolvePolicy: (account) => account.dmPolicy ?? "pairing",
       resolveAllowFrom: (account) => account.allowFrom,
-      defaultPolicy: "paired",
+      defaultPolicy: "pairing",
     },
   },
 
@@ -317,7 +318,7 @@ const lansengerOnboarding = {
   setDmPolicy: (cfg: any, policy: string) => {
     const channels = { ...((cfg.channels as Record<string, any>) ?? {}) };
     const current = channels.lansenger ?? {};
-    channels.lansenger = { ...current, dmSecurity: policy };
+    channels.lansenger = { ...current, dmPolicy: policy };
     return { ...cfg, channels };
   },
   promptAllowFrom: async (params: any) => {
@@ -343,7 +344,7 @@ const lansengerOnboarding = {
     } else {
       current.allowFrom = unique;
     }
-    channels.lansenger = { ...current, enabled: true, accounts: accountsCopy, dmSecurity: current.dmSecurity ?? "paired" };
+    channels.lansenger = { ...current, enabled: true, accounts: accountsCopy, dmPolicy: current.dmPolicy ?? current.dmSecurity ?? "pairing" };
     return { ...cfg, channels };
   },
   noteSetupHelp: async (params: any) => {
@@ -445,7 +446,7 @@ const lansengerOnboarding = {
         appSecret,
         apiGatewayUrl: apiGatewayUrl || undefined,
         enabled: true,
-        dmSecurity: current.dmSecurity ?? "paired",
+        dmPolicy: current.dmPolicy ?? current.dmSecurity ?? "pairing",
         allowFrom: current.allowFrom ?? [],
         approval: { enabled: true, highRiskTools: "write,delete,trash,rm" },
       };

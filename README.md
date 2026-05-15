@@ -364,20 +364,18 @@ Approval status updates use the DynamicMsg appCard format. The `updateCardStatus
 
 ## Changelog
 
-- **v3.0.0** — Add `lansenger_send_format_text` tool (Markdown + @mention); rewrite SKILL.md (decision tree format, fix headStatusInfo description+colour semantics — description supports div-style for color, colour is dot color); remove debug code; update manifest contracts
-- **v2.10.0** — font-size px→pt auto-conversion in appCard; sendImageUrl error classification; tool registration info-level logging
-- **v2.9.12** — Removed `defaultAccount`; uiHints (Chinese labels); README cleanup (5 locales)
-- **v2.9.11** — Add status adapter; env var fallback for credentials; `channels status --probe` shows "configured" and "works"
-- **v2.8.1** — Fix README: proper 4-step install flow; SKILL.md frontmatter (AgentSkills spec); channel identifier to lowercase `lansenger`
-- **v2.8.0** — OpenClaw `bindings[]` multi-agent routing; groupPolicy/groupAllowFrom/groups access control
-- **v2.7.0** — Plain-object tool registration; runtime state for client/target
-- **v2.6.0** — Register tools unconditionally; removed phantom delete_message
-- **v2.5.2** — formatText reminder support; AppArticles `summary` field; remove delete_message from tools.allow
-- **v2.5.1** — Rollback sysMsg/deleteMessage (API non-functional); revoke chatType bot/group only
-- **v2.4.0** — Fix message body assembly: wrap() excludes msgType; appArticles/linkCard field fixes
-- **v2.3.0** — Remove legacy group/private send; all routing via msgTarget
-- **v2.2.0** — Add 9 agent tools
-- **v2.0.0** — Initial release
+- **v3.1** — Multi-account setup wizard; dmPolicy/dmSecurity→dmPolicy+pairing (OpenClaw standard); bilingual prompts; credential shouldPrompt skips configured steps; clean multi-account config migration
+- **v3.0** — Add `lansenger_send_format_text` tool (Markdown + @mention); rewrite SKILL.md; fix headStatusInfo description+colour semantics
+- **v2.10** — font-size px→pt auto-conversion; sendImageUrl error classification; tool registration logging
+- **v2.9** — Status adapter; env var fallback; uiHints; README cleanup (5 locales)
+- **v2.8** — OpenClaw `bindings[]` multi-agent routing; groupPolicy/groupAllowFrom/groups access control; SKILL.md AgentSkills spec
+- **v2.7** — Plain-object tool registration; runtime state for client/target
+- **v2.6** — Register tools unconditionally; removed phantom delete_message
+- **v2.5** — formatText reminder; appArticles `summary`; revoke chatType bot/group only
+- **v2.4** — Fix message body assembly; appArticles/linkCard field fixes
+- **v2.3** — Remove legacy group/private send; all routing via msgTarget
+- **v2.2** — Add 9 agent tools
+- **v2.0** — Initial release
 
 ## License
 

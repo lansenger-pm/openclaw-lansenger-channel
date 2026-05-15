@@ -374,20 +374,18 @@ Agent 路由由 OpenClaw 的 `bindings[]` 設定管理——見[多 Agent 路由
 
 ## 更新日誌
 
-- **v3.0.0** — 新增 `lansenger_send_format_text` 工具（Markdown + @提及）；重寫 SKILL.md（決策樹格式，修正 headStatusInfo description+colour 語義——description 支援 div-style 標顏色，colour 是圓點顏色）；移除除錯代碼；更新 manifest contracts
-- **v2.10.0** — appCard font-size px→pt 自動轉換；sendImageUrl 錯誤分類；工具註冊 info 級別日誌
-- **v2.9.12** — 移除 `defaultAccount`；uiHints（中文標籤）；README 精簡（5 語言）
-- **v2.9.11** — 新增狀態適配器；環境變數回退支援憑證；`channels status --probe` 顯示「configured」和「works」
-- **v2.8.1** — 修復 README：4 步安裝流程；SKILL.md frontmatter（AgentSkills 規範）；頻道識別符改為小寫 `lansenger`
-- **v2.8.0** — OpenClaw `bindings[]` 多 Agent 路由；groupPolicy/groupAllowFrom/groups 羣聊准入控制
-- **v2.7.0** — 純物件工具註冊；運行時狀態取得 client/target
-- **v2.6.0** — 無條件註冊工具；移除幽靈 delete_message
-- **v2.5.2** — formatText reminder 支援；AppArticles `summary` 欄位；移除 delete_message
-- **v2.5.1** — 回滾 sysMsg/deleteMessage（API 不可用）；撤回 chatType 僅 bot/group
-- **v2.4.0** — 修復訊息體組裝：wrap() 剝離 msgType；appArticles/linkCard欄位修復
-- **v2.3.0** — 移除遺留羣組/私聊發送；全部透過 msgTarget 路由
-- **v2.2.0** — 新增 9 個 agent 工具
-- **v2.0.0** — 初始發佈
+- **v3.1** — 多帳號設定精靈；dmPolicy 對齊 OpenClaw 標準（dmSecurity→dmPolicy + paired→pairing）；中英雙語提示文案；憑證 shouldPrompt 跳過已設定步驟；多帳號設定遷移清理
+- **v3.0** — 新增 `lansenger_send_format_text` 工具（Markdown + @提及）；重寫 SKILL.md；修正 headStatusInfo description+colour 語義
+- **v2.10** — appCard font-size px→pt 自動轉換；sendImageUrl 錯誤分類；工具註冊日誌
+- **v2.9** — 狀態適配器；環境變數回退；uiHints 中文標籤；README 精簡（5 語言）
+- **v2.8** — OpenClaw `bindings[]` 多 Agent 路由；groupPolicy/groupAllowFrom/groups 羣聊准入；SKILL.md AgentSkills 規範
+- **v2.7** — 純物件工具註冊；運行時狀態取得 client/target
+- **v2.6** — 無條件註冊工具；移除幽靈 delete_message
+- **v2.5** — formatText reminder；AppArticles `summary`；撤回僅 bot/group
+- **v2.4** — 修復訊息體組裝；appArticles/linkCard 欄位修復
+- **v2.3** — 移除遺留羣組/私聊發送；全部透過 msgTarget 路由
+- **v2.2** — 新增 9 個 agent 工具
+- **v2.0** — 初始發佈
 
 ## 授權條款
 

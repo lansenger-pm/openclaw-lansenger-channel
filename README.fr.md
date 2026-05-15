@@ -372,20 +372,18 @@ Les mises à jour de statut d'approbation utilisent le format DynamicMsg appCard
 
 ## Journal des modifications
 
-- **v3.0.0** — Ajout de `lansenger_send_format_text` (Markdown + @mention) ; réécriture SKILL.md (format arbre de décision, correction headStatusInfo description+colour — description supporte div-style pour couleur, couleur est la couleur du point) ; suppression du code de debug ; mise à jour manifest contracts
-- **v2.10.0** — Conversion automatique px→pt pour appCard ; classification erreurs sendImageUrl ; journalisation info pour inscription outils
-- **v2.9.12** — Suppression `defaultAccount` ; uiHints (labels chinois) ; nettoyage README (5 langues)
-- **v2.9.11** — Adaptateur de statut ; repli sur variables d'environnement ; `channels status --probe` affiche « configured » et « works »
-- **v2.8.1** — Correction README : flux d'installation 4 étapes ; SKILL.md frontmatter (spec AgentSkills) ; identifiant de canal en minuscules `lansenger`
-- **v2.8.0** — Routage multi-agent OpenClaw `bindings[]` ; groupPolicy/groupAllowFrom/groups contrôle d'accès groupe
-- **v2.7.0** — Enregistrement outils comme objets simples ; état runtime pour client/target
-- **v2.6.0** — Enregistrement inconditionnel des outils ; suppression du ghost delete_message
-- **v2.5.2** — formatText reminder ; AppArticles champ `summary` ; suppression delete_message
-- **v2.5.1** — Retour sysMsg/deleteMessage (API non fonctionnel) ; revoke chatType bot/group uniquement
-- **v2.4.0** — Correction assemblage message : wrap() exclut msgType ; corrections appArticles/linkCard
-- **v2.3.0** — Suppression envoi groupe/privé legacy ; routage via msgTarget
-- **v2.2.0** — Ajout 9 outils agent
-- **v2.0.0** — Version initiale
+- **v3.1** — Wizard multi-compte ; alignement dmPolicy (dmSecurity→dmPolicy + paired→pairing) ; prompts bilingues ; shouldPrompt skip steps configurés ; migration config multi-compte
+- **v3.0** — Ajout `lansenger_send_format_text` (Markdown + @mention) ; réécriture SKILL.md ; correction headStatusInfo description+colour
+- **v2.10** — Conversion px→pt appCard ; classification erreurs sendImageUrl ; journalisation outils
+- **v2.9** — Adaptateur statut ; repli env vars ; uiHints chinois ; README nettoyage (5 langues)
+- **v2.8** — Routage multi-agent OpenClaw `bindings[]` ; groupPolicy/groupAllowFrom/groups ; SKILL.md AgentSkills
+- **v2.7** — Enregistrement outils objets simples ; état runtime client/target
+- **v2.6** — Enregistrement inconditionnel ; suppression ghost delete_message
+- **v2.5** — formatText reminder ; AppArticles `summary` ; revoke bot/group uniquement
+- **v2.4** — Correction assemblage message ; corrections appArticles/linkCard
+- **v2.3** — Suppression envoi groupe/privé legacy ; routage via msgTarget
+- **v2.2** — Ajout 9 outils agent
+- **v2.0** — Version initiale
 
 ## Licence
 

@@ -97,11 +97,11 @@
             "items": { "type": "string" },
             "description": "List of Lansenger user IDs allowed to DM the bot / 允许私聊机器人的蓝信用户 ID 列表"
           },
-          "dmSecurity": {
+          "dmPolicy": {
             "type": "string",
-            "enum": ["paired", "allowlist", "open"],
-            "default": "paired",
-            "description": "DM security policy / 私聊安全策略：paired (配对验证，推荐), allowlist (仅列表用户), open (任何人)"
+            "enum": ["pairing", "allowlist", "open", "disabled"],
+            "default": "pairing",
+            "description": "DM security policy / 私聊安全策略：pairing (配对验证，推荐), allowlist (仅列表用户), open (任何人), disabled (禁用私聊)"
           },
           "groupPolicy": {
             "type": "string",
@@ -142,7 +142,9 @@
                 "appSecret": { "type": "string", "description": "Bot App Secret / 机器人 App Secret" },
                 "apiGatewayUrl": { "type": "string", "description": "API Gateway URL / API 网关地址" },
                 "allowFrom": { "type": "array", "items": { "type": "string" }, "description": "Allowed user IDs / 允许的用户 ID 列表" },
-                "dmSecurity": { "type": "string", "description": "DM security policy / 私聊安全策略" }
+                "dmPolicy": { "type": "string", "enum": ["pairing", "allowlist", "open", "disabled"], "default": "pairing", "description": "DM security policy / 私聊安全策略" },
+                "groupPolicy": { "type": "string", "enum": ["open", "allowlist", "disabled"], "default": "allowlist", "description": "Group chat policy / 群聊策略" },
+                "groupAllowFrom": { "type": "array", "items": { "type": "string" }, "description": "Group IDs allowed to trigger the bot / 允许触发机器人的群聊 ID 列表" }
               }
             }
           }
@@ -182,14 +184,15 @@
           "sensitive": false,
           "help": "Lansenger user IDs allowed to send DMs to the bot (format: 2285568-xxx) / 允许向机器人发送私聊的蓝信用户 ID（格式：2285568-xxx）"
         },
-        "dmSecurity": {
-          "label": "DM Security / 私聊安全策略",
+        "dmPolicy": {
+          "label": "DM Policy / 私聊安全策略",
           "enumLabels": {
-            "paired": "Paired (Recommended) / 配对验证（推荐）",
+            "pairing": "Pairing (Recommended) / 配对验证（推荐）",
             "allowlist": "Allowlist Only / 仅允许列表用户",
-            "open": "Open to All / 对所有人开放"
+            "open": "Open to All / 对所有人开放",
+            "disabled": "Disabled / 禁用私聊"
           },
-          "help": "Recommended: paired — first DM triggers pairing code, approve with 'openclaw pairing approve lansenger <code>'. Personal bots only receive DMs from their owner. / 推荐：paired — 首次私聊触发配对码，用 'openclaw pairing approve lansenger <配对码>' 审批。个人机器人仅接收归属人的私聊消息。"
+          "help": "Recommended: pairing — first DM triggers pairing code, approve with 'openclaw pairing approve lansenger <code>'. Personal bots only receive DMs from their owner. / 推荐：pairing — 首次私聊触发配对码，用 'openclaw pairing approve lansenger <配对码>' 审批。个人机器人仅接收归属人的私聊消息。"
         },
         "homeChannel": {
           "label": "Home Channel / 主聊天窗口",
@@ -250,14 +253,30 @@
           "sensitive": false,
           "help": "Lansenger user IDs allowed to DM this bot / 允许私聊该机器人的蓝信用户 ID"
         },
-        "accounts.*.dmSecurity": {
-          "label": "DM Security / 私聊安全策略",
+        "accounts.*.dmPolicy": {
+          "label": "DM Policy / 私聊安全策略",
           "enumLabels": {
-            "paired": "Paired (Recommended) / 配对验证（推荐）",
+            "pairing": "Pairing (Recommended) / 配对验证（推荐）",
             "allowlist": "Allowlist Only / 仅允许列表用户",
-            "open": "Open to All / 对所有人开放"
+            "open": "Open to All / 对所有人开放",
+            "disabled": "Disabled / 禁用私聊"
           },
           "help": "DM security policy for this bot / 该机器人的私聊安全策略"
+        },
+        "accounts.*.groupPolicy": {
+          "label": "Group Policy / 群聊策略",
+          "enumLabels": {
+            "open": "Open (All Groups) / 所有群",
+            "allowlist": "Allowlist (Selected Groups) / 仅允许列表中的群",
+            "disabled": "Disabled / 禁止群消息"
+          },
+          "help": "Group chat policy for this bot / 该机器人的群聊策略"
+        },
+        "accounts.*.groupAllowFrom": {
+          "label": "Group Allow From / 允许的群聊",
+          "placeholder": "添加群聊 chatId / Add group chatId",
+          "sensitive": false,
+          "help": "Group chat IDs allowed to trigger this bot / 允许触发该机器人的群聊 ID"
         }
       }
     }
