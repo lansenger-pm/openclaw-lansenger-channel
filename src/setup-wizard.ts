@@ -152,8 +152,24 @@ export const lansengerSetupWizard: any = {
   ],
 
   finalize: async ({ cfg, accountId }: any) => {
+    const channels = { ...((cfg.channels as Record<string, any>) ?? {}) };
+    const section = channels[CHANNEL] ?? {};
+    const accounts = section.accounts as Record<string, any> | undefined;
+
+    if (accounts && Object.keys(accounts).length > 0) {
+      const defaultAcc = accounts.default ?? {};
+      if (!defaultAcc.appId && section.appId) {
+        const migrated = { ...defaultAcc };
+        for (const key of ["appId", "appSecret", "apiGatewayUrl", "allowFrom", "dmSecurity", "enabled", "name"]) {
+          if (section[key] && !migrated[key]) migrated[key] = section[key];
+        }
+        accounts.default = migrated;
+      }
+    }
+
+    channels[CHANNEL] = { ...section, enabled: true, dmSecurity: section.dmSecurity ?? "paired" };
     return patchChannelConfigForAccount({
-      cfg, channel: CHANNEL, accountId,
+      cfg: { ...cfg, channels }, channel: CHANNEL, accountId,
       patch: { enabled: true, dmSecurity: "paired" },
     });
   },
