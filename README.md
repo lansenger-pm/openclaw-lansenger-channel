@@ -57,15 +57,15 @@ openclaw plugins install @lansenger-pm/openclaw-lansenger-channel
 openclaw config set plugins.entries.lansenger.enabled true
 
 # 3. Configure the channel (interactive wizard)
-openclaw channels add --channel lansenger
-#   OR non-interactive:
-openclaw channels add --channel lansenger --token "appId:appSecret"
+openclaw channels add
+#   OR quick add (creates empty config, then run wizard above):
+#   openclaw channels add --channel lansenger
 
 # 4. Restart the gateway
 openclaw gateway restart
 ```
 
-The `openclaw.install` metadata in `package.json` (`npmSpec`, `localPath`, `defaultChoice`) enables **install-on-demand**: if a user runs `openclaw channels add --channel lansenger` before the plugin is installed, OpenClaw can automatically install it using this metadata.
+The `openclaw.install` metadata in `package.json` (`npmSpec`, `localPath`, `defaultChoice`) enables **install-on-demand**: if a user selects Lansenger in the `openclaw channels add` wizard before the plugin is installed, OpenClaw can automatically install it using this metadata.
 
 > **Custom gateway**: For enterprise deployments (e.g. 奇安信), set `apiGatewayUrl` in `openclaw.json` or environment after configuration — see [Optional Configuration](#optional-configuration).
 
@@ -118,7 +118,7 @@ Credentials can also be provided via `openclaw.json` config (see Optional Config
       "homeChannel": "lansenger",
       "enabled": true,
       "allowFrom": ["your-appid"],
-      "dmSecurity": "paired",
+      "dmPolicy": "pairing",
       "accounts": {
         "your-appid": {
           "appId": "your-appid",
@@ -139,7 +139,7 @@ Credentials can also be provided via `openclaw.json` config (see Optional Config
 | `homeChannel` | Default channel for agent routing | `lansenger` |
 | `enabled` | Enable/disable the channel | `true` |
 | `allowFrom` | User IDs allowed to DM the bot | `[]` |
-| `dmSecurity` | DM policy: `paired`, `allowlist`, `open` | `paired` |
+| `dmPolicy` | DM policy: `pairing`, `allowlist`, `open`, `disabled` | `pairing` |
 | `accounts` | Multi-bot configuration | — |
 | `groupPolicy` | Group policy: `open`, `allowlist`, `disabled` | `allowlist` |
 | `groupAllowFrom` | Group IDs allowed to trigger the bot | `[]` |
@@ -167,7 +167,7 @@ The resulting config structure:
     "lansenger": {
       "appId": "your-appid-2",
       "appSecret": "...",
-      "dmSecurity": "paired",
+      "dmPolicy": "pairing",
       "accounts": {
         "your-appid-2": {
           "appId": "your-appid-2",

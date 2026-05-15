@@ -58,16 +58,16 @@ openclaw plugins install @lansenger-pm/openclaw-lansenger-channel
 # 2. 啟用插件（如未自動啟用）
 openclaw config set plugins.entries.lansenger.enabled true
 
-# 3. 配置頻道（互動式向導）
-openclaw channels add --channel lansenger
-#   或非互動式：
-openclaw channels add --channel lansenger --token "appId:appSecret"
+# 3. 配置頻道（互動式精靈）
+openclaw channels add
+#   或快速新增（建立空設定，再執行上面的精靈）：
+#   openclaw channels add --channel lansenger
 
 # 4. 重啟網關
 openclaw gateway restart
 ```
 
-`package.json` 中的 `openclaw.install` 元資料（`npmSpec`、`localPath`、`defaultChoice`）支援**按需安裝**：如果使用者在插件安裝前執行 `openclaw channels add --channel lansenger`，OpenClaw 可自動安裝該插件。
+`package.json` 中的 `openclaw.install` 元資料（`npmSpec`、`localPath`、`defaultChoice`）支援**按需安裝**：如果使用者在 `openclaw channels add` 靈中選擇 Lansenger 但插件未安裝，OpenClaw 可自動安裝該插件。
 
 > **自訂閘道**：企業私有化部署（如奇安信）需在設定後透過 `openclaw.json` 或環境變數設定 `apiGatewayUrl` — 見[可選設定](#可選設定)。
 
@@ -126,7 +126,7 @@ openclaw pairing approve lansenger <配對碼>
       "homeChannel": "lansenger",
       "enabled": true,
       "allowFrom": ["your-appid"],
-      "dmSecurity": "paired",
+      "dmPolicy": "pairing",
       "accounts": {
         "your-appid": {
           "appId": "your-appid",
@@ -147,7 +147,7 @@ openclaw pairing approve lansenger <配對碼>
 | `homeChannel` | 代理路由的預設頻道 | `lansenger` |
 | `enabled` | 啟用/禁用頻道 | `true` |
 | `allowFrom` | 允許私聊的使用者 ID | `[]` |
-| `dmSecurity` | 私聊策略：`paired`、`allowlist`、`open` | `paired` |
+| `dmPolicy` | 私聊策略：`pairing`、`allowlist`、`open`、`disabled` | `pairing` |
 | `accounts` | 多機械人設定 | — |
 | `groupPolicy` | 羣聊策略：`open`（所有羣）、`allowlist`（僅允許列表羣）、`disabled`（禁止羣訊息） | `allowlist` |
 | `groupAllowFrom` | 允許觸發機械人的羣 ID | `[]` |
@@ -177,7 +177,7 @@ openclaw gateway restart
     "lansenger": {
       "appId": "your-appid-2",
       "appSecret": "...",
-      "dmSecurity": "paired",
+      "dmPolicy": "pairing",
       "accounts": {
         "your-appid-2": {
           "appId": "your-appid-2",

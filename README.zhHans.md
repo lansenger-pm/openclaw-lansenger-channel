@@ -59,15 +59,15 @@ openclaw plugins install @lansenger-pm/openclaw-lansenger-channel
 openclaw config set plugins.entries.lansenger.enabled true
 
 # 3. 配置频道（交互式向导）
-openclaw channels add --channel lansenger
-#   或非交互式：
-openclaw channels add --channel lansenger --token "appId:appSecret"
+openclaw channels add
+#   或者快速添加（创建空配置，再运行上面的向导）：
+#   openclaw channels add --channel lansenger
 
 # 4. 重启网关
 openclaw gateway restart
 ```
 
-`package.json` 中的 `openclaw.install` 元数据（`npmSpec`、`localPath`、`defaultChoice`）支持**按需安装**：如果用户在插件安装前运行 `openclaw channels add --channel lansenger`，OpenClaw 可自动安装该插件。
+`package.json` 中的 `openclaw.install` 元数据（`npmSpec`、`localPath`、`defaultChoice`）支持**按需安装**：如果用户在 `openclaw channels add` 向导中选择 Lansenger 但插件未安装，OpenClaw 可自动安装该插件。
 
 > **自定义网关**：企业私有化部署（如奇安信）需在配置后通过 `openclaw.json` 或环境变量设置 `apiGatewayUrl` — 见[可选配置](#可选配置)。
 
@@ -126,7 +126,7 @@ openclaw pairing approve lansenger <配对码>
       "homeChannel": "lansenger",
       "enabled": true,
       "allowFrom": ["your-appid"],
-      "dmSecurity": "paired",
+      "dmPolicy": "pairing",
       "accounts": {
         "your-appid": {
           "appId": "your-appid",
@@ -147,7 +147,7 @@ openclaw pairing approve lansenger <配对码>
 | `homeChannel` | 代理路由的默认频道 | `lansenger` |
 | `enabled` | 启用/禁用频道 | `true` |
 | `allowFrom` | 允许私聊的用户 ID | `[]` |
-| `dmSecurity` | 私聊策略：`paired`、`allowlist`、`open` | `paired` |
+| `dmPolicy` | 私聊策略：`pairing`、`allowlist`、`open`、`disabled` | `pairing` |
 | `accounts` | 多机器人配置 | — |
 | `groupPolicy` | 群聊策略：`open`（所有群）、`allowlist`（仅允许列表群）、`disabled`（禁止群消息） | `allowlist` |
 | `groupAllowFrom` | 允许触发机器人的群 ID | `[]` |
@@ -175,7 +175,7 @@ openclaw gateway restart
     "lansenger": {
       "appId": "your-appid-2",
       "appSecret": "...",
-      "dmSecurity": "paired",
+      "dmPolicy": "pairing",
       "accounts": {
         "your-appid-2": {
           "appId": "your-appid-2",

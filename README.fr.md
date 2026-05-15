@@ -59,15 +59,15 @@ openclaw plugins install @lansenger-pm/openclaw-lansenger-channel
 openclaw config set plugins.entries.lansenger.enabled true
 
 # 3. Configurer le canal (assistant interactif)
-openclaw channels add --channel lansenger
-#   OU non-interactif :
-openclaw channels add --channel lansenger --token "appId:appSecret"
+openclaw channels add
+#   OU ajout rapide (crée une config vide, puis lancez l'assistant ci-dessus) :
+#   openclaw channels add --channel lansenger
 
 # 4. Redémarrer la passerelle
 openclaw gateway restart
 ```
 
-Les métadonnées `openclaw.install` dans `package.json` (`npmSpec`, `localPath`, `defaultChoice`) permettent l'**installation à la demande** : si un utilisateur exécute `openclaw channels add --channel lansenger` avant que le plugin soit installé, OpenClaw peut l'installer automatiquement.
+Les métadonnées `openclaw.install` dans `package.json` (`npmSpec`, `localPath`, `defaultChoice`) permettent l'**installation à la demande** : si un utilisateur sélectionne Lansenger dans l'assistant `openclaw channels add` avant que le plugin soit installé, OpenClaw peut l'installer automatiquement.
 
 > **Passerelle personnalisée** : pour les déploiements entreprise (ex. 奇安信), configurez `apiGatewayUrl` dans `openclaw.json` ou via les variables d'environnement après la configuration — voir [Configuration optionnelle](#configuration-optionnelle).
 
@@ -126,7 +126,7 @@ Les identifiants peuvent aussi être fournis via la configuration `openclaw.json
       "homeChannel": "lansenger",
       "enabled": true,
       "allowFrom": ["your-appid"],
-      "dmSecurity": "paired",
+      "dmPolicy": "pairing",
       "accounts": {
         "your-appid": {
           "appId": "your-appid",
@@ -147,7 +147,7 @@ Les identifiants peuvent aussi être fournis via la configuration `openclaw.json
 | `homeChannel` | Canal par défaut pour le routage de l'agent | `lansenger` |
 | `enabled` | Activer/désactiver le canal | `true` |
 | `allowFrom` | IDs d'utilisateurs autorisés en DM | `[]` |
-| `dmSecurity` | Politique DM : `paired`, `allowlist`, `open` | `paired` |
+| `dmPolicy` | Politique DM : `pairing`, `allowlist`, `open`, `disabled` | `pairing` |
 | `accounts` | Configuration multi-bot | — |
 | `groupPolicy` | Politique de groupe : `open` (tous les groupes), `allowlist` (groupes autorisés uniquement), `disabled` (messages de groupe désactivés) | `allowlist` |
 | `groupAllowFrom` | IDs de groupes autorisés à déclencher le bot | `[]` |
@@ -175,7 +175,7 @@ Structure de configuration résultante :
     "lansenger": {
       "appId": "your-appid-2",
       "appSecret": "...",
-      "dmSecurity": "paired",
+      "dmPolicy": "pairing",
       "accounts": {
         "your-appid-2": {
           "appId": "your-appid-2",
