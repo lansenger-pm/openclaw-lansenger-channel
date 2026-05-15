@@ -54,6 +54,18 @@ function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): Resolve
 
   if (resolvedAccountId && accounts && accounts[resolvedAccountId]) {
     account = accounts[resolvedAccountId];
+  } else if (accounts && Object.keys(accounts).length > 0) {
+    for (const [key, acc] of Object.entries(accounts)) {
+      if (acc?.appId && acc?.appSecret) {
+        account = acc;
+        resolvedAccountId = key;
+        break;
+      }
+    }
+    if (!account) {
+      account = Object.values(accounts)[0] ?? {};
+      resolvedAccountId = Object.keys(accounts)[0] ?? null;
+    }
   } else if (section && section.appId) {
     account = section;
     resolvedAccountId = section.appId;

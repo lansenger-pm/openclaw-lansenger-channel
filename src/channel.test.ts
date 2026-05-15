@@ -50,9 +50,9 @@ describe("Lansenger plugin", () => {
       },
     } as any;
     const account = resolveAccount(cfg, undefined);
-    expect(account.appId).toBe("default-id");
-    expect(account.appSecret).toBe("default-secret");
-    expect(account.accountId).toBe("default-id");
+    expect(account.appId).toBe("bot1-id");
+    expect(account.appSecret).toBe("bot1-secret");
+    expect(account.accountId).toBe("bot1-id");
   });
 
   it("falls back to env vars", () => {

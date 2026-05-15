@@ -151,25 +151,66 @@ export const lansengerSetupWizard: any = {
     },
   ],
 
-  finalize: async ({ cfg, accountId }: any) => {
+finalize: async ({ cfg, accountId }: any) => {
     const channels = { ...((cfg.channels as Record<string, any>) ?? {}) };
-    const section = channels[CHANNEL] ?? {};
-    const accounts = section.accounts as Record<string, any> | undefined;
+    let section = { ...(channels[CHANNEL] ?? {}) };
+    let accounts = section.accounts as Record<string, any> | undefined;
 
     if (accounts && Object.keys(accounts).length > 0) {
+      accounts = { ...accounts };
+      section.accounts = accounts;
+
       const defaultAcc = accounts.default ?? {};
-      if (!defaultAcc.appId && section.appId) {
-        const migrated = { ...defaultAcc };
+      const defaultAppId = defaultAcc.appId || section.appId;
+
+      if (defaultAppId && Object.keys(defaultAcc).length === 0) {
+        delete accounts.default;
+      } else if (defaultAppId && Object.keys(defaultAcc).length > 0) {
+        const existing = accounts[defaultAppId] ?? {};
+        const merged = { ...existing };
         for (const key of ["appId", "appSecret", "apiGatewayUrl", "allowFrom", "dmSecurity", "enabled", "name"]) {
-          if (section[key] && !migrated[key]) migrated[key] = section[key];
+          const val = defaultAcc[key] || section[key];
+          if (val && !merged[key]) merged[key] = val;
         }
-        accounts.default = migrated;
+        merged.appId = merged.appId || defaultAppId;
+        merged.enabled = true;
+        merged.dmSecurity = merged.dmSecurity ?? "paired";
+        accounts[defaultAppId] = merged;
+        delete accounts.default;
       }
+
+      if (section.appId && !Object.values(accounts).some((a: any) => a.appId === section.appId)) {
+        accounts[section.appId] = {
+          ...accounts[section.appId] ?? {},
+          appId: section.appId,
+          appSecret: section.appSecret,
+          apiGatewayUrl: section.apiGatewayUrl,
+          enabled: true,
+          dmSecurity: section.dmSecurity ?? "paired",
+        };
+      }
+
+      delete section.appId;
+      delete section.appSecret;
+      delete section.apiGatewayUrl;
+      delete section.allowFrom;
+      delete section.dmSecurity;
+      section.enabled = true;
+      section.dmSecurity = "paired";
+    } else {
+      section.enabled = true;
+      section.dmSecurity = section.dmSecurity ?? "paired";
     }
 
-    channels[CHANNEL] = { ...section, enabled: true, dmSecurity: section.dmSecurity ?? "paired" };
+    channels[CHANNEL] = section;
+    cfg = { ...cfg, channels };
+
+    const effectiveAccountId = accountId && accountId !== "default" && accountId !== DEFAULT_ACCOUNT_ID
+      ? accountId
+      : (section.accounts ? Object.keys(section.accounts)[0] : "default");
+
     return patchChannelConfigForAccount({
-      cfg: { ...cfg, channels }, channel: CHANNEL, accountId,
+      cfg, channel: CHANNEL, accountId: effectiveAccountId,
       patch: { enabled: true, dmSecurity: "paired" },
     });
   },
