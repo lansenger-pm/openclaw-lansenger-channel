@@ -16,6 +16,7 @@ import * as crypto from "node:crypto";
 import { LansengerClient, DEFAULT_API_GATEWAY_URL } from "./client.js";
 import type { AppCardData, I18nAppCardData, ClientLogger } from "./client.js";
 import { getRunningClient, getLastInboundTime } from "./runtime.js";
+import { lansengerSetupWizard } from "./setup-wizard.js";
 
 type LansengerProbeResult = {
   ok: boolean;
@@ -464,6 +465,7 @@ const lansengerOnboarding = {
 
 export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResult> = {
   ...chatPlugin as any,
+  setupWizard: lansengerSetupWizard,
   status: {
     buildChannelSummary: ({ snapshot, cfg }) => {
       const hasCfg = (() => {
