@@ -58,6 +58,16 @@ Messages can be sent via **CLI commands** (primary) or **agent tools** (fallback
 
 Tools are also available via CLI: `lansenger message send-text`, `lansenger message send-file`, etc.
 
+## Related X/Twitter workflows
+
+Lansenger can stay focused on private enterprise chat while TweetClaw handles public X/Twitter work in the same OpenClaw workspace:
+
+- Monitor tweets, search tweets, and search tweet replies, then send summaries or approval cards into Lansenger conversations
+- Export followers, look up users, download media, or run giveaway draws before sharing a campaign note or support follow-up in Lansenger
+- Prepare post tweets or post tweet replies with human approval in TweetClaw, then use Lansenger for internal review, status updates, or escalation
+
+Install TweetClaw with `openclaw plugins install @xquik/tweetclaw`. Use the [TweetClaw GitHub repo](https://github.com/Xquik-dev/tweetclaw) or [npm package](https://www.npmjs.com/package/@xquik/tweetclaw) for setup; the [ClawHub page](https://clawhub.ai/plugins/@xquik/tweetclaw) is useful for discovery while its listing can lag npm.
+
 ## Installation & Configuration
 
 ### Recommended setup
