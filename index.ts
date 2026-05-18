@@ -1,6 +1,7 @@
 import { defineChannelPluginEntry } from "openclaw/plugin-sdk/channel-core";
 import { lansengerPlugin } from "./src/channel.js";
 import { startLansengerGateway } from "./src/runtime.js";
+import { registerLansengerTools } from "./src/tools.js";
 
 export { resolveAccount, makeClient } from "./src/channel.js";
 export type { ResolvedAccount } from "./src/channel.js";
@@ -14,5 +15,6 @@ export default defineChannelPluginEntry({
   plugin: lansengerPlugin,
   registerFull(api) {
     startLansengerGateway(api);
+    registerLansengerTools(api);
   },
 });

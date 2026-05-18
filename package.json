@@ -1,6 +1,6 @@
 {
   "name": "@lansenger-pm/openclaw-lansenger-channel",
-  "version": "3.2.12",
+  "version": "3.3.0",
   "type": "module",
   "main": "dist/index.js",
   "exports": {
@@ -88,7 +88,21 @@
         "description": "Lansenger API Gateway URL (default: https://open.e.lanxin.cn/open/apigw)",
         "sensitive": false
       }
-    ]
+    ],
+    "contracts": {
+      "tools": [
+        "lansenger_send_file",
+        "lansenger_send_text",
+        "lansenger_send_format_text",
+        "lansenger_send_image_url",
+        "lansenger_revoke_message",
+        "lansenger_send_link_card",
+        "lansenger_send_app_articles",
+        "lansenger_send_app_card",
+        "lansenger_update_dynamic_card",
+        "lansenger_query_groups"
+      ]
+    }
   },
   "devDependencies": {
     "openclaw": "^2026.5.7",
@@ -96,14 +110,6 @@
     "@types/ws": "^8.18.1",
     "typescript": "^6.0.3",
     "vitest": "^4.1.6"
-  },
-  "peerDependencies": {
-    "@lansenger-pm/openclaw-lansenger-tools": ">=1.0.0"
-  },
-  "peerDependenciesMeta": {
-    "@lansenger-pm/openclaw-lansenger-tools": {
-      "optional": false
-    }
   },
   "dependencies": {
     "ws": "^8.20.0"
