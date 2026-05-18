@@ -302,6 +302,48 @@ async function handleInbound(
 ): Promise<void> {
   const chatType = event.isGroup ? "group" : "dm";
 
+  if (chatType === "dm") {
+    const dmPolicy = account.dmPolicy ?? "pairing";
+    const configAllowFrom = account.allowFrom ?? [];
+    const pairing = (api.runtime as any).channel.pairing;
+    const storeAllowFrom: string[] = pairing?.readAllowFromStore ? await pairing.readAllowFromStore({ channel: "lansenger", accountId: account.accountId ?? undefined }) : [];
+    const effectiveAllowFrom = [...new Set([...configAllowFrom, ...storeAllowFrom])];
+    const senderAllowed = effectiveAllowFrom.some((id: string) => {
+      const bare = id.replace(/^lansenger:/, "");
+      return bare === event.senderId || id === event.senderId;
+    });
+
+    if (!senderAllowed) {
+      if (dmPolicy === "pairing") {
+        log.info(`inbound: dm pairing required — sender=${event.senderId} not in allowFrom`);
+        const { code } = await pairing.upsertPairingRequest({
+          channel: "lansenger",
+          id: event.senderId,
+          accountId: account.accountId ?? undefined,
+          meta: { name: event.userName },
+        });
+        const reply = pairing.buildPairingReply({
+          channel: "lansenger",
+          idLine: `Your Lansenger user ID: ${event.senderId} / 你的蓝信用户 ID：${event.senderId}`,
+          code,
+        });
+        const entry = runningAccounts.get(runningKey);
+        const client = entry?.client ?? makeClient(account, sdkLogger());
+        await client.sendFormatText(event.senderId, reply);
+        log.info(`inbound: pairing code sent to sender=${event.senderId}`);
+        return;
+      }
+      if (dmPolicy === "disabled") {
+        log.info(`inbound: dm dropped — dmPolicy=disabled sender=${event.senderId}`);
+        return;
+      }
+      if (dmPolicy === "allowlist") {
+        log.info(`inbound: dm dropped — sender=${event.senderId} not in allowFrom (dmPolicy=allowlist)`);
+        return;
+      }
+    }
+  }
+
   if (event.isGroup) {
     const groupPolicy = api.runtime.channel.groups.resolveGroupPolicy({
       cfg: api.config,
@@ -373,13 +415,19 @@ async function handleInbound(
       commandAuthorized = explicitAllowFrom.some(senderMatches);
     } else {
       const channelAllowFrom = account.allowFrom;
-      commandAuthorized = api.runtime.channel.commands.resolveCommandAuthorizedFromAuthorizers({
-        useAccessGroups,
-        authorizers: [
-          { configured: ownerAllowFrom.length > 0, allowed: ownerAllowFrom.some(senderMatches) },
-          { configured: channelAllowFrom.length > 0, allowed: channelAllowFrom.some(senderMatches) },
-        ],
-      });
+      const noAuthorizersConfigured = ownerAllowFrom.length === 0 && channelAllowFrom.length === 0;
+      const dmPolicyIsPairing = (account.dmPolicy ?? "pairing") === "pairing";
+      if (noAuthorizersConfigured && dmPolicyIsPairing) {
+        commandAuthorized = undefined;
+      } else {
+        commandAuthorized = api.runtime.channel.commands.resolveCommandAuthorizedFromAuthorizers({
+          useAccessGroups,
+          authorizers: [
+            { configured: ownerAllowFrom.length > 0, allowed: ownerAllowFrom.some(senderMatches) },
+            { configured: channelAllowFrom.length > 0, allowed: channelAllowFrom.some(senderMatches) },
+          ],
+        });
+      }
     }
   }
 
