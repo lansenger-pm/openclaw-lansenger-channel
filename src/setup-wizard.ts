@@ -42,9 +42,8 @@ const HELP_LINES = [
   "Mobile client does NOT support viewing credentials / 移动端不支持查看凭证",
   `Docs: ${formatDocsLink("https://open.e.lanxin.cn/docs", "lansenger")}`,
   "",
-  "⚠️ Agent tools require a separate plugin, CLI requires a Python package: / 代理工具或 CLI 需单独安装：",
-  "  Option A: openclaw plugins install @lansenger-pm/openclaw-lansenger-tools",
-  "  Option B: pip install lansenger-cli",
+  "✅ Agent tools are included in this plugin (no separate install needed). / 代理工具已内置于此插件，无需单独安装。",
+  "CLI is an optional alternative: pip install lansenger-cli / CLI 为可选替代方案：pip install lansenger-cli",
 ];
 
 function makeInspect(field: string, envVar: string) {
@@ -257,17 +256,14 @@ finalize: async ({ cfg, accountId }: any) => {
   disable: (cfg: any) => setSetupChannelEnabled(cfg, CHANNEL, false),
 
   companionNote: {
-    title: "Install Messaging Tools / 安装消息工具",
+    title: "Messaging Tools / 消息工具",
     lines: [
-      "To send files, cards, and formatted messages, install one of: / 发送文件、卡片和格式化消息，安装以下任一：",
+      "Agent tools (lansenger_send_file, etc.) are included in this plugin — no separate install needed. / 代理工具（lansenger_send_file 等）已内置于此插件，无需单独安装。",
       "",
-      "  Option A: OpenClaw agent tools plugin / 方案 A：OpenClaw 代理工具插件",
-      "    openclaw plugins install @lansenger-pm/openclaw-lansenger-tools",
+      "CLI is an optional alternative (works via bash): / CLI 为可选替代方案（通过 bash 调用）：",
+      "  pip install lansenger-cli",
       "",
-      "  Option B: Python CLI (works via bash) / 方案 B：Python CLI（通过 bash 调用）",
-      "    pip install lansenger-cli",
-      "",
-      "Without either, the agent can only reply via normal Markdown text. / 未安装任一时，代理只能通过普通 Markdown 文本回复。",
+      "Without CLI, the agent can still use built-in tools for files, cards, and formatted messages. / 未安装 CLI 时，代理仍可使用内置工具发送文件、卡片和格式化消息。",
     ],
     shouldShow: () => true,
   },

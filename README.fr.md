@@ -35,45 +35,36 @@ Connecte OpenClaw à Lansenger — une plateforme de messagerie d'entreprise —
 
 ## Outils de l'agent & CLI
 
-**La CLI est la méthode PRINCIPALE** — elle fonctionne toujours via bash. Les outils agent sont un REPLI — ils peuvent ne pas s'injecter correctement dans certaines versions de la passerelle.
+Les outils agent sont **intégrés dans ce plugin** — ils sont toujours disponibles lorsque le canal est configuré et en cours d'exécution. La CLI est une alternative optionnelle via bash.
 
-Les messages peuvent être envoyés via les **commandes CLI** (principal) ou les **outils agent** (repli) :
+Les messages peuvent être envoyés via les **outils agent** (intégrés) ou les **commandes CLI** (alternative optionnelle) :
 
 | Méthode | Installation | Utilisation |
 |---------|-------------|-------------|
-| **Commandes CLI** (principal) | `pipx install lansenger-cli` (`pip install lansenger-cli` comme alternative) | `lansenger message send-file`, `lansenger message send-text`, etc. |
-| Outils agent (repli) | `openclaw plugins install @lansenger-pm/openclaw-lansenger-tools` | `lansenger_send_file`, `lansenger_send_text`, etc. |
+| **Outils agent** (intégrés) | Inclus dans `@lansenger-pm/openclaw-lansenger-channel` | `lansenger_send_file`, `lansenger_send_text`, etc. |
+| Commandes CLI (optionnel) | `pipx install lansenger-cli` (`pip install lansenger-cli` comme alternative) | `lansenger message send-file`, `lansenger message send-text`, etc. |
 
-> ⚠️ **Les outils agent nécessitent le plugin `lansenger-tools` ET une injection réussie de la passerelle** — si les outils ne sont pas disponibles, utilisez la CLI comme repli. Les commandes CLI nécessitent `lansenger-cli` (Python). Sans aucun des deux, seules les réponses Markdown normales fonctionnent.
+> **Les outils agent sont toujours disponibles** lorsque le canal est configuré et la passerelle en cours d'exécution — aucun plugin séparé nécessaire. Les commandes CLI sont une alternative optionnelle pour les environnements où l'accès bash est préféré ; elles nécessitent `lansenger-cli` (Python).
 
 ## Installation et Configuration
 
 ### Installation recommandée
 
 ```bash
-# 1. Installer le plugin de canal
+# 1. Installer le plugin de canal (inclut les outils agent)
 openclaw plugins install @lansenger-pm/openclaw-lansenger-channel
 
-# 2. Installer le CLI OU le plugin outils (au moins un est nécessaire pour les messages)
-#    Option A : CLI Python (principal — fonctionne toujours via bash)
-pipx install lansenger-cli   # ou : pip install lansenger-cli
-#    Option B : Plugin outils agent OpenClaw (repli — nécessite injection passerelle)
-openclaw plugins install @lansenger-pm/openclaw-lansenger-tools
-
-# 3. Activer les plugins (si non auto-activés)
+# 2. Activer le plugin (si non auto-activé)
 openclaw config set plugins.entries.lansenger.enabled true
-openclaw config set plugins.entries.lansenger-tools.enabled true  # si Option B
 
-# 4. Configurer le canal (assistant interactif)
+# 3. Configurer le canal (assistant interactif)
 openclaw channels add
 
-# 5. Redémarrer la passerelle
+# 4. Redémarrer la passerelle
 openclaw gateway restart
 ```
 
-> **Note** : Les outils agent (Option B) peuvent ne pas s'injecter correctement dans certaines versions de la passerelle — vérifiez toujours que les outils `lansenger_send_*` apparaissent dans la liste des outils de l'agent. Si les outils sont absents, utilisez la CLI (Option A).
-
-Les `peerDependencies` de `package.json` avertiront lors de npm install si le plugin tools est absent. L'assistant de configuration vous rappelle également de l'installer.
+> **Optionnel** : Installer `lansenger-cli` pour une alternative CLI : `pipx install lansenger-cli`.
 
 > **Passerelle personnalisée** : pour les déploiements entreprise (ex. 奇安信), configurez `apiGatewayUrl` dans `openclaw.json` ou via les variables d'environnement après la configuration — voir [Configuration optionnelle](#configuration-optionnelle).
 
@@ -340,6 +331,7 @@ openclaw-lansenger-channel/
 │   ├── client.ts       # Client API Lansenger (WS, HTTP, médias)
 │   ├── channel.ts      # Plugin de canal OpenClaw
 │   ├── channel.test.ts # Tests du plugin de canal
+│   ├── tools.ts        # Définitions des outils agent (10 outils intégrés)
 │   └── runtime.ts      # Runtime passerelle (méthodes, handler entrant)
 ├── skills/
 │   └── lansenger-messaging/
@@ -379,6 +371,7 @@ Les mises à jour de statut d'approbation utilisent le format DynamicMsg appCard
 
 ## Journal des modifications
 
+- **v3.3.0** — Fusion du plugin tools dans le plugin canal ; outils agent désormais intégrés (pas d'installation séparée) ; suppression des peerDependencies sur `@lansenger-pm/openclaw-lansenger-tools`
 - **v3.2.10** — Alerte au démarrage si `group:plugins` absent de l'allowlist ; `configWrites` dans le schema de config canal ; plugin compagnon via `globalThis.__lansenger_channel`
 - **v3.1** — Wizard multi-compte ; alignement dmPolicy (dmSecurity→dmPolicy + paired→pairing) ; prompts bilingues ; shouldPrompt skip steps configurés ; migration config multi-compte
 - **v3.0** — Ajout `lansenger_send_format_text` (Markdown + @mention) ; réécriture SKILL.md ; correction headStatusInfo description+colour

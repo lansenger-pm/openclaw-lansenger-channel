@@ -35,45 +35,36 @@
 
 ## 代理工具 & CLI
 
-**CLI 是主要方式** — 始終透過 bash 呼叫即可使用。代理工具為備選方式 — 在某些網關版本中可能無法正確注入。
+代理工具**已內建於此插件** — 頻道設定並執行時始終可用。CLI 為可選替代方案，透過 bash 呼叫。
 
-訊息可以透過**CLI 命令**（主要）或**代理工具**（備選）發送：
+訊息可以透過**代理工具**（內建）或**CLI 命令**（可選替代）發送：
 
 | 方式 | 安裝方法 | 使用 |
 |------|----------|------|
-| **CLI 命令**（主要） | `pipx install lansenger-cli`（`pip install lansenger-cli` 為替代） | `lansenger message send-file`、`lansenger message send-text` 等 |
-| 代理工具（備選） | `openclaw plugins install @lansenger-pm/openclaw-lansenger-tools` | `lansenger_send_file`、`lansenger_send_text` 等 |
+| **代理工具**（內建） | 已包含在 `@lansenger-pm/openclaw-lansenger-channel` | `lansenger_send_file`、`lansenger_send_text` 等 |
+| CLI 命令（可選） | `pipx install lansenger-cli`（`pip install lansenger-cli` 為替代） | `lansenger message send-file`、`lansenger message send-text` 等 |
 
-> ⚠️ **代理工具需要 `lansenger-tools` 插件且網關注入成功** — 若工具不可用，請使用 CLI 作為備選。CLI 命令需要 `lansenger-cli`（Python）。兩者均未安裝時，代理只能透過普通 Markdown 文字回覆。
+> **代理工具始終可用** — 頻道設定且網關執行時即可使用，無需單獨安裝插件。CLI 命令為可選替代方案，適合偏好 bash 呼叫的場景；需安裝 `lansenger-cli`（Python）。
 
 ## 安裝與設定
 
 ### 建議安裝流程
 
 ```bash
-# 1. 安裝頻道插件
+# 1. 安裝頻道插件（包含代理工具）
 openclaw plugins install @lansenger-pm/openclaw-lansenger-channel
 
-# 2. 安裝 CLI 或工具插件（至少需要一個來發送訊息）
-#    方案 A：Python CLI（主要 — 始終可透過 bash 呼叫）
-pipx install lansenger-cli   # 或：pip install lansenger-cli
-#    方案 B：OpenClaw 代理工具插件（備選 — 需網關注入）
-openclaw plugins install @lansenger-pm/openclaw-lansenger-tools
-
-# 3. 啟用插件（如未自動啟用）
+# 2. 啟用插件（如未自動啟用）
 openclaw config set plugins.entries.lansenger.enabled true
-openclaw config set plugins.entries.lansenger-tools.enabled true  # 使用方案 B 時
 
-# 4. 配置頻道（互動式精靈）
+# 3. 配置頻道（互動式精靈）
 openclaw channels add
 
-# 5. 重啟網關
+# 4. 重啟網關
 openclaw gateway restart
 ```
 
-> **注意**：代理工具（方案 B）在某些網關版本中可能無法正確注入 — 請務必檢查代理工具列表中是否出現 `lansenger_send_*` 工具。若工具缺失，請使用 CLI（方案 A）。
-
-`package.json` 的 `peerDependencies` 在 npm install 時會警告缺少 tools 插件。設定精靈也會提醒安裝。
+> **可選**：安裝 `lansenger-cli` 作為 CLI 替代方案：`pipx install lansenger-cli`。
 
 > **自訂閘道**：企業私有化部署（如奇安信）需在設定後透過 `openclaw.json` 或環境變數設定 `apiGatewayUrl` — 見[可選設定](#可選設定)。
 
@@ -340,8 +331,9 @@ npx tsc --noEmit
 openclaw-lansenger-channel/
 ├── src/
 │   ├── client.ts       # 藍信 API 客戶端（WS、HTTP、媒體）
-│   ├── channel.ts      # OpenClaw 頻道插件
-│   ├── channel.test.ts # 頻道插件測試
+│   ├── channel.ts      # OpenClaw 频道插件
+│   ├── channel.test.ts # 频道插件測試
+│   ├── tools.ts        # 代理工具定義（10 個內建工具）
 │   └── runtime.ts      # 網關運行時（方法、入站處理器）
 ├── skills/
 │   └── lansenger-messaging/
@@ -381,7 +373,7 @@ Agent 路由由 OpenClaw 的 `bindings[]` 設定管理——見[多 Agent 路由
 
 ## 更新日誌
 
-- **v3.2.10** — 啟動時檢測 `group:plugins` 缺失警告；`configWrites` 加入頻道配置 schema；伴生插件透過 `globalThis.__lansenger_channel` 共享運行時狀態
+- **v3.3.0** — 合併 tools 插件至頻道插件；代理工具現已內建（無需單獨安裝）；移除 `@lansenger-pm/openclaw-lansenger-tools` 的 peerDependencies
 - **v3.1** — 多帳號設定精靈；dmPolicy 對齊 OpenClaw 標準（dmSecurity→dmPolicy + paired→pairing）；中英雙語提示文案；憑證 shouldPrompt 跳過已設定步驟；多帳號設定遷移清理
 - **v3.0** — 新增 `lansenger_send_format_text` 工具（Markdown + @提及）；重寫 SKILL.md；修正 headStatusInfo description+colour 語義
 - **v2.10** — appCard font-size px→pt 自動轉換；sendImageUrl 錯誤分類；工具註冊日誌

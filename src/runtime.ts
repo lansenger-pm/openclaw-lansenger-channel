@@ -96,7 +96,7 @@ export function startLansengerGateway(api: OpenClawPluginApi): void {
   const alsoAllow = (toolsConfig?.alsoAllow ?? []) as string[];
   if (!alsoAllow.some((e: string) => e === "group:plugins" || e === "__openclaw_default_plugin_tools__")) {
     log.warn(
-      `Plugin tools (lansenger_send_text, etc.) may be INVISIBLE under the current profile.` +
+      `Agent tools (lansenger_send_file, etc.) are registered by this channel plugin but may be INVISIBLE under the current tool profile.` +
       ` Add to openclaw.json: "tools": { "alsoAllow": ["group:plugins"] }` +
       ` — see https://openclaw.ai/docs/tool-policy for details.`
     );

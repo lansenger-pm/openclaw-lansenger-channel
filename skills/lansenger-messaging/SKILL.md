@@ -1,19 +1,19 @@
 ---
 name: lansenger-messaging
-description: How to communicate on Lansenger (蓝信) — send rich content via CLI (primary) or agent tools (fallback), approvals, and pitfalls
-metadata: {"openclaw":{"requires":{"config":["channels.lansenger"],"plugins":["lansenger-tools"],"cli":["lansenger"]},"primaryEnv":"LANSENGER_APP_ID"}}
+description: How to communicate on Lansenger (蓝信) — send rich content via message tool, agent tools, CLI, approvals, and pitfalls
+metadata: {"openclaw":{"requires":{"config":["channels.lansenger"],"cli":["lansenger"]},"primaryEnv":"LANSENGER_APP_ID"}}
 ---
 
 # Lansenger (蓝信) Messaging — Agent Quick Reference
 
 In a Lansenger session, **just write your reply normally** — Markdown renders automatically as formatText. No tool needed for formatted text unless you also need @mentions.
 
-You can send messages via **CLI commands** (primary, always works) or **agent tools** (fallback, may not inject properly in some Gateway versions):
+You can send messages via **CLI commands** (alternative) or **agent tools** (built-in):
 
-- **CLI commands** (PRIMARY): `lansenger message send-file`, `lansenger message send-text`, etc. — via bash exec. Requires `pipx install lansenger-cli` or `pip install lansenger-cli`.
-- **Agent tools** (FALLBACK): `lansenger_send_file`, `lansenger_send_text`, etc. — available ONLY when `lansenger-tools` plugin is installed AND Gateway successfully injects them. If `toolNames: []`, tools are unavailable — use CLI instead.
+- **Agent tools** (PRIMARY): `lansenger_send_file`, `lansenger_send_text`, etc. — built into the channel plugin, always available when the channel is configured and running.
+- **CLI commands** (ALTERNATIVE): `lansenger message send-file`, `lansenger message send-text`, etc. — via bash exec. Requires `pipx install lansenger-cli` or `pip install lansenger-cli`.
 
-> ⚠️ **Install CLI first**: `pipx install lansenger-cli` (or `pip install lansenger-cli`). This is the reliable path. Agent tools may not inject in some OpenClaw versions — always verify availability before relying on them.
+> 💡 **CLI is an optional alternative**: `pipx install lansenger-cli` (or `pip install lansenger-cli`). Agent tools are built into the channel plugin and available when the channel is running.
 
 However, Markdown and file attachments are **mutually exclusive**. If you need both formatting AND a file, send the Markdown reply first, then call `lansenger_send_file` or `lansenger message send-file` separately.
 
@@ -76,7 +76,7 @@ Need to send something? Follow this decision tree:
 1. Normal reply with formatting → JUST WRITE IT. No tool needed.
 2. Markdown + @mention → `lansenger_send_format_text` or `lansenger message send-markdown`
 3. Plain text + @mention + file → `lansenger_send_text` or `lansenger message send-text`
-4. Send a FILE → `lansenger_send_file` or `lansenger message send-file`
+4. Send a FILE → **`message(action=send, filePath=<path>)`** (always available, no extra permissions needed) or `lansenger_send_file` or `lansenger message send-file`
 5. Send image from URL → `lansenger_send_image_url` or `lansenger message send-image-url`
 6. Link card → `lansenger_send_link_card` or `lansenger message send-link-card`
 7. Multi-article card (图文) → `lansenger_send_app_articles` or `lansenger message send-app-articles`
@@ -307,13 +307,12 @@ Status colors: #FFB116 (pending), #198754 (approved), #dc3545 (denied)
 | Pitfall                        | Fix                                                                              |
 |--------------------------------|----------------------------------------------------------------------------------|
 | Raw Markdown in text tool/CLI  | Never do this — shows as ugly source code. Write normally for Markdown.          |
-| MEDIA: tag for file delivery   | ⚠️ Currently broken for ALL files. Use `lansenger_send_file` instead.            |
 | AppArticles `description` field | Use `summary`, not `description`. `description` is silently ignored by the API.  |
 | AppCard `font-size: px`        | Use `pt` units (12pt–36pt). px causes API "invalid bodyContent" error.           |
 | AppCard `text-indent: 0`       | Use `0em` with unit. Bare 0 causes silent failure.                               |
 | headStatusInfo div wrapping    | description supports div-style for color. colour is the DOT/圆点 color. Separate. |
 | Message too long               | ~4000 character limit. Split into multiple messages.                              |
-| Tools not available            | **Use CLI as fallback**: `pipx install lansenger-cli`, then `lansenger message send-text <chatId> <content>`. Agent tools may not inject in some Gateway versions. |
+| Tools not available            | Tools are built into the channel plugin. If unavailable, use `message(action=send, filePath=...)` for file sending (works without `group:plugins`). As a last resort, use CLI: `pipx install lansenger-cli`, then `lansenger message send-text <chatId> <content>`. |
 | CLI command not found          | Install: `pipx install lansenger-cli` or `pip install lansenger-cli`. Then verify: `lansenger --help`. |
 | CLI wrong credentials / sends as wrong bot | **Always use `-P <appId>`** (global flag after `lansenger`). Without it, CLI uses the `default` profile which may be a different bot. Sync first: `lansenger -P <appId> config show` → if missing, run `lansenger -P <appId> config set` commands. |
 | CLI "Credentials configured: False" | Run credential sync: `lansenger -P <appId> config set app_id <appId>` + `lansenger -P <appId> config set app_secret <appSecret>`. |
