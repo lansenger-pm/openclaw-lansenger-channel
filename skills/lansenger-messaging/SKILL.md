@@ -21,9 +21,9 @@ However, Markdown and file attachments are **mutually exclusive**. If you need b
 
 ## CLI Credential Sync (凭证同步)
 
-Lansenger-CLI supports **multi-credential profiles** (`--profile <appId>` / `-P <appId>`). Before calling any CLI command, you must ensure the credential for the current appId is available in CLI's config store.
+Lansenger-CLI supports **multi-credential profiles** via the global `-P <profile>` flag. The profile name is the App ID. Before calling any CLI command, you must ensure the credential for the current appId is available in CLI's config store.
 
-**Every CLI call MUST include `--profile <appId>`** where `<appId>` is the Lansenger App ID from the current session's OpenClaw config (found in `channels.lansenger.appId` or `channels.lansenger.accounts.<key>.appId`). This ensures the CLI uses the correct bot credentials.
+**Every CLI call MUST include `-P <appId>`** (placed immediately after `lansenger`, before the subcommand group) where `<appId>` is the Lansenger App ID from the current session's OpenClaw config. This ensures the CLI uses the correct bot credentials.
 
 ### Before first CLI call — sync credentials
 
@@ -31,15 +31,16 @@ Run this check-and-sync sequence **once** before your first CLI command in a ses
 
 ```bash
 # Step 1: Check if the profile already exists
-lansenger config show --profile <appId>
+lansenger -P <appId> config show
 
 # Step 2: If the profile does NOT exist (returns error / "not configured"), write credentials from OpenClaw config:
-lansenger config set app_id <appId> --profile <appId>
-lansenger config set app_secret <appSecret> --profile <appId>
-lansenger config set api_gateway_url <apiGatewayUrl> --profile <appId>   # optional, defaults to public cloud
+lansenger -P <appId> config set app_id <appId>
+lansenger -P <appId> config set app_secret <appSecret>
+lansenger -P <appId> config set api_gateway_url <apiGatewayUrl>
+lansenger -P <appId> config set passport_url <passportUrl>            # optional
 ```
 
-The `<appId>`, `<appSecret>`, and `<apiGatewayUrl>` values come from the OpenClaw config:
+The `<appId>`, `<appSecret>`, `<apiGatewayUrl>`, and `<passportUrl>` values come from the OpenClaw config:
 - Single-account: `channels.lansenger.appId`, `channels.lansenger.appSecret`, `channels.lansenger.apiGatewayUrl`
 - Multi-account: `channels.lansenger.accounts.<key>.appId`, `.appSecret`, `.apiGatewayUrl`
 - Environment variables: `LANSENGER_APP_ID`, `LANSENGER_APP_SECRET`, `LANSENGER_API_GATEWAY_URL`
@@ -47,7 +48,7 @@ The `<appId>`, `<appSecret>`, and `<apiGatewayUrl>` values come from the OpenCla
 ### Verify sync worked
 
 ```bash
-lansenger config show --profile <appId>
+lansenger -P <appId> config show
 # Should show "Credentials configured: True"
 ```
 
@@ -55,6 +56,15 @@ lansenger config show --profile <appId>
 
 ```bash
 lansenger config list-profiles
+```
+
+### Manage profiles
+
+```bash
+lansenger config show                       # view current (default) profile
+lansenger -P <appId> config show            # view specific profile
+lansenger -P <appId> config clear           # delete specific profile
+lansenger config clear --all                # delete all profiles
 ```
 
 > **Tip**: After syncing once, the profile persists in `~/.lansenger/sdk_state.json`. You only need to sync again if credentials change or a new bot is added.
@@ -193,42 +203,42 @@ All tools accept optional `to` (chatId). Leave empty to auto-detect current conv
 
 All commands use `lansenger <group> <subcommand>`. chatId is case-sensitive.
 
-**Every CLI command MUST include `--profile <appId>`** (or `-P <appId>`) to select the correct credential profile. See [CLI Credential Sync](#cli-credential-sync-凭证同步) above for how to ensure the profile exists before calling.
+**Every CLI command MUST include `-P <appId>`** (global flag, placed after `lansenger` and before the subcommand) to select the correct credential profile. See [CLI Credential Sync](#cli-credential-sync-凭证同步) above for how to ensure the profile exists before calling.
 
 ### lansenger message send-text
 
 ```bash
-lansenger message send-text <chat_id> <content> --profile <appId> [--file <path>] [--mention-all] [--mention <uid1> [--mention <uid2>]]
+lansenger -P <appId> message send-text <chat_id> <content> [--file <path>] [--mention-all] [--mention <uid1> [--mention <uid2>]]
 ```
 
 ### lansenger message send-markdown
 
 ```bash
-lansenger message send-markdown <chat_id> <content> --profile <appId> [--mention-all] [--mention <uid>]
+lansenger -P <appId> message send-markdown <chat_id> <content> [--mention-all] [--mention <uid>]
 ```
 
 ### lansenger message send-file
 
 ```bash
-lansenger message send-file <chat_id> <file_path> --profile <appId> [--caption <text>] [--media-type <1|2|3>]
+lansenger -P <appId> message send-file <chat_id> <file_path> [--caption <text>] [--media-type <1|2|3>]
 ```
 
 ### lansenger message send-image-url
 
 ```bash
-lansenger message send-image-url <chat_id> <image_url> --profile <appId> [--caption <text>]
+lansenger -P <appId> message send-image-url <chat_id> <image_url> [--caption <text>]
 ```
 
 ### lansenger message send-link-card
 
 ```bash
-lansenger message send-link-card <chat_id> <title> <link> --profile <appId> [--desc <text>] [--icon <url>] [--pc-link <url>] [--from-name <name>] [--from-icon <url>]
+lansenger -P <appId> message send-link-card <chat_id> <title> <link> [--desc <text>] [--icon <url>] [--pc-link <url>] [--from-name <name>] [--from-icon <url>]
 ```
 
 ### lansenger message send-app-articles
 
 ```bash
-lansenger message send-app-articles <chat_id> --profile <appId> '{"title":"T","url":"U","imgUrl":"I","summary":"S"}' '{"title":"T2","url":"U2"}'
+lansenger -P <appId> message send-app-articles <chat_id> '{"title":"T","url":"U","imgUrl":"I","summary":"S"}' '{"title":"T2","url":"U2"}'
 ```
 
 > ⚠️ Article field is `summary`, NOT `description`. `description` is silently ignored by the API.
@@ -236,7 +246,7 @@ lansenger message send-app-articles <chat_id> --profile <appId> '{"title":"T","u
 ### lansenger message send-app-card
 
 ```bash
-lansenger message send-app-card <chat_id> <body_title> --profile <appId> [--head-title <t>] [--sub-title <t>] [--content <t>] [--signature <t>] [--card-link <url>] [--dynamic] [--staff-id <id>] [--head-icon <url>] [--status-desc <div>] [--status-colour <hex>] [--field <json>] [--link <json>]
+lansenger -P <appId> message send-app-card <chat_id> <body_title> [--head-title <t>] [--sub-title <t>] [--content <t>] [--signature <t>] [--card-link <url>] [--dynamic] [--staff-id <id>] [--head-icon <url>] [--status-desc <div>] [--status-colour <hex>] [--field <json>] [--link <json>]
 ```
 
 **headStatusInfo**: `--status-desc` = status TEXT (supports div-style for text color), `--status-colour` = DOT/圆点 colour (hex). These are TWO different things: text color vs dot color.
@@ -244,19 +254,19 @@ lansenger message send-app-card <chat_id> <body_title> --profile <appId> [--head
 ### lansenger message update-dynamic-card
 
 ```bash
-lansenger message update-dynamic-card <msg_id> --profile <appId> [--last] [--status-desc <div>] [--status-colour <hex>] [--link <json>]
+lansenger -P <appId> message update-dynamic-card <msg_id> [--last] [--status-desc <div>] [--status-colour <hex>] [--link <json>]
 ```
 
 ### lansenger message revoke
 
 ```bash
-lansenger message revoke <msg_id1> <msg_id2> --profile <appId> [--chat-type bot|group] [--sender-id <id>]
+lansenger -P <appId> message revoke <msg_id1> <msg_id2> [--chat-type bot|group] [--sender-id <id>]
 ```
 
 ### lansenger message query-groups
 
 ```bash
-lansenger message query-groups --profile <appId> [--page <n>] [--size <n>]
+lansenger -P <appId> message query-groups [--page <n>] [--size <n>]
 ```
 
 ## Approval Workflow Pattern
@@ -267,8 +277,8 @@ lansenger message query-groups --profile <appId> [--page <n>] [--size <n>]
 
 **Via CLI:**
 ```bash
-lansenger message send-app-card <chat_id> "审批" --profile <appId> --dynamic --status-desc '<div style="color:#FFB116">待审批</div>' --status-colour "#FFB116"
-lansenger message update-dynamic-card <msg_id> --profile <appId> --last --status-desc '<div style="color:#198754">已批准</div>' --status-colour "#198754"
+lansenger -P <appId> message send-app-card <chat_id> "审批" --dynamic --status-desc '<div style="color:#FFB116">待审批</div>' --status-colour "#FFB116"
+lansenger -P <appId> message update-dynamic-card <msg_id> --last --status-desc '<div style="color:#198754">已批准</div>' --status-colour "#198754"
 ```
 
 Status colors: #FFB116 (pending), #198754 (approved), #dc3545 (denied)
@@ -305,5 +315,5 @@ Status colors: #FFB116 (pending), #198754 (approved), #dc3545 (denied)
 | Message too long               | ~4000 character limit. Split into multiple messages.                              |
 | Tools not available            | **Use CLI as fallback**: `pipx install lansenger-cli`, then `lansenger message send-text <chatId> <content>`. Agent tools may not inject in some Gateway versions. |
 | CLI command not found          | Install: `pipx install lansenger-cli` or `pip install lansenger-cli`. Then verify: `lansenger --help`. |
-| CLI wrong credentials / sends as wrong bot | **Always use `--profile <appId>`**. Without it, CLI uses the `default` profile which may be a different bot. Sync first: `lansenger config show --profile <appId>` → if missing, run `lansenger config set` commands. |
-| CLI "Credentials configured: False" | Run credential sync: `lansenger config set app_id <appId> --profile <appId>` + `lansenger config set app_secret <appSecret> --profile <appId>`. |
+| CLI wrong credentials / sends as wrong bot | **Always use `-P <appId>`** (global flag after `lansenger`). Without it, CLI uses the `default` profile which may be a different bot. Sync first: `lansenger -P <appId> config show` → if missing, run `lansenger -P <appId> config set` commands. |
+| CLI "Credentials configured: False" | Run credential sync: `lansenger -P <appId> config set app_id <appId>` + `lansenger -P <appId> config set app_secret <appSecret>`. |
