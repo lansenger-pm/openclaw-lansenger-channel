@@ -16,13 +16,7 @@
     "onChannels": ["lansenger"],
     "onConfigPaths": ["channels.lansenger"]
   },
-  "companionPlugins": {
-    "lansenger-tools": {
-      "npmSpec": "@lansenger-pm/openclaw-lansenger-tools",
-      "description": "Lansenger messaging tools (lansenger_send_file, lansenger_send_text, etc.) — required for agent tool access / 蓝信消息工具插件，Agent 需要 Tools 功能时必须安装",
-      "required": true
-    }
-  },
+
   "skills": ["./skills"],
   "channelConfigs": {
     "lansenger": {
@@ -36,6 +30,11 @@
             "type": "boolean",
             "default": true,
             "description": "Enable or disable this channel / 启用或禁用此频道"
+          },
+          "configWrites": {
+            "type": "boolean",
+            "default": true,
+            "description": "Allow Lansenger to write config in response to channel events (e.g., auto-setting homeChannel) / 允许蓝信写入配置（如自动设置主聊天窗口）"
           },
           "name": {
             "type": "string",
@@ -115,6 +114,10 @@
         "enabled": {
           "label": "Enabled / 启用",
           "help": "Enable or disable the Lansenger channel / 启用或禁用蓝信频道"
+        },
+        "configWrites": {
+          "label": "Config Writes / 配置写入",
+          "help": "Allow Lansenger to auto-write config (e.g., homeChannel) in response to channel events / 允许蓝信在收到消息事件时自动写入配置（如主聊天窗口）"
         },
         "name": {
           "label": "Display Name / 显示名称",

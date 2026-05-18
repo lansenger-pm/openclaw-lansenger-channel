@@ -86,6 +86,22 @@ export function getRunningAccount(): ResolvedAccount | null {
 }
 
 export function startLansengerGateway(api: OpenClawPluginApi): void {
+  (globalThis as any).__lansenger_channel = {
+    getRunningClient,
+    getRunningAccount,
+    getLastInboundChatId,
+  };
+
+  const toolsConfig = api.config.tools as Record<string, any> | undefined;
+  const alsoAllow = (toolsConfig?.alsoAllow ?? []) as string[];
+  if (!alsoAllow.some((e: string) => e === "group:plugins" || e === "__openclaw_default_plugin_tools__")) {
+    log.warn(
+      `Plugin tools (lansenger_send_text, etc.) may be INVISIBLE under the current profile.` +
+      ` Add to openclaw.json: "tools": { "alsoAllow": ["group:plugins"] }` +
+      ` — see https://openclaw.ai/docs/tool-policy for details.`
+    );
+  }
+
   const section = (api.config.channels as Record<string, any>)?.["lansenger"];
   const accounts = section?.accounts as Record<string, any> | undefined;
 
