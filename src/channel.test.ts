@@ -1,8 +1,12 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { lansengerPlugin, resolveAccount } from "./channel.js";
 import { LansengerClient, mediaTypeFromPath, buildI18n } from "./client.js";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import * as os from "node:os";
 
 const lansengerOnboarding = (lansengerPlugin as any).onboarding;
+const configObj = (lansengerPlugin as any).config ?? (lansengerPlugin as any).base?.config;
 
 describe("Lansenger plugin", () => {
   it("resolves account from config", () => {
@@ -348,5 +352,326 @@ describe("LansengerOnboarding", () => {
     const result = await lansengerOnboarding.runSetupWizard({ cfg, prompter: mockPrompter, token: undefined });
     expect(result.channels.lansenger.appId).toBe("replaced-id");
     expect(result.channels.lansenger.appSecret).toBe("replaced-secret");
+  });
+});
+
+describe("resolveAccount edge cases", () => {
+  it("falls back to first valid account in accounts when no accountId specified", () => {
+    const cfg = {
+      channels: {
+        lansenger: {
+          accounts: {
+            "key1": { appId: "first-id", appSecret: "first-secret" },
+            "key2": { appId: "second-id", appSecret: "second-secret" },
+          },
+        },
+      },
+    } as any;
+    const account = resolveAccount(cfg, undefined);
+    expect(account.appId).toBe("first-id");
+  });
+
+  it("falls back to first account (even without valid creds) when no valid account found", () => {
+    const cfg = {
+      channels: {
+        lansenger: {
+          accounts: {
+            "key1": { appId: "only-id" },
+          },
+        },
+      },
+    } as any;
+    const account = resolveAccount(cfg, undefined);
+    expect(account.accountId).toBe("key1");
+    expect(account.appId).toBe("only-id");
+    expect(account.appSecret).toBe("");
+    expect(account.enabled).toBe(false);
+  });
+
+  it("resolves dmPolicy from dmSecurity fallback", () => {
+    const cfg = {
+      channels: {
+        lansenger: { appId: "id", appSecret: "secret", dmSecurity: "paired" },
+      },
+    } as any;
+    const account = resolveAccount(cfg, undefined);
+    expect(account.dmPolicy).toBe("paired");
+  });
+
+  it("resolves apiGatewayUrl from env var", () => {
+    const orig = process.env.LANSENGER_API_GATEWAY_URL;
+    process.env.LANSENGER_API_GATEWAY_URL = "https://custom.gateway";
+    const cfg = { channels: { lansenger: { appId: "id", appSecret: "secret" } } } as any;
+    const account = resolveAccount(cfg, undefined);
+    expect(account.apiGatewayUrl).toBe("https://custom.gateway");
+    if (orig === undefined) delete process.env.LANSENGER_API_GATEWAY_URL;
+    else process.env.LANSENGER_API_GATEWAY_URL = orig;
+  });
+
+  it("enabled is false when only appId provided", () => {
+    const cfg = { channels: { lansenger: { appId: "id" } } } as any;
+    const account = resolveAccount(cfg, undefined);
+    expect(account.enabled).toBe(false);
+  });
+
+  it("enabled is false when only appSecret provided", () => {
+    const cfg = { channels: { lansenger: { appSecret: "secret" } } } as any;
+    const account = resolveAccount(cfg, undefined);
+    expect(account.enabled).toBe(false);
+  });
+});
+
+describe("config callbacks", () => {
+
+  it("isConfigured returns true with appId+appSecret", () => {
+    const account = { appId: "id", appSecret: "secret", enabled: true, allowFrom: [], dmPolicy: undefined, homeChannel: undefined, apiGatewayUrl: "", accountId: null };
+    expect(configObj.isConfigured(account, {} as any)).toBe(true);
+  });
+
+  it("isConfigured returns true with configured=true", () => {
+    const account = { appId: "", appSecret: "", configured: true, enabled: false, allowFrom: [], dmPolicy: undefined, homeChannel: undefined, apiGatewayUrl: "", accountId: null };
+    expect(configObj.isConfigured(account, {} as any)).toBe(true);
+  });
+
+  it("isConfigured returns false with no creds", () => {
+    const account = { appId: "", appSecret: "", enabled: false, allowFrom: [], dmPolicy: undefined, homeChannel: undefined, apiGatewayUrl: "", accountId: null };
+    expect(configObj.isConfigured(account, {} as any)).toBe(false);
+  });
+
+  it("hasConfiguredState returns true with accounts", () => {
+    const cfg = { channels: { lansenger: { accounts: { "bot1": { appId: "b1", appSecret: "s1" } } } } } as any;
+    expect(configObj.hasConfiguredState({ cfg, env: {} })).toBe(true);
+  });
+
+  it("hasConfiguredState returns true with env vars", () => {
+    const origId = process.env.LANSENGER_APP_ID;
+    const origSecret = process.env.LANSENGER_APP_SECRET;
+    process.env.LANSENGER_APP_ID = "env-id";
+    process.env.LANSENGER_APP_SECRET = "env-secret";
+    const cfg = { channels: {} } as any;
+    expect(configObj.hasConfiguredState({ cfg, env: { LANSENGER_APP_ID: "env-id", LANSENGER_APP_SECRET: "env-secret" } })).toBe(true);
+    if (origId === undefined) delete process.env.LANSENGER_APP_ID;
+    else process.env.LANSENGER_APP_ID = origId;
+    if (origSecret === undefined) delete process.env.LANSENGER_APP_SECRET;
+    else process.env.LANSENGER_APP_SECRET = origSecret;
+  });
+
+  it("hasConfiguredState returns false with no creds", () => {
+    const cfg = { channels: {} } as any;
+    expect(configObj.hasConfiguredState({ cfg, env: {} })).toBe(false);
+  });
+
+  it("listAccountIds returns single appId", () => {
+    const cfg = { channels: { lansenger: { appId: "single-id" } } } as any;
+    expect(configObj.listAccountIds(cfg)).toEqual(["single-id"]);
+  });
+
+  it("listAccountIds returns multi-account appIds", () => {
+    const cfg = { channels: { lansenger: { accounts: { "key1": { appId: "bot1" }, "key2": { appId: "bot2" } } } } } as any;
+    expect(configObj.listAccountIds(cfg)).toEqual(["bot1", "bot2"]);
+  });
+
+  it("listAccountIds deduplicates", () => {
+    const cfg = { channels: { lansenger: { appId: "bot1", accounts: { "key1": { appId: "bot1" } } } } } as any;
+    const ids = configObj.listAccountIds(cfg);
+    expect(ids.filter((id: string) => id === "bot1").length).toBe(1);
+  });
+
+  it("inspectAccount returns configured for default account", () => {
+    const cfg = { channels: { lansenger: { appId: "id", appSecret: "secret" } } } as any;
+    const result = configObj.inspectAccount(cfg, undefined);
+    expect(result.configured).toBe(true);
+    expect(result.appIdStatus).toBe("available");
+    expect(result.appSecretStatus).toBe("available");
+  });
+
+  it("inspectAccount returns env status when missing from config", () => {
+    const origId = process.env.LANSENGER_APP_ID;
+    const origSecret = process.env.LANSENGER_APP_SECRET;
+    delete process.env.LANSENGER_APP_ID;
+    delete process.env.LANSENGER_APP_SECRET;
+    const cfg = { channels: { lansenger: {} } } as any;
+    const result = configObj.inspectAccount(cfg, undefined);
+    expect(result.appIdStatus).toBe("missing");
+    expect(result.appSecretStatus).toBe("missing");
+    if (origId === undefined) delete process.env.LANSENGER_APP_ID;
+    else process.env.LANSENGER_APP_ID = origId;
+    if (origSecret === undefined) delete process.env.LANSENGER_APP_SECRET;
+    else process.env.LANSENGER_APP_SECRET = origSecret;
+  });
+
+  it("inspectAccount looks up account by appId key in accounts", () => {
+    const cfg = { channels: { lansenger: { accounts: { "bot1": { appId: "bot1", appSecret: "s1" } } } } } as any;
+    const result = configObj.inspectAccount(cfg, "bot1");
+    expect(result.configured).toBe(true);
+  });
+
+  it("inspectAccount finds account by appId match across accounts", () => {
+    const cfg = { channels: { lansenger: { accounts: { "key1": { appId: "target-id", appSecret: "s1" } } } } } as any;
+    const result = configObj.inspectAccount(cfg, "target-id");
+    expect(result.configured).toBe(true);
+  });
+});
+
+describe("applyAccountConfig", () => {
+  const applyAccountConfig = (lansengerPlugin as any).setup?.applyAccountConfig ?? (lansengerPlugin as any).base?.setup?.applyAccountConfig;
+
+  it("patches appId into config", () => {
+    const cfg = { channels: { lansenger: { appSecret: "existing-secret" } } } as any;
+    const result = applyAccountConfig({ cfg, accountId: undefined, input: { appToken: "new-app-id" } });
+    expect(result.channels.lansenger.appId).toBe("new-app-id");
+    expect(result.channels.lansenger.appSecret).toBe("existing-secret");
+  });
+
+  it("patches secret into config", () => {
+    const cfg = { channels: { lansenger: { appId: "existing-id" } } } as any;
+    const result = applyAccountConfig({ cfg, accountId: undefined, input: { secret: "new-secret" } });
+    expect(result.channels.lansenger.appId).toBe("existing-id");
+    expect(result.channels.lansenger.appSecret).toBe("new-secret");
+  });
+
+  it("patches baseUrl into config", () => {
+    const cfg = { channels: { lansenger: { appId: "id", appSecret: "secret" } } } as any;
+    const result = applyAccountConfig({ cfg, accountId: undefined, input: { baseUrl: "https://custom.url" } });
+    expect(result.channels.lansenger.apiGatewayUrl).toBe("https://custom.url");
+  });
+});
+
+describe("actions.describeMessageTool", () => {
+  it("returns null when account not enabled", () => {
+    const result = (lansengerPlugin as any).actions.describeMessageTool({ cfg: { channels: { lansenger: {} } }, accountId: undefined, senderIsOwner: false });
+    expect(result).toBeNull();
+  });
+
+  it("returns actions schema when account enabled", () => {
+    const result = (lansengerPlugin as any).actions.describeMessageTool({ cfg: { channels: { lansenger: { appId: "id", appSecret: "secret" } } }, accountId: undefined, senderIsOwner: false });
+    expect(result).toBeDefined();
+    expect(result.actions).toContain("send");
+    expect(result.actions).toContain("delete");
+    expect(result.schema[0].properties.filePath).toBeDefined();
+  });
+});
+
+describe("actions.handleAction", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", async (url: string | Request) => {
+      const u = typeof url === "string" ? url : url.url;
+      if (u.includes("apptoken")) return new Response(JSON.stringify({ errCode: 0, errMsg: "", data: { appToken: "tok", expiresIn: 7200 } }), { headers: { "content-type": "application/json" } });
+      return new Response(JSON.stringify({ errCode: 0, errMsg: "", data: { msgId: "m1" } }), { headers: { "content-type": "application/json" } });
+    });
+  });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it("returns error for unknown action", async () => {
+    const ctx = { action: "unknown", cfg: { channels: { lansenger: { appId: "id", appSecret: "secret" } } }, args: {} };
+    const result = await (lansengerPlugin as any).actions.handleAction(ctx);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Unknown action");
+  });
+
+  it("returns error for send without to and text", async () => {
+    const ctx = { action: "send", cfg: { channels: { lansenger: { appId: "id", appSecret: "secret" } } }, args: {} };
+    const result = await (lansengerPlugin as any).actions.handleAction(ctx);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("to and text are required");
+  });
+
+  it("returns error for send with filePath not found", async () => {
+    const ctx = { action: "send", cfg: { channels: { lansenger: { appId: "id", appSecret: "secret" } } }, args: { filePath: "/tmp/nonexistent_handle.txt", to: "chat-1" } };
+    const result = await (lansengerPlugin as any).actions.handleAction(ctx);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("File not found");
+  });
+
+  it("returns error for send with filePath pointing to directory", async () => {
+    const ctx = { action: "send", cfg: { channels: { lansenger: { appId: "id", appSecret: "secret" } } }, args: { filePath: "/tmp", to: "chat-1" } };
+    const result = await (lansengerPlugin as any).actions.handleAction(ctx);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Not a file");
+  });
+
+  it("delete action revokes message", async () => {
+    const ctx = { action: "delete", cfg: { channels: { lansenger: { appId: "id", appSecret: "secret" } } }, args: { messageId: "msg-to-delete" } };
+    const result = await (lansengerPlugin as any).actions.handleAction(ctx);
+    expect(result.success).toBeDefined();
+  });
+
+  it("send resolves target from sessionKey", async () => {
+    const ctx = { action: "send", cfg: { channels: { lansenger: { appId: "id", appSecret: "secret" } } }, args: { text: "hello" }, sessionKey: "lansenger:agent-1:chat-from-session" };
+    const result = await (lansengerPlugin as any).actions.handleAction(ctx);
+    expect(result).toBeDefined();
+  });
+});
+
+describe("resolveLansengerApprovers", () => {
+  it("returns explicit ownerAllowFrom", () => {
+    const resolveLansengerApprovers = (lansengerPlugin as any).approvalCapability?.nativeRuntime?.availability?.isConfiguredAndAvailable;
+    const cfg = { channels: { lansenger: { appId: "id", appSecret: "secret" } }, commands: { ownerAllowFrom: ["approver-1"] } };
+    expect(resolveLansengerApprovers({ cfg, accountId: undefined })).toBe(true);
+  });
+});
+
+describe("approvalCapability", () => {
+  it("getActionAvailabilityState returns enabled for configured account", () => {
+    const getActionAvailabilityState = (lansengerPlugin as any).approvalCapability?.getActionAvailabilityState;
+    const cfg = { channels: { lansenger: { appId: "id", appSecret: "secret" } } };
+    const result = getActionAvailabilityState({ cfg, accountId: undefined });
+    expect(result.kind).toBe("enabled");
+  });
+
+  it("getActionAvailabilityState returns unsupported for unconfigured account", () => {
+    const getActionAvailabilityState = (lansengerPlugin as any).approvalCapability?.getActionAvailabilityState;
+    const cfg = { channels: { lansenger: {} } };
+    const result = getActionAvailabilityState({ cfg, accountId: undefined });
+    expect(result.kind).toBe("unsupported");
+  });
+
+  it("describeDeliveryCapabilities returns enabled", () => {
+    const desc = (lansengerPlugin as any).approvalCapability?.native?.describeDeliveryCapabilities;
+    const cfg = { channels: { lansenger: { appId: "id", appSecret: "secret" } } };
+    const result = desc({ cfg, accountId: undefined });
+    expect(result.enabled).toBe(true);
+    expect(result.preferredSurface).toBe("origin");
+  });
+
+  it("resolveOriginTarget returns target from request", () => {
+    const resolve = (lansengerPlugin as any).approvalCapability?.native?.resolveOriginTarget;
+    const cfg = { channels: { lansenger: { appId: "id", appSecret: "secret" } } };
+    const result = resolve({ cfg, accountId: undefined, request: { turnSource: { target: { to: "chat-1" } } } });
+    expect(result).toBeDefined();
+    expect(result.to).toBe("chat-1");
+  });
+
+  it("resolveOriginTarget returns null when no target", () => {
+    const resolve = (lansengerPlugin as any).approvalCapability?.native?.resolveOriginTarget;
+    const cfg = { channels: { lansenger: { appId: "id", appSecret: "secret" } } };
+    const result = resolve({ cfg, accountId: undefined, request: {} });
+    expect(result).toBeNull();
+  });
+
+  it("buildPendingPayload returns appCard type", () => {
+    const build = (lansengerPlugin as any).approvalCapability?.nativeRuntime?.presentation?.buildPendingPayload;
+    const cfg = { channels: { lansenger: { appId: "id", appSecret: "secret" } } };
+    const result = build({ cfg, request: { command: "rm -rf /", sessionKey: "sess-1" }, target: { to: "chat-1" }, nowMs: Date.now() });
+    expect(result.type).toBe("appCard");
+    expect(result.zh).toBeDefined();
+    expect(result.en).toBeDefined();
+    expect(result.zh.isDynamic).toBe(true);
+  });
+
+  it("buildResolvedPayload returns approved text", () => {
+    const build = (lansengerPlugin as any).approvalCapability?.nativeRuntime?.presentation?.buildResolvedPayload;
+    const cfg = { channels: { lansenger: { appId: "id", appSecret: "secret" } } };
+    const result = build({ cfg, resolved: { kind: "approved", actorLabel: "admin" }, target: { to: "chat-1" } });
+    expect(result.type).toBe("text");
+    expect(result.text).toContain("已批准");
+  });
+
+  it("buildResolvedPayload returns denied text", () => {
+    const build = (lansengerPlugin as any).approvalCapability?.nativeRuntime?.presentation?.buildResolvedPayload;
+    const cfg = { channels: { lansenger: { appId: "id", appSecret: "secret" } } };
+    const result = build({ cfg, resolved: { kind: "denied" }, target: { to: "chat-1" } });
+    expect(result.type).toBe("text");
+    expect(result.text).toContain("已拒绝");
   });
 });

@@ -472,52 +472,24 @@ async function handleInbound(
               SessionKey: sessionKey,
               ChatType: chatType,
               Channel: "lansenger",
+              Provider: "lansenger",
+              Surface: "lansenger",
               To: replyTo,
             },
             recordInboundSession: api.runtime.channel.session.recordInboundSession,
             dispatchReplyWithBufferedBlockDispatcher: api.runtime.channel.reply.dispatchReplyWithBufferedBlockDispatcher,
             delivery: {
               deliver: async (payload: any, info: any) => {
-                const text: string | undefined = payload.text;
-                const to: string = payload.to ?? replyTo;
-                const mediaUrls: string[] = payload.mediaUrls ?? (payload.mediaUrl ? [payload.mediaUrl] : []);
-                const entry = runningAccounts.get(runningKey);
-                const client = entry?.client ?? makeClient(account, sdkLogger());
-
-                const messageIds: string[] = [];
-
-                if (text?.trim()) {
-                  const result = await deliverReply(client, to, text);
-                  if (result.messageId) messageIds.push(result.messageId);
-                }
-
-                for (const mediaUrl of mediaUrls) {
-                  log.info(`deliver media: ${mediaUrl}`);
-                  const readFile = payload.mediaReadFile ?? payload.mediaAccess?.readFile;
-                  if (/^https?:\/\//i.test(mediaUrl)) {
-                    const caption = text && mediaUrls.length === 1 ? "" : "";
-                    const r = await client.sendImageUrl(to, mediaUrl, caption);
-                    if (r.messageId) messageIds.push(r.messageId);
-                  } else if (readFile) {
-                    const buffer = await readFile(mediaUrl);
-                    const ext = path.extname(mediaUrl).toLowerCase() || ".dat";
-                    const tmpPath = path.join(os.tmpdir(), `lansenger_media_${crypto.randomUUID()}${ext}`);
-                    await fs.writeFile(tmpPath, buffer);
-                    try {
-                      const r = await client.sendFile(to, tmpPath, text && mediaUrls.length === 1 ? text : "");
-                      if (r.messageId) messageIds.push(r.messageId);
-                    } finally {
-                      try { await fs.unlink(tmpPath); } catch {}
-                    }
-                  } else {
-                    const resolved = path.resolve(mediaUrl);
-                    const r = await client.sendFile(to, resolved, text && mediaUrls.length === 1 ? text : "");
-                    if (r.messageId) messageIds.push(r.messageId);
-                  }
-                }
-
-                const visible = messageIds.length > 0 || (text?.trim() && !mediaUrls.length);
-                return { messageIds, visibleReplySent: visible };
+                log.info(`delivery.deliver invoked (kind=${info?.kind}) — deferring to outbound adapter`);
+                const hasContent = Boolean(
+                  payload.text?.trim() ||
+                  payload.mediaUrls?.length ||
+                  payload.mediaUrl ||
+                  payload.audioAsVoice ||
+                  payload.presentation ||
+                  payload.interactive
+                );
+                return { messageIds: [], visibleReplySent: hasContent };
               },
               onError: (err: unknown, info: { kind: string }) => {
                 log.error(`delivery error: ${err instanceof Error ? err.message : String(err)} kind=${info.kind}`);
