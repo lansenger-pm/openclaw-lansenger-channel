@@ -381,6 +381,7 @@ Agent 路由由 OpenClaw 的 `bindings[]` 設定管理——見[多 Agent 路由
 
 ## 更新日誌
 
+- **v3.2.10** — 啟動時檢測 `group:plugins` 缺失警告；`configWrites` 加入頻道配置 schema；伴生插件透過 `globalThis.__lansenger_channel` 共享運行時狀態
 - **v3.1** — 多帳號設定精靈；dmPolicy 對齊 OpenClaw 標準（dmSecurity→dmPolicy + paired→pairing）；中英雙語提示文案；憑證 shouldPrompt 跳過已設定步驟；多帳號設定遷移清理
 - **v3.0** — 新增 `lansenger_send_format_text` 工具（Markdown + @提及）；重寫 SKILL.md；修正 headStatusInfo description+colour 語義
 - **v2.10** — appCard font-size px→pt 自動轉換；sendImageUrl 錯誤分類；工具註冊日誌
