@@ -385,6 +385,7 @@ Approval status updates use the DynamicMsg appCard format. The `updateCardStatus
 
 ## Changelog
 
+- **v3.2.10** — Startup warning for missing `group:plugins` in tool allowlist; `configWrites` in channel config schema; companion plugin cross-runtime state via `globalThis.__lansenger_channel`
 - **v3.1** — Multi-account setup wizard; dmPolicy/dmSecurity→dmPolicy+pairing (OpenClaw standard); bilingual prompts; credential shouldPrompt skips configured steps; clean multi-account config migration
 - **v3.0** — Add `lansenger_send_format_text` tool (Markdown + @mention); rewrite SKILL.md; fix headStatusInfo description+colour semantics
 - **v2.10** — font-size px→pt auto-conversion; sendImageUrl error classification; tool registration logging
