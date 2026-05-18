@@ -76,7 +76,7 @@ Need to send something? Follow this decision tree:
 1. Normal reply with formatting → JUST WRITE IT. No tool needed.
 2. Markdown + @mention → `lansenger_send_format_text` or `lansenger message send-markdown`
 3. Plain text + @mention + file → `lansenger_send_text` or `lansenger message send-text`
-4. Send a FILE → **`message(action=send, filePath=<path>)`** (always available, no extra permissions needed) or `lansenger_send_file` or `lansenger message send-file`
+4. Send a FILE → **`message(action=send, filePath=<path>)`** (always available, no extra permissions needed, any file type) or `lansenger_send_file` or `lansenger message send-file`
 5. Send image from URL → `lansenger_send_image_url` or `lansenger message send-image-url`
 6. Link card → `lansenger_send_link_card` or `lansenger message send-link-card`
 7. Multi-article card (图文) → `lansenger_send_app_articles` or `lansenger message send-app-articles`
@@ -301,6 +301,34 @@ Status colors: #FFB116 (pending), #198754 (approved), #dc3545 (denied)
 | position   | Location name, address, lat/long                  |
 | card       | Contact card with staffId                         |
 | sticker    | Sticker/emoji message                             |
+
+## File Delivery: MEDIA: Tags vs. message Tool
+
+OpenClaw's `MEDIA:` tag mechanism has a **MIME whitelist** — only these file types can be delivered via MEDIA: tags:
+
+| Allowed by MEDIA:              | Examples                                      |
+|---------------------------------|-----------------------------------------------|
+| Images (image/*)               | .png, .jpg, .gif, .bmp, .webp, .svg          |
+| Audio (audio/*)                | .mp3, .wav, .ogg, .m4a                        |
+| Video (video/*)                | .mp4, .mov, .avi, .mkv                        |
+| PDF                             | .pdf                                          |
+| Office documents               | .doc, .xls, .ppt, .docx, .xlsx, .pptx        |
+| Archives                        | .zip, .gzip, .7z, .tar                        |
+| CSV                             | .csv                                          |
+| Markdown                        | .md                                           |
+
+**All other file types are BLOCKED by MEDIA: tags** and produce "⚠️ Media failed." in the reply. Specifically:
+
+| Blocked by MEDIA: | Examples |
+|-------------------|----------|
+| Plain text        | .txt     |
+| JSON              | .json    |
+| Code/config       | .py, .js, .ts, .yaml, .xml, .toml, .ini, .cfg, .conf |
+| Data              | .db, .sql, .parquet |
+| Executables       | .exe, .sh, .bat |
+| Other binary      | .bin, .dat, .so, .dll |
+
+**To send blocked file types, use `message(action=send, filePath=<path>)`** — it bypasses the MEDIA whitelist and uploads any file type directly via the Lansenger API. You can also rename the file to `.md` (wrapping content in a Markdown code block) to make it MEDIA-compatible.
 
 ## Common Pitfalls
 
