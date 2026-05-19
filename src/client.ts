@@ -206,14 +206,14 @@ export class LansengerClient {
     }
   }
 
-  async uploadMedia(filePath: string, mediaType?: number): Promise<{ mediaId: string } | { error: string }> {
+  async uploadMedia(filePath: string, mediaType?: number, originalName?: string): Promise<{ mediaId: string } | { error: string }> {
     const token = await this.getAppToken();
     if (!token) return { error: "No access token" };
     const mt = mediaType ?? mediaTypeFromPath(filePath);
     try {
       const url = `${this.apiGatewayUrl}${API_ENDPOINTS.uploadMedia}?type=${mt}&app_token=${token}`;
       const fileContent = await fs.readFile(filePath);
-      const filename = path.basename(filePath);
+      const filename = originalName ?? path.basename(filePath);
       const form = new FormData();
       form.append("media", new Blob([fileContent]), filename);
       const resp = await fetch(url, { method: "POST", body: form });
@@ -226,9 +226,9 @@ export class LansengerClient {
     }
   }
 
-  async sendFile(chatId: string, filePath: string, caption?: string, mediaType?: number): Promise<ApiResult> {
+  async sendFile(chatId: string, filePath: string, caption?: string, mediaType?: number, originalName?: string): Promise<ApiResult> {
     const mt = mediaType ?? mediaTypeFromPath(filePath);
-    const uploadResult = await this.uploadMedia(filePath, mt);
+    const uploadResult = await this.uploadMedia(filePath, mt, originalName);
     if ("error" in uploadResult) return { success: false, error: uploadResult.error };
     return this.sendTextWithMedia(chatId, caption ?? "", mt, [uploadResult.mediaId]);
   }

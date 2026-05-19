@@ -29,7 +29,10 @@ type RunningAccount = {
 const runningAccounts = new Map<string, RunningAccount>();
 const lastInboundChatIds = new Map<string, string>();
 const lastInboundTimes = new Map<string, number>();
-const deliveredTextHashes = new Map<string, Set<string>>();
+
+export function stripOpenClawUuidSuffix(name: string): string {
+  return name.replace(/---[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i, "");
+}
 
 async function startAccount(api: OpenClawPluginApi, accountId?: string | null): Promise<boolean> {
   const account = resolveAccount(api.config, accountId);
@@ -302,6 +305,8 @@ async function handleInbound(
   runningKey: string,
 ): Promise<void> {
   const chatType = event.isGroup ? "group" : "dm";
+  const turnTextDelivered = new Set<string>();
+  const turnMediaDelivered = new Set<string>();
 
   if (chatType === "dm") {
     const dmPolicy = account.dmPolicy ?? "pairing";
@@ -487,21 +492,25 @@ async function handleInbound(
                 const entry = runningAccounts.get(runningKey);
                 const client = entry?.client ?? makeClient(account, sdkLogger());
 
-                const dedupSet = deliveredTextHashes.get(runningKey) ?? new Set<string>();
-                deliveredTextHashes.set(runningKey, dedupSet);
-
                 const messageIds: string[] = [];
                 const textKey = text?.trim() ? `${text.trim().slice(0, 80)}:${text.trim().length}` : "";
 
-                if (text?.trim() && !dedupSet.has(textKey)) {
-                  dedupSet.add(textKey);
+                if (text?.trim() && !turnTextDelivered.has(textKey)) {
+                  turnTextDelivered.add(textKey);
                   const result = await deliverReply(client, to, text);
                   if (result.messageId) messageIds.push(result.messageId);
                 }
 
                 for (const mediaUrl of mediaUrls) {
-                  log.info(`deliver media: ${mediaUrl}`);
+                  const mediaKey = mediaUrl.trim();
+                  if (mediaKey && turnMediaDelivered.has(mediaKey)) {
+                    log.info(`deliver media dedup skip: ${mediaKey}`);
+                    continue;
+                  }
+                  if (mediaKey) turnMediaDelivered.add(mediaKey);
+                  log.info(`deliver media: ${mediaUrl} (turnMediaDelivered size=${turnMediaDelivered.size})`);
                   const readFile = payload.mediaReadFile ?? payload.mediaAccess?.readFile;
+                  const originalName = stripOpenClawUuidSuffix(path.basename(mediaUrl));
                   if (/^https?:\/\//i.test(mediaUrl)) {
                     const r = await client.sendImageUrl(to, mediaUrl, "");
                     if (r.messageId) messageIds.push(r.messageId);
@@ -511,7 +520,7 @@ async function handleInbound(
                     const tmpPath = path.join(os.tmpdir(), `lansenger_media_${crypto.randomUUID()}${ext}`);
                     await fs.writeFile(tmpPath, buffer);
                     try {
-                      const r = await client.sendFile(to, tmpPath, "");
+                      const r = await client.sendFile(to, tmpPath, "", undefined, originalName);
                       if (r.messageId) messageIds.push(r.messageId);
                     } finally {
                       try { await fs.unlink(tmpPath); } catch {}
