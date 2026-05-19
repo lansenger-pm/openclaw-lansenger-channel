@@ -214,6 +214,7 @@ export class LansengerClient {
       const url = `${this.apiGatewayUrl}${API_ENDPOINTS.uploadMedia}?type=${mt}&app_token=${token}`;
       const fileContent = await fs.readFile(filePath);
       const filename = originalName ?? path.basename(filePath);
+      this.log.info(`uploadMedia: filePath=${filePath} originalName=${originalName ?? "n/a"} filename=${filename}`);
       const form = new FormData();
       form.append("media", new Blob([fileContent]), filename);
       const resp = await fetch(url, { method: "POST", body: form });
