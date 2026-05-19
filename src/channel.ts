@@ -44,6 +44,7 @@ type ResolvedAccount = {
   dmPolicy: string | undefined;
   homeChannel: string | undefined;
   enabled: boolean;
+  configured?: boolean;
 };
 
 function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): ResolvedAccount {
@@ -509,7 +510,7 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
       return {
         accountId: account.accountId ?? account.appId ?? DEFAULT_ACCOUNT_ID,
         enabled: account.enabled,
-        configured: Boolean(account.appId && account.appSecret) || Boolean(process.env.LANSENGER_APP_ID && process.env.LANSENGER_APP_SECRET),
+        configured: account.configured ?? (Boolean(account.appId && account.appSecret) || Boolean(process.env.LANSENGER_APP_ID && process.env.LANSENGER_APP_SECRET)),
         name: account.appId,
         appId: account.appId,
         running: connected || (runtime?.running ?? false),
