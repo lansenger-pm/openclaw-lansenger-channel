@@ -307,6 +307,7 @@ The plugin supports approval workflow cards:
 - **Media** — `<media>` tags work for workspace files; for external paths use `lansenger_send_file`.
 - **openclaw skill/message lansenger** — these CLI commands do NOT exist; use agent tools instead.
 - **Agent tools** — agent tools (`lansenger_send_*`) are built into the channel plugin — always available when the channel is configured and running. CLI commands (`lansenger message send-*`) require `pipx install lansenger-cli` and are an optional alternative.
+- **alsoAllow** — agent tools are registered by this channel plugin but may be **invisible** under restrictive tool profiles. Add `"tools": { "alsoAllow": ["group:plugins"] }` to `openclaw.json` to ensure the agent can see and use `lansenger_send_*` tools. Without this, tools may silently not appear in the agent's tool list.
 
 ## Development
 
