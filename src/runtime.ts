@@ -45,10 +45,10 @@ async function startAccount(api: OpenClawPluginApi, accountId?: string | null): 
   if (runningAccounts.has(key)) {
     const entry = runningAccounts.get(key)!;
     if (entry.client.isWsAlive()) {
-      log.info(`skip auto-start: WS alive (key=${key})`);
+      log.info(`skip auto-start: WS alive (key=${key} wsState=${entry.client.wsState()})`);
       return true;
     }
-    log.info(`auto-reconnect: WS dead, cleaning and reconnecting (key=${key})`);
+    log.info(`auto-reconnect: WS dead (wsState=${entry.client.wsState()}), cleaning and reconnecting (key=${key})`);
     try { await entry.client.disconnect(); } catch {}
     runningAccounts.delete(key);
   }
@@ -95,6 +95,17 @@ export function startLansengerGateway(api: OpenClawPluginApi): void {
     getRunningAccount,
     getLastInboundChatId,
   };
+
+  const rt = api.runtime as any;
+  const rtKeys = rt ? Object.keys(rt) : [];
+  const channelKeys = rt?.channel ? Object.keys(rt.channel) : [];
+  log.info(`plugin startup: runtime available=${!!rt} runtimeKeys=${rtKeys.join(",")} channelKeys=${channelKeys.join(",")}`);
+  if (!rt?.channel?.turn) {
+    log.error(`plugin startup: api.runtime.channel.turn is UNDEFINED — inbound messages will fail! OpenClaw version may be too old (need 2026.5.x+)`);
+  }
+  if (!rt?.channel?.pairing) {
+    log.warn(`plugin startup: api.runtime.channel.pairing is UNDEFINED — DM pairing will be disabled`);
+  }
 
   const toolsConfig = api.config.tools as Record<string, any> | undefined;
   const alsoAllow = (toolsConfig?.alsoAllow ?? []) as string[];
@@ -311,8 +322,15 @@ async function handleInbound(
   if (chatType === "dm") {
     const dmPolicy = account.dmPolicy ?? "pairing";
     const configAllowFrom = account.allowFrom ?? [];
-    const pairing = (api.runtime as any).channel.pairing;
-    const storeAllowFrom: string[] = pairing?.readAllowFromStore ? await pairing.readAllowFromStore({ channel: "lansenger", accountId: account.accountId ?? undefined }) : [];
+    const pairing = (api.runtime as any)?.channel?.pairing;
+    let storeAllowFrom: string[] = [];
+    try {
+      if (pairing?.readAllowFromStore) {
+        storeAllowFrom = await pairing.readAllowFromStore({ channel: "lansenger", accountId: account.accountId ?? undefined });
+      }
+    } catch (e: unknown) {
+      log.error(`inbound: readAllowFromStore failed — ${e instanceof Error ? e.message : String(e)}`);
+    }
     const effectiveAllowFrom = [...new Set([...configAllowFrom, ...storeAllowFrom])];
     const senderAllowed = effectiveAllowFrom.some((id: string) => {
       const bare = id.replace(/^lansenger:/, "");
@@ -320,23 +338,27 @@ async function handleInbound(
     });
 
     if (!senderAllowed) {
-      if (dmPolicy === "pairing") {
+      if (dmPolicy === "pairing" && pairing?.upsertPairingRequest) {
         log.info(`inbound: dm pairing required — sender=${event.senderId} not in allowFrom`);
-        const { code } = await pairing.upsertPairingRequest({
-          channel: "lansenger",
-          id: event.senderId,
-          accountId: account.accountId ?? undefined,
-          meta: { name: event.userName },
-        });
-        const reply = pairing.buildPairingReply({
-          channel: "lansenger",
-          idLine: `Your Lansenger user ID: ${event.senderId} / 你的蓝信用户 ID：${event.senderId}`,
-          code,
-        });
-        const entry = runningAccounts.get(runningKey);
-        const client = entry?.client ?? makeClient(account, sdkLogger());
-        await client.sendFormatText(event.senderId, reply);
-        log.info(`inbound: pairing code sent to sender=${event.senderId}`);
+        try {
+          const { code } = await pairing.upsertPairingRequest({
+            channel: "lansenger",
+            id: event.senderId,
+            accountId: account.accountId ?? undefined,
+            meta: { name: event.userName },
+          });
+          const reply = pairing.buildPairingReply({
+            channel: "lansenger",
+            idLine: `Your Lansenger user ID: ${event.senderId} / 你的蓝信用户 ID：${event.senderId}`,
+            code,
+          });
+          const entry = runningAccounts.get(runningKey);
+          const client = entry?.client ?? makeClient(account, sdkLogger());
+          await client.sendFormatText(event.senderId, reply);
+          log.info(`inbound: pairing code sent to sender=${event.senderId}`);
+        } catch (e: unknown) {
+          log.error(`inbound: pairing flow failed — ${e instanceof Error ? e.message : String(e)}, dropping message`);
+        }
         return;
       }
       if (dmPolicy === "disabled") {
@@ -351,38 +373,50 @@ async function handleInbound(
   }
 
   if (event.isGroup) {
-    const groupPolicy = api.runtime.channel.groups.resolveGroupPolicy({
-      cfg: api.config,
-      channel: "lansenger",
-      groupId: event.chatId,
-      accountId: account.accountId,
-    });
-    if (!groupPolicy.allowed) {
-      log.info(`inbound: group dropped — groupPolicy not allowed for chatId=${event.chatId}`);
-      return;
+    try {
+      const groupPolicy = api.runtime.channel.groups.resolveGroupPolicy({
+        cfg: api.config,
+        channel: "lansenger",
+        groupId: event.chatId,
+        accountId: account.accountId,
+      });
+      if (!groupPolicy.allowed) {
+        log.info(`inbound: group dropped — groupPolicy not allowed for chatId=${event.chatId}`);
+        return;
+      }
+      const requireMention = api.runtime.channel.groups.resolveRequireMention({
+        cfg: api.config,
+        channel: "lansenger",
+        groupId: event.chatId,
+        accountId: account.accountId,
+      });
+      log.info(`inbound: group allowed — chatId=${event.chatId} requireMention=${requireMention}`);
+    } catch (e: unknown) {
+      log.error(`inbound: group policy check failed — ${e instanceof Error ? e.message : String(e)}`);
     }
-    const requireMention = api.runtime.channel.groups.resolveRequireMention({
-      cfg: api.config,
-      channel: "lansenger",
-      groupId: event.chatId,
-      accountId: account.accountId,
-    });
-    log.info(`inbound: group allowed — chatId=${event.chatId} requireMention=${requireMention}`);
   }
 
-  const route = api.runtime.channel.routing.resolveAgentRoute({
-    cfg: api.config,
-    channel: "lansenger",
-    accountId: account.accountId,
-    peer: { kind: chatType as "direct" | "group" | "channel", id: event.chatId },
-  });
-  const agentId = route.agentId;
-  const sessionKey = route.sessionKey;
+  let agentId: string;
+  let sessionKey: string;
+  try {
+    const route = api.runtime.channel.routing.resolveAgentRoute({
+      cfg: api.config,
+      channel: "lansenger",
+      accountId: account.accountId,
+      peer: { kind: chatType as "direct" | "group" | "channel", id: event.chatId },
+    });
+    agentId = route.agentId;
+    sessionKey = route.sessionKey;
+  } catch (e: unknown) {
+    log.error(`inbound: route resolution failed — ${e instanceof Error ? e.message : String(e)}, using defaults`);
+    agentId = "main";
+    sessionKey = `agent:main:lansenger:${chatType}:${event.chatId}`;
+  }
   const replyTo = event.chatId;
   lastInboundChatIds.set(runningKey, event.chatId);
   lastInboundTimes.set(runningKey, Date.now());
 
-  log.info(`inbound: ${chatType} from=${event.senderId} bot=${account.appId.slice(0, 20)}... agent=${agentId} matchedBy=${route.matchedBy}`);
+  log.info(`inbound: ${chatType} from=${event.senderId} bot=${account.appId.slice(0, 20)}... agent=${agentId}`);
 
   let agentText = event.text;
   if (event.mediaPaths?.length) {
@@ -390,12 +424,19 @@ async function handleInbound(
   }
 
   const rawText = event.text;
-  const allowTextCommands = api.runtime.channel.commands.shouldHandleTextCommands({
-    cfg: api.config,
-    surface: "lansenger",
-  });
-  const shouldComputeAuth = api.runtime.channel.commands.shouldComputeCommandAuthorized(rawText, api.config);
-  const hasCommand = api.runtime.channel.commands.isControlCommandMessage(rawText, api.config);
+  let allowTextCommands = false;
+  let shouldComputeAuth = false;
+  let hasCommand = false;
+  try {
+    allowTextCommands = api.runtime.channel.commands.shouldHandleTextCommands({
+      cfg: api.config,
+      surface: "lansenger",
+    });
+    shouldComputeAuth = api.runtime.channel.commands.shouldComputeCommandAuthorized(rawText, api.config);
+    hasCommand = api.runtime.channel.commands.isControlCommandMessage(rawText, api.config);
+  } catch (e: unknown) {
+    log.error(`inbound: command detection failed — ${e instanceof Error ? e.message : String(e)}, skipping command checks`);
+  }
 
   let commandAuthorized: boolean | undefined = undefined;
 
@@ -426,13 +467,18 @@ async function handleInbound(
       if (noAuthorizersConfigured && dmPolicyIsPairing) {
         commandAuthorized = undefined;
       } else {
-        commandAuthorized = api.runtime.channel.commands.resolveCommandAuthorizedFromAuthorizers({
-          useAccessGroups,
-          authorizers: [
-            { configured: ownerAllowFrom.length > 0, allowed: ownerAllowFrom.some(senderMatches) },
-            { configured: channelAllowFrom.length > 0, allowed: channelAllowFrom.some(senderMatches) },
-          ],
-        });
+        try {
+          commandAuthorized = api.runtime.channel.commands.resolveCommandAuthorizedFromAuthorizers({
+            useAccessGroups,
+            authorizers: [
+              { configured: ownerAllowFrom.length > 0, allowed: ownerAllowFrom.some(senderMatches) },
+              { configured: channelAllowFrom.length > 0, allowed: channelAllowFrom.some(senderMatches) },
+            ],
+          });
+        } catch (e: unknown) {
+          log.error(`inbound: resolveCommandAuthorizedFromAuthorizers failed — ${e instanceof Error ? e.message : String(e)}`);
+          commandAuthorized = undefined;
+        }
       }
     }
   }
@@ -443,7 +489,7 @@ async function handleInbound(
   }
 
   try {
-    log.info(`turn.run starting: sessionKey=${sessionKey} agentId=${agentId} accountId=${account.accountId} matchedBy=${route.matchedBy}`);
+    log.info(`turn.run starting: sessionKey=${sessionKey} agentId=${agentId} accountId=${account.accountId}`);
     await api.runtime.channel.turn.run({
       channel: "lansenger",
       accountId: account.accountId ?? undefined,
@@ -459,7 +505,12 @@ async function handleInbound(
           };
         },
         resolveTurn: () => {
-          const storePath = api.runtime.channel.session.resolveStorePath(undefined, { agentId });
+          let storePath: string | undefined;
+          try {
+            storePath = api.runtime.channel.session.resolveStorePath(undefined, { agentId });
+          } catch (e: unknown) {
+            log.error(`resolveStorePath failed — ${e instanceof Error ? e.message : String(e)}`);
+          }
           return {
             cfg: api.config,
             channel: "lansenger",

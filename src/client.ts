@@ -110,7 +110,14 @@ export class LansengerClient {
   }
 
   isWsAlive(): boolean {
-    return this.ws !== null && this.ws.readyState === WebSocket.OPEN;
+    if (!this.ws) return false;
+    return this.ws.readyState === WebSocket.OPEN;
+  }
+
+  wsState(): string {
+    if (!this.ws) return "NULL";
+    const states = ["CONNECTING", "OPEN", "CLOSING", "CLOSED"];
+    return states[this.ws.readyState] ?? `UNKNOWN(${this.ws.readyState})`;
   }
 
   async getAppToken(): Promise<string | null> {
@@ -559,12 +566,14 @@ export class LansengerClient {
       return false;
     }
     this.running = true;
+    this.log.info("connect: obtaining WS endpoint URL...");
     try {
       const wsUrl = await this.getWsUrl();
       if (!wsUrl) {
         this.log.error("connect: failed to obtain WS URL");
         return false;
       }
+      this.log.info(`connect: got WS URL, starting connection...`);
       this.wsTask = this.runWs(wsUrl);
       return true;
     } catch (e: any) {
@@ -618,7 +627,7 @@ export class LansengerClient {
         this.backoffIdx = 0;
 
         ws.onopen = () => {
-          this.log.info("WS connected");
+          this.log.info(`WS connected (url=${currentUrl.slice(0, 60)}...)`);
           this.startHeartbeat(ws);
         };
 
@@ -641,13 +650,14 @@ export class LansengerClient {
         const closePromise = new Promise<void>((r) => { resolveClose = r; });
 
         ws.onclose = (ev) => {
-          this.log.info(`WS closed (code=${ev.code} reason=${ev.reason})`);
+          this.log.info(`WS closed (code=${ev.code} reason=${ev.reason || "none"} wasClean=${ev.wasClean})`);
           this.stopHeartbeat();
           this.clearPongTimeout();
           resolveClose?.();
         };
         ws.onerror = (ev) => {
-          this.log.error(`WS error: ${(ev as any).message ?? "unknown"}`);
+          const errMsg = (ev as any)?.message ?? (ev as any)?.error?.message ?? "unknown";
+          this.log.error(`WS error: ${errMsg}`);
           this.stopHeartbeat();
           this.clearPongTimeout();
           resolveClose?.();
@@ -687,6 +697,11 @@ export class LansengerClient {
         } catch {
           this.log.error("heartbeat ping failed");
         }
+      } else if (ws.readyState === WebSocket.CLOSING || ws.readyState === WebSocket.CLOSED) {
+        this.log.error(`heartbeat: WS no longer open (state=${this.wsState()}) — forcing close to trigger reconnect`);
+        this.stopHeartbeat();
+        this.clearPongTimeout();
+        try { ws.terminate(); } catch {}
       }
     }, HEARTBEAT_INTERVAL_MS);
   }
