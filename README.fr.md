@@ -301,6 +301,7 @@ Le plugin supporte les cartes d'approbation :
 - **Média** — les balises `<media>` fonctionnent pour les fichiers du workspace ; pour les chemins externes, utilisez `lansenger_send_file`.
 - **openclaw skill/message lansenger** — ces commandes CLI n'existent PAS ; utilisez les outils de l'agent.
 - **Outils agent** — les outils agent (`lansenger_send_*`) nécessitent le plugin outils ET une injection réussie de la passerelle — si les outils ne sont pas disponibles, utilisez la CLI comme repli. Les commandes CLI (`lansenger message send-*`) nécessitent `pipx install lansenger-cli`.
+- **alsoAllow** — les outils agent sont enregistrés par ce plugin de canal mais peuvent être **invisibles** sous un profil d'outils restrictif. Ajoutez `"tools": { "alsoAllow": ["group:plugins"] }` dans `openclaw.json` pour que l'agent puisse voir et utiliser les outils `lansenger_send_*`. Sans cela, les outils peuvent ne pas apparaître silencieusement dans la liste d'outils de l'agent.
 
 ## Développement
 
