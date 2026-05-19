@@ -94,6 +94,8 @@ export class LansengerClient {
   private pongTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
   private lastPongAt = 0;
   private messageHandler: ((event: InboundEvent) => Promise<void>) | null = null;
+  private onWsOpen: (() => void) | null = null;
+  private onWsClose: (() => void) | null = null;
   private log: ClientLogger;
   private chatTypeMap = new Map<string, "group" | "dm">();
   private userLangMap = new Map<string, "zh" | "en">();
@@ -107,6 +109,11 @@ export class LansengerClient {
 
   setMessageHandler(handler: (event: InboundEvent) => Promise<void>): void {
     this.messageHandler = handler;
+  }
+
+  setWsLifecycleCallbacks(callbacks: { onOpen?: () => void; onClose?: () => void }): void {
+    this.onWsOpen = callbacks.onOpen ?? null;
+    this.onWsClose = callbacks.onClose ?? null;
   }
 
   isWsAlive(): boolean {
@@ -629,6 +636,7 @@ export class LansengerClient {
         ws.onopen = () => {
           this.log.info(`WS connected (url=${currentUrl.slice(0, 60)}...)`);
           this.startHeartbeat(ws);
+          this.onWsOpen?.();
         };
 
         ws.onmessage = async (ev) => {
@@ -653,6 +661,7 @@ export class LansengerClient {
           this.log.info(`WS closed (code=${ev.code} reason=${ev.reason || "none"} wasClean=${ev.wasClean})`);
           this.stopHeartbeat();
           this.clearPongTimeout();
+          this.onWsClose?.();
           resolveClose?.();
         };
         ws.onerror = (ev) => {

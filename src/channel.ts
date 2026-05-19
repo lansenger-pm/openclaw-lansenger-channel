@@ -15,7 +15,7 @@ import * as path from "node:path";
 import * as crypto from "node:crypto";
 import { LansengerClient, DEFAULT_API_GATEWAY_URL } from "./client.js";
 import type { AppCardData, I18nAppCardData, ClientLogger } from "./client.js";
-import { getRunningClient, getLastInboundTime, stripOpenClawUuidSuffix } from "./runtime.js";
+import { getRunningClient, getLastInboundTime, stripOpenClawUuidSuffix, gatewayStartAccount, gatewayStopAccount } from "./runtime.js";
 import { lansengerSetupWizard } from "./setup-wizard.js";
 
 type LansengerProbeResult = {
@@ -480,6 +480,10 @@ const lansengerOnboarding = {
 export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResult> = {
   ...chatPlugin as any,
   setupWizard: lansengerSetupWizard,
+  gateway: {
+    startAccount: gatewayStartAccount,
+    stopAccount: gatewayStopAccount,
+  },
   status: {
     buildChannelSummary: ({ snapshot, cfg }) => {
       const hasCfg = (() => {

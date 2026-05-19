@@ -1,5 +1,7 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/channel-core";
+import type { ChannelGatewayContext, ChannelAccountSnapshot } from "openclaw/plugin-sdk";
 import { createSubsystemLogger } from "openclaw/plugin-sdk/logging-core";
+import { createAccountStatusSink, waitUntilAbort } from "openclaw/plugin-sdk/channel-runtime";
 import { LansengerClient } from "./client.js";
 import type { InboundEvent, ClientLogger, ApiResult, AppCardData } from "./client.js";
 import { resolveAccount, makeClient } from "./channel.js";
@@ -27,8 +29,11 @@ type RunningAccount = {
 };
 
 const runningAccounts = new Map<string, RunningAccount>();
+const accountStatusSinks = new Map<string, (patch: Omit<ChannelAccountSnapshot, "accountId">) => void>();
 const lastInboundChatIds = new Map<string, string>();
 const lastInboundTimes = new Map<string, number>();
+
+let pluginApi: OpenClawPluginApi | null = null;
 
 export function stripOpenClawUuidSuffix(name: string): string {
   return name.replace(/---[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i, "");
@@ -57,6 +62,18 @@ async function startAccount(api: OpenClawPluginApi, accountId?: string | null): 
   client.setMessageHandler(async (event: InboundEvent) => {
     await handleInbound(api, event, account, key);
   });
+
+  const existingSink = accountStatusSinks.get(key);
+  if (existingSink) {
+    client.setWsLifecycleCallbacks({
+      onOpen: () => {
+        existingSink({ connected: true, lastConnectedAt: Date.now(), lastError: null });
+      },
+      onClose: () => {
+        existingSink({ connected: false });
+      },
+    });
+  }
 
   const connected = await client.connect();
   if (!connected) {
@@ -90,6 +107,7 @@ export function getRunningAccount(): ResolvedAccount | null {
 }
 
 export function startLansengerGateway(api: OpenClawPluginApi): void {
+  pluginApi = api;
   (globalThis as any).__lansenger_channel = {
     getRunningClient,
     getRunningAccount,
@@ -287,6 +305,91 @@ export function startLansengerGateway(api: OpenClawPluginApi): void {
   });
 
   autoStart(api, accounts);
+}
+
+export async function gatewayStartAccount(ctx: ChannelGatewayContext<ResolvedAccount>): Promise<unknown> {
+  const statusSink = createAccountStatusSink({ accountId: ctx.accountId, setStatus: ctx.setStatus });
+  const account = ctx.account;
+  const key = account.appId || ctx.accountId || "__default__";
+
+  accountStatusSinks.set(key, statusSink);
+
+  if (runningAccounts.has(key)) {
+    const entry = runningAccounts.get(key)!;
+    entry.client.setWsLifecycleCallbacks({
+      onOpen: () => {
+        statusSink({ connected: true, lastConnectedAt: Date.now(), lastError: null });
+        log.info(`gateway: WS reconnected (key=${key})`);
+      },
+      onClose: () => {
+        statusSink({ connected: false });
+        log.info(`gateway: WS disconnected (key=${key})`);
+      },
+    });
+    const connected = entry.client.isWsAlive();
+    if (connected) {
+      statusSink({ connected: true, lastConnectedAt: Date.now(), lastError: null });
+    } else {
+      statusSink({ connected: false });
+    }
+    log.info(`gateway: adopting existing WS (key=${key} connected=${connected})`);
+    return waitUntilAbort(ctx.abortSignal, async () => {
+      const e = runningAccounts.get(key);
+      if (e) {
+        await e.client.disconnect();
+        runningAccounts.delete(key);
+      }
+      accountStatusSinks.delete(key);
+      log.info(`gateway: stopped on abort (key=${key})`);
+    });
+  }
+
+  const api = pluginApi!;
+  const client = makeClient(account, sdkLogger());
+  client.setMessageHandler(async (event: InboundEvent) => {
+    await handleInbound(api, event, account, key);
+  });
+  client.setWsLifecycleCallbacks({
+    onOpen: () => {
+      statusSink({ connected: true, lastConnectedAt: Date.now(), lastError: null });
+      log.info(`gateway: WS connected (key=${key})`);
+    },
+    onClose: () => {
+      statusSink({ connected: false });
+      log.info(`gateway: WS disconnected (key=${key})`);
+    },
+  });
+
+  const connected = await client.connect();
+  if (!connected) {
+    statusSink({ connected: false, lastError: "Failed to connect to Lansenger WebSocket" });
+    throw new Error("Failed to connect to Lansenger WebSocket");
+  }
+
+  runningAccounts.set(key, { accountId: ctx.accountId, account, client });
+  statusSink({ connected: true, lastConnectedAt: Date.now(), lastError: null });
+  log.info(`gateway: started (key=${key} accountId=${ctx.accountId})`);
+
+  return waitUntilAbort(ctx.abortSignal, async () => {
+    const e = runningAccounts.get(key);
+    if (e) {
+      await e.client.disconnect();
+      runningAccounts.delete(key);
+    }
+    accountStatusSinks.delete(key);
+    log.info(`gateway: stopped on abort (key=${key})`);
+  });
+}
+
+export async function gatewayStopAccount(ctx: ChannelGatewayContext<ResolvedAccount>): Promise<void> {
+  const key = ctx.account.appId || ctx.accountId || "__default__";
+  const entry = runningAccounts.get(key);
+  if (entry) {
+    await entry.client.disconnect();
+    runningAccounts.delete(key);
+  }
+  accountStatusSinks.delete(key);
+  log.info(`gateway: stopAccount (key=${key})`);
 }
 
 function autoStart(api: OpenClawPluginApi, accounts?: Record<string, any>): void {
