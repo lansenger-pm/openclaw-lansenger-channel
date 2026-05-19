@@ -484,8 +484,13 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
     buildChannelSummary: ({ snapshot, cfg }) => {
       const hasCfg = (() => {
         const section = (cfg.channels as Record<string, any>)?.["lansenger"];
-        const configured = Boolean(section?.appId && section?.appSecret) || Boolean(process.env.LANSENGER_APP_ID && process.env.LANSENGER_APP_SECRET);
-        return configured;
+        const accounts = section?.accounts as Record<string, any> | undefined;
+        const topLevel = Boolean(section?.appId && section?.appSecret);
+        const fromAccounts = accounts && Object.keys(accounts).length > 0
+          ? Object.values(accounts).some((a: any) => Boolean(a?.appId && a?.appSecret))
+          : false;
+        const fromEnv = Boolean(process.env.LANSENGER_APP_ID && process.env.LANSENGER_APP_SECRET);
+        return topLevel || fromAccounts || fromEnv;
       })();
       const patched = { ...snapshot, configured: snapshot.configured || hasCfg };
       return buildProbeChannelStatusSummary(patched);
