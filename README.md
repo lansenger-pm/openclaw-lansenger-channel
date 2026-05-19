@@ -406,6 +406,7 @@ Approval status updates use the DynamicMsg appCard format. The `updateCardStatus
 
 ## Changelog
 
+- **v3.6.0** — Fix health-monitor infinite restart loop: register `gateway.startAccount`/`stopAccount` so channelManager runtime store gets `running=true` + `connected=true`; WS lifecycle callbacks report connection status changes to runtime store via `createAccountStatusSink`
 - **v3.5.0** — Fix duplicate message delivery (per-turn dedup); strip OpenClaw UUID suffix from filenames; MEDIA whitelist docs; alsoAllow tip; README accuracy fixes
 - **v3.3.0** — Merge tools plugin into channel plugin; agent tools now built-in (no separate install); remove peerDependencies on `@lansenger-pm/openclaw-lansenger-tools`
 - **v3.2.10** — Startup warning for missing `group:plugins` in tool allowlist; `configWrites` in channel config schema; companion plugin cross-runtime state via `globalThis.__lansenger_channel`

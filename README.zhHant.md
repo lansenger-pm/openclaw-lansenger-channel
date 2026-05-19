@@ -414,6 +414,7 @@ Agent 路由由 OpenClaw 的 `bindings[]` 設定管理——見[多 Agent 路由
 
 ## 更新日誌
 
+- **v3.6.0** — 修正 health-monitor 無限重啟循環：註冊 `gateway.startAccount`/`stopAccount`，讓 channelManager runtime store 正確記錄 `running=true` + `connected=true`；WS 生命週期回呼透過 `createAccountStatusSink` 即時上報連線狀態變更
 - **v3.5.0** — 修正重複訊息遞送（每回合去重）；從檔案名稱中移除 OpenClaw UUID 後綴；MEDIA 白名單文件；alsoAllow 提示；README 准確性修正
 - **v3.3.0** — 合併 tools 插件至頻道插件；代理工具現已內建（無需單獨安裝）；移除 `@lansenger-pm/openclaw-lansenger-tools` 的 peerDependencies
 - **v3.1.0** — 多帳號設定精靈；dmPolicy 對齊 OpenClaw 標準（dmSecurity→dmPolicy + paired→pairing）；中英雙語提示文案；憑證 shouldPrompt 跳過已設定步驟；多帳號設定遷移清理

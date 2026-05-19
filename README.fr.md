@@ -414,6 +414,7 @@ Les mises à jour de statut d'approbation utilisent le format DynamicMsg appCard
 
 ## Journal des modifications
 
+- **v3.6.0** — Correction boucle de redémarrage infini du health-monitor : enregistrement `gateway.startAccount`/`stopAccount` pour que le channelManager runtime store reçoive `running=true` + `connected=true` ; callbacks WS lifecycle rapportent les changements de connexion via `createAccountStatusSink`
 - **v3.5.0** — Correction de la livraison en double des messages (déduplication par tour) ; suppression du suffixe UUID OpenClaw des noms de fichiers ; documentation whitelist MEDIA ; conseil alsoAllow ; corrections d'exactitude README
 - **v3.3.0** — Fusion du plugin tools dans le plugin canal ; outils agent désormais intégrés (pas d'installation séparée) ; suppression des peerDependencies sur `@lansenger-pm/openclaw-lansenger-tools`
 - **v3.2.10** — Alerte au démarrage si `group:plugins` absent de l'allowlist ; `configWrites` dans le schema de config canal ; plugin compagnon via `globalThis.__lansenger_channel`
