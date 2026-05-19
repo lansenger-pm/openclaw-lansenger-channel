@@ -511,6 +511,7 @@ async function handleInbound(
                   log.info(`deliver media: ${mediaUrl} (turnMediaDelivered size=${turnMediaDelivered.size})`);
                   const readFile = payload.mediaReadFile ?? payload.mediaAccess?.readFile;
                   const originalName = stripOpenClawUuidSuffix(path.basename(mediaUrl));
+                  log.info(`deliver media path: ${mediaUrl} readFile=${readFile ? "yes" : "no"} originalName=${originalName}`);
                   if (/^https?:\/\//i.test(mediaUrl)) {
                     const r = await client.sendImageUrl(to, mediaUrl, "");
                     if (r.messageId) messageIds.push(r.messageId);
@@ -527,7 +528,7 @@ async function handleInbound(
                     }
                   } else {
                     const resolved = path.resolve(mediaUrl);
-                    const r = await client.sendFile(to, resolved, "");
+                    const r = await client.sendFile(to, resolved, "", undefined, originalName);
                     if (r.messageId) messageIds.push(r.messageId);
                   }
                 }
