@@ -46,7 +46,8 @@ Messages can be sent via **agent tools** (built-in) or **CLI commands** (optiona
 
 | Tool | Description |
 |------|-------------|
-| `lansenger_send_text` | Send text or formatText message (Markdown by default) |
+| `lansenger_send_text` | Send plain text message with optional file attachment and @mentions (NO Markdown) |
+| `lansenger_send_format_text` | Send Markdown-formatted text with optional @mentions |
 | `lansenger_send_file` | Send file/image/video/voice from workspace or external path |
 | `lansenger_send_image_url` | Send image by URL |
 | `lansenger_send_link_card` | Send rich link preview card |
@@ -109,7 +110,7 @@ Add these to `~/.openclaw/.env` or your environment:
 | `LANSENGER_APP_SECRET` | Personal bot App Secret | `57E718CA1CAC20F2...` |
 | `LANSENGER_API_GATEWAY_URL` | Lansenger API Gateway URL override | `https://open.e.lanxin.cn/open/apigw` |
 
-Credentials can also be provided via `openclaw.json` config (see Optional Configuration below). Env vars take precedence when both are set.
+Credentials can also be provided via `openclaw.json` config (see Optional Configuration below). Config values take precedence; env vars are used as fallback when config is unset.
 
 ### Get Credentials
 
@@ -126,7 +127,7 @@ Credentials can also be provided via `openclaw.json` config (see Optional Config
       "appId": "your-appid",
       "appSecret": "your-secret",
       "apiGatewayUrl": "https://open.e.lanxin.cn/open/apigw",
-      "homeChannel": "lansenger",
+      "homeChannel": "2285568-xxx",
       "enabled": true,
       "allowFrom": ["your-appid"],
       "dmPolicy": "pairing",
@@ -147,10 +148,12 @@ Credentials can also be provided via `openclaw.json` config (see Optional Config
 | `appId` | Personal bot App ID | — |
 | `appSecret` | Personal bot App Secret | — |
 | `apiGatewayUrl` | API Gateway URL | `https://open.e.lanxin.cn/open/apigw` |
-| `homeChannel` | Default channel for agent routing | `lansenger` |
-| `enabled` | Enable/disable the channel | `true` |
+| `homeChannel` | Default chat ID for cron/notification delivery | — |
+| `enabled` | Enable/disable the channel (runtime default: false without credentials) | `true` |
 | `allowFrom` | User IDs allowed to DM the bot | `[]` |
 | `dmPolicy` | DM policy: `pairing`, `allowlist`, `open`, `disabled` | `pairing` |
+| `configWrites` | Allow Lansenger to write config in response to channel events | `true` |
+| `name` | Display name for this account | — |
 | `accounts` | Multi-bot configuration | — |
 | `groupPolicy` | Group policy: `open`, `allowlist`, `disabled` | `allowlist` |
 | `groupAllowFrom` | Group IDs allowed to trigger the bot | `[]` |
@@ -258,7 +261,7 @@ Routing fields:
 
 In single-agent mode, all messages route to the default agent (`main`) automatically — no bindings needed.
 
-### Group policy
+### Supported Message Types
 
 | Type | Description | API Method | Direction |
 |------|-------------|------------|-----------|
@@ -337,9 +340,14 @@ openclaw-lansenger-channel/
 ├── src/
 │   ├── client.ts       # Lansenger API client (WS, HTTP, media)
 │   ├── channel.ts      # OpenClaw channel plugin
-│   ├── channel.test.ts # Channel plugin tests
+│   ├── runtime.ts      # Gateway runtime (methods, inbound handler)
 │   ├── tools.ts        # Agent tool definitions (10 built-in tools)
-│   └── runtime.ts      # Gateway runtime (methods, inbound handler)
+│   ├── setup-wizard.ts # Setup wizard (multi-account config migration)
+│   ├── channel.test.ts # Channel plugin tests
+│   ├── client.test.ts  # API client tests
+│   ├── runtime.test.ts # Runtime tests
+│   ├── tools.test.ts   # Tool tests
+│   └── setup-wizard.test.ts # Setup wizard tests
 ├── skills/
 │   └── lansenger-messaging/
 │       └── SKILL.md    # Agent messaging strategy (tools + CLI)
@@ -378,20 +386,21 @@ Approval status updates use the DynamicMsg appCard format. The `updateCardStatus
 
 ## Changelog
 
+- **v3.5.0** — Fix duplicate message delivery (per-turn dedup); strip OpenClaw UUID suffix from filenames; MEDIA whitelist docs; alsoAllow tip; README accuracy fixes
 - **v3.3.0** — Merge tools plugin into channel plugin; agent tools now built-in (no separate install); remove peerDependencies on `@lansenger-pm/openclaw-lansenger-tools`
 - **v3.2.10** — Startup warning for missing `group:plugins` in tool allowlist; `configWrites` in channel config schema; companion plugin cross-runtime state via `globalThis.__lansenger_channel`
-- **v3.1** — Multi-account setup wizard; dmPolicy/dmSecurity→dmPolicy+pairing (OpenClaw standard); bilingual prompts; credential shouldPrompt skips configured steps; clean multi-account config migration
-- **v3.0** — Add `lansenger_send_format_text` tool (Markdown + @mention); rewrite SKILL.md; fix headStatusInfo description+colour semantics
-- **v2.10** — font-size px→pt auto-conversion; sendImageUrl error classification; tool registration logging
-- **v2.9** — Status adapter; env var fallback; uiHints; README cleanup (5 locales)
-- **v2.8** — OpenClaw `bindings[]` multi-agent routing; groupPolicy/groupAllowFrom/groups access control; SKILL.md AgentSkills spec
-- **v2.7** — Plain-object tool registration; runtime state for client/target
-- **v2.6** — Register tools unconditionally; removed phantom delete_message
-- **v2.5** — formatText reminder; appArticles `summary`; revoke chatType bot/group only
-- **v2.4** — Fix message body assembly; appArticles/linkCard field fixes
-- **v2.3** — Remove legacy group/private send; all routing via msgTarget
-- **v2.2** — Add 9 agent tools
-- **v2.0** — Initial release
+- **v3.1.0** — Multi-account setup wizard; dmPolicy/dmSecurity→dmPolicy+pairing (OpenClaw standard); bilingual prompts; credential shouldPrompt skips configured steps; clean multi-account config migration
+- **v3.0.0** — Add `lansenger_send_format_text` tool (Markdown + @mention); rewrite SKILL.md; fix headStatusInfo description+colour semantics
+- **v2.10.0** — font-size px→pt auto-conversion; sendImageUrl error classification; tool registration logging
+- **v2.9.0** — Status adapter; env var fallback; uiHints; README cleanup (5 locales)
+- **v2.8.0** — OpenClaw `bindings[]` multi-agent routing; groupPolicy/groupAllowFrom/groups access control; SKILL.md AgentSkills spec
+- **v2.7.0** — Plain-object tool registration; runtime state for client/target
+- **v2.6.0** — Register tools unconditionally; removed phantom delete_message
+- **v2.5.0** — formatText reminder; appArticles `summary`; revoke chatType bot/group only
+- **v2.4.0** — Fix message body assembly; appArticles/linkCard field fixes
+- **v2.3.0** — Remove legacy group/private send; all routing via msgTarget
+- **v2.2.0** — Add 9 agent tools
+- **v2.0.0** — Initial release
 
 ## License
 

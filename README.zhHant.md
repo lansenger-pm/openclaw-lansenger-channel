@@ -46,6 +46,21 @@
 
 > **代理工具始終可用** — 頻道設定且閘道執行時即可使用，無需單獨安裝插件。CLI 命令為可選替代方案，適合偏好 bash 呼叫的場景；需安裝 `lansenger-cli`（Python）。
 
+| 工具 | 說明 |
+|------|------|
+| `lansenger_send_text` | 發送純文字訊息，不支援 Markdown |
+| `lansenger_send_format_text` | 發送 Markdown 格式文字，支援 @提及 |
+| `lansenger_send_file` | 發送檔案/圖片/影片/語音（工作區或外部路徑） |
+| `lansenger_send_image_url` | 透過 URL 發送圖片 |
+| `lansenger_send_link_card` | 發送富連結預覽卡片 |
+| `lansenger_send_app_card` | 發送互動/審批卡片 |
+| `lansenger_send_app_articles` | 發送多文章卡片 |
+| `lansenger_update_dynamic_card` | 原地更新動態卡片狀態 |
+| `lansenger_revoke_message` | 撤回已傳送的訊息 |
+| `lansenger_query_groups` | 查詢可用群組 |
+
+工具也可透過 CLI 使用：`lansenger message send-text`、`lansenger message send-file` 等。
+
 ## 安裝與設定
 
 ### 建議安裝流程
@@ -103,7 +118,7 @@ openclaw pairing approve lansenger <配對碼>
 | `LANSENGER_APP_SECRET` | 個人機器人 App Secret | `57E718CA1CAC20F2...` |
 | `LANSENGER_API_GATEWAY_URL` | 藍信 API 閘道 URL 覆蓋 | `https://open.e.lanxin.cn/open/apigw` |
 
-憑證也可透過 `openclaw.json` 配置提供（見下方可選設定）。當兩者同時設定時，環境變數優先。
+憑證也可透過 `openclaw.json` 配置提供（見下方可選設定）。配置值優先；環境變數僅在配置未設定時作為回退。
 
 ### 取得憑證
 
@@ -120,7 +135,7 @@ openclaw pairing approve lansenger <配對碼>
       "appId": "your-appid",
       "appSecret": "your-secret",
       "apiGatewayUrl": "https://open.e.lanxin.cn/open/apigw",
-      "homeChannel": "lansenger",
+      "homeChannel": "2285568-xxx",
       "enabled": true,
       "allowFrom": ["your-appid"],
       "dmPolicy": "pairing",
@@ -141,10 +156,12 @@ openclaw pairing approve lansenger <配對碼>
 | `appId` | 個人機器人 App ID | — |
 | `appSecret` | 個人機器人 App Secret | — |
 | `apiGatewayUrl` | API 閘道 URL | `https://open.e.lanxin.cn/open/apigw` |
-| `homeChannel` | 代理路由的預設頻道 | `lansenger` |
-| `enabled` | 啟用/禁用頻道 | `true` |
+| `homeChannel` | 定時任務/通知遞送的預設聊天 ID | — |
+| `enabled` | 啟用/禁用頻道（運行時預設：無憑證時為 false） | `true` |
 | `allowFrom` | 允許私聊的使用者 ID | `[]` |
 | `dmPolicy` | 私聊策略：`pairing`、`allowlist`、`open`、`disabled` | `pairing` |
+| `configWrites` | 允許藍信回應頻道事件寫入配置 | `true` |
+| `name` | 此帳戶的顯示名稱 | — |
 | `accounts` | 多機器人設定 | — |
 | `groupPolicy` | 群聊策略：`open`（所有群）、`allowlist`（僅允許列表群）、`disabled`（禁止群訊息） | `allowlist` |
 | `groupAllowFrom` | 允許觸發機器人的群 ID | `[]` |
@@ -252,7 +269,7 @@ openclaw channels status --probe
 
 單 Agent 模式下，所有訊息自動路由至預設 Agent（`main`），無需 bindings 設定。
 
-### 羣聊策略
+### 支持的訊息類型
 
 | 類型 | 說明 | API 方法 | 方向 |
 |------|------|----------|------|
@@ -331,9 +348,14 @@ openclaw-lansenger-channel/
 ├── src/
 │   ├── client.ts       # 藍信 API 客戶端（WS、HTTP、媒體）
 │   ├── channel.ts      # OpenClaw 频道插件
-│   ├── channel.test.ts # 频道插件測試
+│   ├── runtime.ts      # 閘道運行時（方法、入站處理器）
 │   ├── tools.ts        # 代理工具定義（10 個內建工具）
-│   └── runtime.ts      # 閘道運行時（方法、入站處理器）
+│   ├── setup-wizard.ts # 設定精靈（多帳號配置遷移）
+│   ├── channel.test.ts # 频道插件測試
+│   ├── client.test.ts  # API 客戶端測試
+│   ├── runtime.test.ts # 運行時測試
+│   ├── tools.test.ts   # 工具測試
+│   └── setup-wizard.test.ts # 設定精靈測試
 ├── skills/
 │   └── lansenger-messaging/
 │       └── SKILL.md    # 代理訊息策略（工具 + CLI）
@@ -372,19 +394,20 @@ Agent 路由由 OpenClaw 的 `bindings[]` 設定管理——見[多 Agent 路由
 
 ## 更新日誌
 
+- **v3.5.0** — 修正重複訊息遞送（每回合去重）；從檔案名稱中移除 OpenClaw UUID 後綴；MEDIA 白名單文件；alsoAllow 提示；README 准確性修正
 - **v3.3.0** — 合併 tools 插件至頻道插件；代理工具現已內建（無需單獨安裝）；移除 `@lansenger-pm/openclaw-lansenger-tools` 的 peerDependencies
-- **v3.1** — 多帳號設定精靈；dmPolicy 對齊 OpenClaw 標準（dmSecurity→dmPolicy + paired→pairing）；中英雙語提示文案；憑證 shouldPrompt 跳過已設定步驟；多帳號設定遷移清理
-- **v3.0** — 新增 `lansenger_send_format_text` 工具（Markdown + @提及）；重寫 SKILL.md；修正 headStatusInfo description+colour 語義
-- **v2.10** — appCard font-size px→pt 自動轉換；sendImageUrl 錯誤分類；工具註冊日誌
-- **v2.9** — 狀態適配器；環境變數回退；uiHints 中文標籤；README 精簡（5 語言）
-- **v2.8** — OpenClaw `bindings[]` 多 Agent 路由；groupPolicy/groupAllowFrom/groups 羣聊准入；SKILL.md AgentSkills 規範
-- **v2.7** — 純物件工具註冊；運行時狀態取得 client/target
-- **v2.6** — 無條件註冊工具；移除幽靈 delete_message
-- **v2.5** — formatText reminder；AppArticles `summary`；撤回僅 bot/group
-- **v2.4** — 修復訊息體組裝；appArticles/linkCard 欄位修復
-- **v2.3** — 移除遺留群組/私聊傳送；全部透過 msgTarget 路由
-- **v2.2** — 新增 9 個 agent 工具
-- **v2.0** — 初始發佈
+- **v3.1.0** — 多帳號設定精靈；dmPolicy 對齊 OpenClaw 標準（dmSecurity→dmPolicy + paired→pairing）；中英雙語提示文案；憑證 shouldPrompt 跳過已設定步驟；多帳號設定遷移清理
+- **v3.0.0** — 新增 `lansenger_send_format_text` 工具（Markdown + @提及）；重寫 SKILL.md；修正 headStatusInfo description+colour 語義
+- **v2.10.0** — appCard font-size px→pt 自動轉換；sendImageUrl 錯誤分類；工具註冊日誌
+- **v2.9.0** — 狀態適配器；環境變數回退；uiHints 中文標籤；README 精簡（5 語言）
+- **v2.8.0** — OpenClaw `bindings[]` 多 Agent 路由；groupPolicy/groupAllowFrom/groups 羣聊准入；SKILL.md AgentSkills 規範
+- **v2.7.0** — 純物件工具註冊；運行時狀態取得 client/target
+- **v2.6.0** — 無條件註冊工具；移除幽靈 delete_message
+- **v2.5.0** — formatText reminder；AppArticles `summary`；撤回僅 bot/group
+- **v2.4.0** — 修復訊息體組裝；appArticles/linkCard 欄位修復
+- **v2.3.0** — 移除遺留群組/私聊傳送；全部透過 msgTarget 路由
+- **v2.2.0** — 新增 9 個 agent 工具
+- **v2.0.0** — 初始發佈
 
 ## 授權條款
 

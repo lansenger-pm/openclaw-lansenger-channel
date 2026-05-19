@@ -48,7 +48,8 @@
 
 | 工具 | 说明 |
 |------|------|
-| `lansenger_send_text` | 发送文本或 formatText 消息（默认 Markdown） |
+| `lansenger_send_text` | 发送纯文本消息，不支持 Markdown |
+| `lansenger_send_format_text` | 发送 Markdown 格式文字，支持 @提及 |
 | `lansenger_send_file` | 发送文件/图片/视频/语音（工作区或外部路径） |
 | `lansenger_send_image_url` | 通过 URL 发送图片 |
 | `lansenger_send_link_card` | 发送富链接预览卡片 |
@@ -117,7 +118,7 @@ openclaw pairing approve lansenger <配对码>
 | `LANSENGER_APP_SECRET` | 个人机器人 App Secret | `57E718CA1CAC20F2...` |
 | `LANSENGER_API_GATEWAY_URL` | 蓝信 API 网关 URL 覆盖 | `https://open.e.lanxin.cn/open/apigw` |
 
-凭证也可通过 `openclaw.json` 配置提供（见下方可选配置）。当两者同时设置时，环境变量优先。
+凭证也可通过 `openclaw.json` 配置提供（见下方可选配置）。配置值优先；环境变量仅在配置未设置时作为回退。
 
 ### 获取凭证
 
@@ -134,7 +135,7 @@ openclaw pairing approve lansenger <配对码>
       "appId": "your-appid",
       "appSecret": "your-secret",
       "apiGatewayUrl": "https://open.e.lanxin.cn/open/apigw",
-      "homeChannel": "lansenger",
+      "homeChannel": "2285568-xxx",
       "enabled": true,
       "allowFrom": ["your-appid"],
       "dmPolicy": "pairing",
@@ -155,10 +156,12 @@ openclaw pairing approve lansenger <配对码>
 | `appId` | 个人机器人 App ID | — |
 | `appSecret` | 个人机器人 App Secret | — |
 | `apiGatewayUrl` | API 网关 URL | `https://open.e.lanxin.cn/open/apigw` |
-| `homeChannel` | 代理路由的默认频道 | `lansenger` |
-| `enabled` | 启用/禁用频道 | `true` |
+| `homeChannel` | 定时任务/通知送达的默认聊天 ID | — |
+| `enabled` | 启用/禁用频道（运行时默认：无凭证时为 false） | `true` |
 | `allowFrom` | 允许私聊的用户 ID | `[]` |
 | `dmPolicy` | 私聊策略：`pairing`、`allowlist`、`open`、`disabled` | `pairing` |
+| `configWrites` | 允许蓝信响应频道事件写入配置 | `true` |
+| `name` | 此账户的显示名称 | — |
 | `accounts` | 多机器人配置 | — |
 | `groupPolicy` | 群聊策略：`open`（所有群）、`allowlist`（仅允许列表群）、`disabled`（禁止群消息） | `allowlist` |
 | `groupAllowFrom` | 允许触发机器人的群 ID | `[]` |
@@ -266,7 +269,7 @@ openclaw channels status --probe
 
 单 Agent 模式下，所有消息自动路由到默认 Agent（`main`），无需 bindings 配置。
 
-### 群聊策略
+### 支持的消息类型
 
 | 类型 | 说明 | API 方法 | 方向 |
 |------|------|----------|------|
@@ -345,9 +348,14 @@ openclaw-lansenger-channel/
 ├── src/
 │   ├── client.ts       # 蓝信 API 客户端（WS、HTTP、媒体）
 │   ├── channel.ts      # OpenClaw 频道插件
-│   ├── channel.test.ts # 频道插件测试
+│   ├── runtime.ts      # 网关运行时（方法、入站处理器）
 │   ├── tools.ts        # 代理工具定义（10 个内置工具）
-│   └── runtime.ts      # 网关运行时（方法、入站处理器）
+│   ├── setup-wizard.ts # 设置向导（多账号配置迁移）
+│   ├── channel.test.ts # 频道插件测试
+│   ├── client.test.ts  # API 客户端测试
+│   ├── runtime.test.ts # 运行时测试
+│   ├── tools.test.ts   # 工具测试
+│   └── setup-wizard.test.ts # 设置向导测试
 ├── skills/
 │   └── lansenger-messaging/
 │       └── SKILL.md    # 代理消息策略（工具 + CLI）
@@ -386,19 +394,20 @@ Agent 路由由 OpenClaw 的 `bindings[]` 配置管理——见[多 Agent 路由
 
 ## 更新日志
 
+- **v3.5.0** — 修复重复消息送达（每回合去重）；剥离文件名中的 OpenClaw UUID 后缀；MEDIA 白名单文档；alsoAllow 提示；README 准确性修复
 - **v3.3.0** — 合并 tools 插件至频道插件；代理工具现已内置（无需单独安装）；移除 `@lansenger-pm/openclaw-lansenger-tools` 的 peerDependencies
-- **v3.1** — 多账号设置向导；dmPolicy 对齐 OpenClaw 标准（dmSecurity→dmPolicy + paired→pairing）；中英双语提示文案；凭证 shouldPrompt 跳过已配置步骤；多账号配置迁移清理
-- **v3.0** — 新增 `lansenger_send_format_text` 工具（Markdown + @提及）；重写 SKILL.md；修正 headStatusInfo description+colour 语义
-- **v2.10** — appCard font-size px→pt 自动转换；sendImageUrl 错误分类；工具注册日志
-- **v2.9** — 状态适配器；环境变量回退；uiHints 中文标签；README 精简（5 语言）
-- **v2.8** — OpenClaw `bindings[]` 多 Agent 路由；groupPolicy/groupAllowFrom/groups 群聊准入；SKILL.md AgentSkills 规范
-- **v2.7** — 纯对象工具注册；运行时状态获取 client/target
-- **v2.6** — 无条件注册工具；移除幽灵 delete_message
-- **v2.5** — formatText reminder；AppArticles `summary`；撤回仅 bot/group
-- **v2.4** — 修复消息体组装；appArticles/linkCard 字段修复
-- **v2.3** — 移除遗留群聊/私聊发送；全部通过 msgTarget 路由
-- **v2.2** — 添加 9 个 agent 工具
-- **v2.0** — 初始发布
+- **v3.1.0** — 多账号设置向导；dmPolicy 对齐 OpenClaw 标准（dmSecurity→dmPolicy + paired→pairing）；中英双语提示文案；凭证 shouldPrompt 跳过已配置步骤；多账号配置迁移清理
+- **v3.0.0** — 新增 `lansenger_send_format_text` 工具（Markdown + @提及）；重写 SKILL.md；修正 headStatusInfo description+colour 语义
+- **v2.10.0** — appCard font-size px→pt 自动转换；sendImageUrl 错误分类；工具注册日志
+- **v2.9.0** — 状态适配器；环境变量回退；uiHints 中文标签；README 精简（5 语言）
+- **v2.8.0** — OpenClaw `bindings[]` 多 Agent 路由；groupPolicy/groupAllowFrom/groups 群聊准入；SKILL.md AgentSkills 规范
+- **v2.7.0** — 纯对象工具注册；运行时状态获取 client/target
+- **v2.6.0** — 无条件注册工具；移除幽灵 delete_message
+- **v2.5.0** — formatText reminder；AppArticles `summary`；撤回仅 bot/group
+- **v2.4.0** — 修复消息体组装；appArticles/linkCard 字段修复
+- **v2.3.0** — 移除遗留群聊/私聊发送；全部通过 msgTarget 路由
+- **v2.2.0** — 添加 9 个 agent 工具
+- **v2.0.0** — 初始发布
 
 ## 许可证
 

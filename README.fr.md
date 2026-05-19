@@ -46,6 +46,21 @@ Les messages peuvent être envoyés via les **outils agent** (intégrés) ou les
 
 > **Les outils agent sont toujours disponibles** lorsque le canal est configuré et la passerelle en cours d'exécution — aucun plugin séparé nécessaire. Les commandes CLI sont une alternative optionnelle pour les environnements où l'accès bash est préféré ; elles nécessitent `lansenger-cli` (Python).
 
+| Outil | Description |
+|-------|-------------|
+| `lansenger_send_text` | Envoyer un message texte brut, pas de Markdown |
+| `lansenger_send_format_text` | Envoyer du texte formaté Markdown avec @mentions optionnelles |
+| `lansenger_send_file` | Envoyer fichier/image/video/voix (workspace ou chemin externe) |
+| `lansenger_send_image_url` | Envoyer une image par URL |
+| `lansenger_send_link_card` | Envoyer une carte de prévisualisation de lien enrichi |
+| `lansenger_send_app_card` | Envoyer une carte interactive/approbation |
+| `lansenger_send_app_articles` | Envoyer une carte multi-articles |
+| `lansenger_update_dynamic_card` | Mettre à jour le statut d'une carte dynamique en place |
+| `lansenger_revoke_message` | Révoquer un message précédemment envoyé |
+| `lansenger_query_groups` | Rechercher les groupes disponibles |
+
+Les outils sont aussi disponibles via CLI : `lansenger message send-text`, `lansenger message send-file`, etc.
+
 ## Installation et Configuration
 
 ### Installation recommandée
@@ -103,7 +118,7 @@ Ajoutez ces variables à `~/.openclaw/.env` ou à votre environnement :
 | `LANSENGER_APP_SECRET` | App Secret du bot personnel | `57E718CA1CAC20F2...` |
 | `LANSENGER_API_GATEWAY_URL` | URL de la passerelle API Lansenger (remplacement) | `https://open.e.lanxin.cn/open/apigw` |
 
-Les identifiants peuvent aussi être fournis via la configuration `openclaw.json` (voir Configuration optionnelle ci-dessous). Les variables d'environnement sont prioritaires si les deux sont définis.
+Les identifiants peuvent aussi être fournis via la configuration `openclaw.json` (voir Configuration optionnelle ci-dessous). Les valeurs de configuration sont prioritaires ; les variables d'environnement sont utilisées comme repli lorsque la configuration n'est pas définie.
 
 ### Obtenir les identifiants
 
@@ -120,7 +135,7 @@ Les identifiants peuvent aussi être fournis via la configuration `openclaw.json
       "appId": "your-appid",
       "appSecret": "your-secret",
       "apiGatewayUrl": "https://open.e.lanxin.cn/open/apigw",
-      "homeChannel": "lansenger",
+      "homeChannel": "2285568-xxx",
       "enabled": true,
       "allowFrom": ["your-appid"],
       "dmPolicy": "pairing",
@@ -141,10 +156,12 @@ Les identifiants peuvent aussi être fournis via la configuration `openclaw.json
 | `appId` | App ID du bot personnel | — |
 | `appSecret` | App Secret du bot personnel | — |
 | `apiGatewayUrl` | URL de la passerelle API | `https://open.e.lanxin.cn/open/apigw` |
-| `homeChannel` | Canal par défaut pour le routage de l'agent | `lansenger` |
-| `enabled` | Activer/désactiver le canal | `true` |
+| `homeChannel` | Chat ID par défaut pour la livraison cron/notification | — |
+| `enabled` | Activer/désactiver le canal (défaut runtime : false sans identifiants) | `true` |
 | `allowFrom` | IDs d'utilisateurs autorisés en DM | `[]` |
 | `dmPolicy` | Politique DM : `pairing`, `allowlist`, `open`, `disabled` | `pairing` |
+| `configWrites` | Autoriser Lansenger à écrire la config en réponse aux événements du canal | `true` |
+| `name` | Nom d'affichage pour ce compte | — |
 | `accounts` | Configuration multi-bot | — |
 | `groupPolicy` | Politique de groupe : `open` (tous les groupes), `allowlist` (groupes autorisés uniquement), `disabled` (messages de groupe désactivés) | `allowlist` |
 | `groupAllowFrom` | IDs de groupes autorisés à déclencher le bot | `[]` |
@@ -252,7 +269,7 @@ Champs de routage :
 
 En mode mono-agent, tous les messages routent vers l'agent par défaut (`main`) automatiquement — pas de bindings nécessaires.
 
-### Politique de groupe
+### Types de messages supportés
 
 | Type | Description | Méthode API | Direction |
 |------|-------------|-------------|-----------|
@@ -331,9 +348,14 @@ openclaw-lansenger-channel/
 ├── src/
 │   ├── client.ts       # Client API Lansenger (WS, HTTP, médias)
 │   ├── channel.ts      # Plugin de canal OpenClaw
-│   ├── channel.test.ts # Tests du plugin de canal
+│   ├── runtime.ts      # Runtime passerelle (méthodes, handler entrant)
 │   ├── tools.ts        # Définitions des outils agent (10 outils intégrés)
-│   └── runtime.ts      # Runtime passerelle (méthodes, handler entrant)
+│   ├── setup-wizard.ts # Assistant de configuration (migration config multi-compte)
+│   ├── channel.test.ts # Tests du plugin de canal
+│   ├── client.test.ts  # Tests du client API
+│   ├── runtime.test.ts # Tests du runtime
+│   ├── tools.test.ts   # Tests des outils
+│   └── setup-wizard.test.ts # Tests de l'assistant de configuration
 ├── skills/
 │   └── lansenger-messaging/
 │       └── SKILL.md    # Stratégie de messagerie (outils + CLI)
@@ -372,20 +394,21 @@ Les mises à jour de statut d'approbation utilisent le format DynamicMsg appCard
 
 ## Journal des modifications
 
+- **v3.5.0** — Correction de la livraison en double des messages (déduplication par tour) ; suppression du suffixe UUID OpenClaw des noms de fichiers ; documentation whitelist MEDIA ; conseil alsoAllow ; corrections d'exactitude README
 - **v3.3.0** — Fusion du plugin tools dans le plugin canal ; outils agent désormais intégrés (pas d'installation séparée) ; suppression des peerDependencies sur `@lansenger-pm/openclaw-lansenger-tools`
 - **v3.2.10** — Alerte au démarrage si `group:plugins` absent de l'allowlist ; `configWrites` dans le schema de config canal ; plugin compagnon via `globalThis.__lansenger_channel`
-- **v3.1** — Wizard multi-compte ; alignement dmPolicy (dmSecurity→dmPolicy + paired→pairing) ; prompts bilingues ; shouldPrompt skip steps configurés ; migration config multi-compte
-- **v3.0** — Ajout `lansenger_send_format_text` (Markdown + @mention) ; réécriture SKILL.md ; correction headStatusInfo description+colour
-- **v2.10** — Conversion px→pt appCard ; classification erreurs sendImageUrl ; journalisation outils
-- **v2.9** — Adaptateur statut ; repli env vars ; uiHints chinois ; README nettoyage (5 langues)
-- **v2.8** — Routage multi-agent OpenClaw `bindings[]` ; groupPolicy/groupAllowFrom/groups ; SKILL.md AgentSkills
-- **v2.7** — Enregistrement outils objets simples ; état runtime client/target
-- **v2.6** — Enregistrement inconditionnel ; suppression ghost delete_message
-- **v2.5** — formatText reminder ; AppArticles `summary` ; revoke bot/group uniquement
-- **v2.4** — Correction assemblage message ; corrections appArticles/linkCard
-- **v2.3** — Suppression envoi groupe/privé legacy ; routage via msgTarget
-- **v2.2** — Ajout 9 outils agent
-- **v2.0** — Version initiale
+- **v3.1.0** — Wizard multi-compte ; alignement dmPolicy (dmSecurity→dmPolicy + paired→pairing) ; prompts bilingues ; shouldPrompt skip steps configurés ; migration config multi-compte
+- **v3.0.0** — Ajout `lansenger_send_format_text` (Markdown + @mention) ; réécriture SKILL.md ; correction headStatusInfo description+colour
+- **v2.10.0** — Conversion px→pt appCard ; classification erreurs sendImageUrl ; journalisation outils
+- **v2.9.0** — Adaptateur statut ; repli env vars ; uiHints chinois ; README nettoyage (5 langues)
+- **v2.8.0** — Routage multi-agent OpenClaw `bindings[]` ; groupPolicy/groupAllowFrom/groups ; SKILL.md AgentSkills
+- **v2.7.0** — Enregistrement outils objets simples ; état runtime client/target
+- **v2.6.0** — Enregistrement inconditionnel ; suppression ghost delete_message
+- **v2.5.0** — formatText reminder ; AppArticles `summary` ; revoke bot/group uniquement
+- **v2.4.0** — Correction assemblage message ; corrections appArticles/linkCard
+- **v2.3.0** — Suppression envoi groupe/privé legacy ; routage via msgTarget
+- **v2.2.0** — Ajout 9 outils agent
+- **v2.0.0** — Version initiale
 
 ## Licence
 
