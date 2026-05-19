@@ -371,6 +371,26 @@ openclaw-lansenger-channel/
 
 ## 故障排除
 
+### OpenClaw v2026.5.18+：需要設備配對
+
+升級 OpenClaw 至 v2026.5.18 或更高版本後，**任何客戶端（瀏覽器 Dashboard、Control UI）連線前必須完成設備配對**。這也影響藍信頻道——如果網關主機的設備未經審批，WebSocket 連線可能被阻止，配對訊息無法發送給藍信使用者。
+
+**修復——在 OpenClaw 網關主機上執行以下命令：**
+
+```bash
+# 1. 查看待審批的設備配對請求
+openclaw devices list
+
+# 2. 審批最近的請求（先預覽，再使用確切 ID 審批）
+openclaw devices approve --latest   # 預覽
+openclaw devices approve <requestId>  # 使用顯示的確切 ID 審批
+
+# 3. 重啟網關
+openclaw gateway restart
+```
+
+詳見 [OpenClaw 設備文件](https://docs.openclaw.ai/cli/devices)。
+
 ### "行動端不支援查看憑證"
 
 請僅使用**藍信桌面端**。行動端應用不顯示機械人憑證。

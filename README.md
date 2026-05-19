@@ -361,6 +361,26 @@ openclaw-lansenger-channel/
 
 ## Troubleshooting
 
+### OpenClaw v2026.5.18+: Device pairing required
+
+After upgrading OpenClaw to v2026.5.18 or later, **device pairing** is required before any client (browser Dashboard, Control UI) can connect. This also affects the Lansenger channel — if the gateway host's device is not approved, WebSocket connections may be blocked and pairing messages cannot be sent to Lansenger users.
+
+**Fix — run these commands on the OpenClaw gateway host:**
+
+```bash
+# 1. List pending device pairing requests
+openclaw devices list
+
+# 2. Approve the latest request (preview first, then approve with exact ID)
+openclaw devices approve --latest   # preview
+openclaw devices approve <requestId>  # approve with the exact ID shown
+
+# 3. Restart the gateway
+openclaw gateway restart
+```
+
+See [OpenClaw devices documentation](https://docs.openclaw.ai/cli/devices) for full details.
+
 ### "Mobile client does NOT support viewing credentials"
 
 Use the **Lansenger Desktop** client only. The mobile app does not display bot credentials.

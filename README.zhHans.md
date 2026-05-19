@@ -369,6 +369,26 @@ openclaw-lansenger-channel/
 
 ## 故障排除
 
+### OpenClaw v2026.5.18+：需要设备配对
+
+升级 OpenClaw 至 v2026.5.18 或更高版本后，**任何客户端（浏览器 Dashboard、Control UI）连接前都必须完成设备配对**。这也影响蓝信频道——如果网关主机的设备未被审批，WebSocket 连接可能被阻止，配对消息无法发送给蓝信用户。
+
+**修复——在 OpenClaw 网关主机上执行以下命令：**
+
+```bash
+# 1. 查看待审批的设备配对请求
+openclaw devices list
+
+# 2. 审批最近的请求（先预览，再使用确切 ID 审批）
+openclaw devices approve --latest   # 预览
+openclaw devices approve <requestId>  # 使用显示的确切 ID 审批
+
+# 3. 重启网关
+openclaw gateway restart
+```
+
+详见 [OpenClaw 设备文档](https://docs.openclaw.ai/cli/devices)。
+
 ### "移动端不支持查看凭证"
 
 请仅使用**蓝信桌面端**。移动端应用不显示机器人凭证。
