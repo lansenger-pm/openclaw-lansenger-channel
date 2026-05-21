@@ -370,62 +370,9 @@ export async function gatewayStartAccount(ctx: ChannelGatewayContext<ResolvedAcc
 
   if (runningAccounts.has(key)) {
     const entry = runningAccounts.get(key)!;
-    const api = pluginApi!;
-
-    const debounceApi = (api.runtime as any)?.channel?.debounce;
-    const debounceMs = debounceApi ? resolveInboundDebounceMs({ cfg: api.config, channel: "lansenger" }) : 0;
-
-    if (debounceApi && debounceMs > 0) {
-      const { debounceMs: resolvedMs, debouncer: created } = createChannelInboundDebouncer({
-        cfg: api.config,
-        channel: "lansenger",
-        buildKey: (event: InboundEvent) => `${event.chatId}:${event.senderId}`,
-        shouldDebounce: (event: InboundEvent) =>
-          shouldDebounceTextInbound({ text: event.text, cfg: api.config, hasMedia: !!event.mediaPaths?.length }),
-        onFlush: async (events: InboundEvent[]) => {
-          const merged = mergeInboundEvents(events);
-          await handleInbound(api, merged, account, key);
-        },
-      });
-      entry.debouncer = { debounceMs: resolvedMs, enqueue: created.enqueue, flushKey: created.flushKey };
-      entry.account = account;
-      log.info(`gateway: rebind debouncer on adopt (debounceMs=${resolvedMs} key=${key})`);
-    }
-
-    entry.client.setMessageHandler(async (event: InboundEvent) => {
-      if (entry.debouncer) {
-        await entry.debouncer.enqueue(event);
-      } else {
-        await handleInbound(api, event, account, key);
-      }
-    });
-
-    entry.client.setWsLifecycleCallbacks({
-      onOpen: () => {
-        statusSink({ connected: true, lastConnectedAt: Date.now(), lastError: null });
-        log.info(`gateway: WS reconnected (key=${key})`);
-      },
-      onClose: () => {
-        statusSink({ connected: false });
-        log.info(`gateway: WS disconnected (key=${key})`);
-      },
-    });
-    const connected = entry.client.isWsAlive();
-    if (connected) {
-      statusSink({ connected: true, lastConnectedAt: Date.now(), lastError: null });
-    } else {
-      statusSink({ connected: false });
-    }
-    log.info(`gateway: adopting existing WS (key=${key} connected=${connected})`);
-    return waitUntilAbort(ctx.abortSignal, async () => {
-      const e = runningAccounts.get(key);
-      if (e) {
-        await e.client.disconnect();
-        runningAccounts.delete(key);
-      }
-      accountStatusSinks.delete(key);
-      log.info(`gateway: stopped on abort (key=${key})`);
-    });
+    log.info(`gateway: disconnecting existing WS for reconnection with updated config (key=${key})`);
+    try { await entry.client.disconnect(); } catch {}
+    runningAccounts.delete(key);
   }
 
   const api = pluginApi!;
