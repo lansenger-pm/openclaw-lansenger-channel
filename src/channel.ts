@@ -89,7 +89,7 @@ function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): Resolve
   const dmPolicy = account?.dmPolicy ?? account?.dmSecurity;
   const homeChannel = account?.homeChannel;
   const enabled = Boolean(appId && appSecret);
-  const ackMessage = account?.ackMessage ?? section?.ackMessage ?? false;
+  const ackMessage = account?.ackMessage !== undefined ? account.ackMessage : section?.ackMessage ?? false;
   const ackMessageTextZh = account?.ackMessageTextZh ?? section?.ackMessageTextZh ?? "收到，正在处理...";
   const ackMessageTextEn = account?.ackMessageTextEn ?? section?.ackMessageTextEn ?? "Received, processing...";
 
