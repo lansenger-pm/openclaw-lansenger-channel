@@ -2,6 +2,7 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk/channel-core";
 import type { ChannelGatewayContext, ChannelAccountSnapshot } from "openclaw/plugin-sdk";
 import { createSubsystemLogger } from "openclaw/plugin-sdk/logging-core";
 import { createAccountStatusSink, waitUntilAbort } from "openclaw/plugin-sdk/channel-runtime";
+import { createChannelInboundDebouncer, shouldDebounceTextInbound, resolveInboundDebounceMs } from "openclaw/plugin-sdk/channel-inbound";
 import { LansengerClient } from "./client.js";
 import type { InboundEvent, ClientLogger, ApiResult, AppCardData } from "./client.js";
 import { resolveAccount, makeClient } from "./channel.js";
@@ -26,7 +27,34 @@ type RunningAccount = {
   accountId: string | null;
   account: ResolvedAccount;
   client: LansengerClient;
+  debouncer?: { debounceMs: number; enqueue: (item: InboundEvent) => Promise<void>; flushKey: (key: string) => Promise<void> };
 };
+
+export function mergeInboundEvents(events: InboundEvent[]): InboundEvent {
+  if (events.length === 0) {
+    throw new Error("mergeInboundEvents: events array is empty");
+  }
+  if (events.length === 1) return events[0]!;
+  const last = events[events.length - 1]!;
+  const texts = events.map((e) => e.text).filter(Boolean);
+  const mergedText = texts.join("\n");
+  const mergedMediaPaths = events.flatMap((e) => e.mediaPaths ?? []);
+  const mergedRawMessage = { mergedFrom: events.map((e) => e.messageId), events: events.map((e) => e.rawMessage), lastRawMessage: last.rawMessage };
+  return {
+    messageId: last.messageId,
+    text: mergedText,
+    chatId: last.chatId,
+    chatName: last.chatName,
+    isGroup: last.isGroup,
+    senderId: last.senderId,
+    userName: last.userName,
+    rawMessage: mergedRawMessage,
+    msgType: last.msgType,
+    mediaPaths: mergedMediaPaths.length > 0 ? mergedMediaPaths : undefined,
+  };
+}
+
+const ACK_MESSAGE_ID_KEY = "__lansenger_ack_msg_id";
 
 const runningAccounts = new Map<string, RunningAccount>();
 const accountStatusSinks = new Map<string, (patch: Omit<ChannelAccountSnapshot, "accountId">) => void>();
@@ -59,8 +87,34 @@ async function startAccount(api: OpenClawPluginApi, accountId?: string | null): 
   }
 
   const client = makeClient(account, sdkLogger());
+
+  const debounceApi = (api.runtime as any)?.channel?.debounce;
+  const debounceMs = debounceApi ? resolveInboundDebounceMs({ cfg: api.config, channel: "lansenger" }) : 0;
+  let debouncer: RunningAccount["debouncer"] = undefined;
+
+  if (debounceApi && debounceMs > 0) {
+    const { debounceMs: resolvedMs, debouncer: created } = createChannelInboundDebouncer({
+      cfg: api.config,
+      channel: "lansenger",
+      buildKey: (event: InboundEvent) => `${event.chatId}:${event.senderId}`,
+      shouldDebounce: (event: InboundEvent) =>
+        shouldDebounceTextInbound({ text: event.text, cfg: api.config, hasMedia: !!event.mediaPaths?.length }),
+      onFlush: async (events: InboundEvent[]) => {
+        const merged = mergeInboundEvents(events);
+        await handleInbound(api, merged, account, key);
+      },
+    });
+    debounceMs;
+    debouncer = { debounceMs: resolvedMs, enqueue: created.enqueue, flushKey: created.flushKey };
+    log.info(`debounce enabled: debounceMs=${resolvedMs} key=${key}`);
+  }
+
   client.setMessageHandler(async (event: InboundEvent) => {
-    await handleInbound(api, event, account, key);
+    if (debouncer) {
+      await debouncer.enqueue(event);
+    } else {
+      await handleInbound(api, event, account, key);
+    }
   });
 
   const existingSink = accountStatusSinks.get(key);
@@ -81,7 +135,7 @@ async function startAccount(api: OpenClawPluginApi, accountId?: string | null): 
     return false;
   }
 
-  runningAccounts.set(key, { accountId: account.accountId, account, client });
+  runningAccounts.set(key, { accountId: account.accountId, account, client, debouncer });
   log.info(`auto-started: key=${key} (accountId=${account.accountId})`);
   return true;
 }
@@ -346,8 +400,33 @@ export async function gatewayStartAccount(ctx: ChannelGatewayContext<ResolvedAcc
 
   const api = pluginApi!;
   const client = makeClient(account, sdkLogger());
+
+  const debounceApi = (api.runtime as any)?.channel?.debounce;
+  const debounceMs = debounceApi ? resolveInboundDebounceMs({ cfg: api.config, channel: "lansenger" }) : 0;
+  let debouncer: RunningAccount["debouncer"] = undefined;
+
+  if (debounceApi && debounceMs > 0) {
+    const { debounceMs: resolvedMs, debouncer: created } = createChannelInboundDebouncer({
+      cfg: api.config,
+      channel: "lansenger",
+      buildKey: (event: InboundEvent) => `${event.chatId}:${event.senderId}`,
+      shouldDebounce: (event: InboundEvent) =>
+        shouldDebounceTextInbound({ text: event.text, cfg: api.config, hasMedia: !!event.mediaPaths?.length }),
+      onFlush: async (events: InboundEvent[]) => {
+        const merged = mergeInboundEvents(events);
+        await handleInbound(api, merged, account, key);
+      },
+    });
+    debouncer = { debounceMs: resolvedMs, enqueue: created.enqueue, flushKey: created.flushKey };
+    log.info(`gateway debounce enabled: debounceMs=${resolvedMs} key=${key}`);
+  }
+
   client.setMessageHandler(async (event: InboundEvent) => {
-    await handleInbound(api, event, account, key);
+    if (debouncer) {
+      await debouncer.enqueue(event);
+    } else {
+      await handleInbound(api, event, account, key);
+    }
   });
   client.setWsLifecycleCallbacks({
     onOpen: () => {
@@ -366,7 +445,7 @@ export async function gatewayStartAccount(ctx: ChannelGatewayContext<ResolvedAcc
     throw new Error("Failed to connect to Lansenger WebSocket");
   }
 
-  runningAccounts.set(key, { accountId: ctx.accountId, account, client });
+  runningAccounts.set(key, { accountId: ctx.accountId, account, client, debouncer });
   statusSink({ connected: true, lastConnectedAt: Date.now(), lastError: null });
   log.info(`gateway: started (key=${key} accountId=${ctx.accountId})`);
 
@@ -591,6 +670,23 @@ async function handleInbound(
     return;
   }
 
+  let ackMessageId: string | undefined = undefined;
+  if (account.ackMessage) {
+    try {
+      const entry = runningAccounts.get(runningKey);
+      const ackClient = entry?.client ?? makeClient(account, sdkLogger());
+      const lang = ackClient.getUserLang(event.senderId);
+      const ackText = lang === "en" ? account.ackMessageTextEn : account.ackMessageTextZh;
+      const ackResult = await ackClient.sendFormatText(event.chatId, ackText);
+      if (ackResult.messageId) {
+        ackMessageId = ackResult.messageId;
+        log.info(`inbound: ack message sent: messageId=${ackMessageId} lang=${lang}`);
+      }
+    } catch (e: unknown) {
+      log.error(`inbound: ack message send failed — ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
   try {
     log.info(`turn.run starting: sessionKey=${sessionKey} agentId=${agentId} accountId=${account.accountId}`);
     await api.runtime.channel.turn.run({
@@ -700,8 +796,25 @@ async function handleInbound(
       },
     } as any);
     log.info(`turn.run completed: sessionKey=${sessionKey}`);
+    if (ackMessageId) {
+      try {
+        const entry = runningAccounts.get(runningKey);
+        const revokeClient = entry?.client ?? makeClient(account, sdkLogger());
+        const revokeResult = await revokeClient.revokeMessage([ackMessageId], "bot");
+        log.info(`inbound: ack message revoked: messageId=${ackMessageId} success=${revokeResult.success}`);
+      } catch (e: unknown) {
+        log.error(`inbound: ack message revoke failed — ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
   } catch (e: unknown) {
     log.error(`turn.run failed: ${e instanceof Error ? e.message : String(e)}`);
+    if (ackMessageId) {
+      try {
+        const entry = runningAccounts.get(runningKey);
+        const revokeClient = entry?.client ?? makeClient(account, sdkLogger());
+        await revokeClient.revokeMessage([ackMessageId], "bot");
+      } catch {}
+    }
   }
 }
 

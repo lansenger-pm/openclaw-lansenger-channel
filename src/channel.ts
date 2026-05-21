@@ -33,6 +33,9 @@ type LansengerAccount = {
   dmSecurity?: string;
   homeChannel?: string;
   enabled?: boolean;
+  ackMessage?: boolean;
+  ackMessageTextZh?: string;
+  ackMessageTextEn?: string;
 };
 
 type ResolvedAccount = {
@@ -45,6 +48,9 @@ type ResolvedAccount = {
   homeChannel: string | undefined;
   enabled: boolean;
   configured?: boolean;
+  ackMessage: boolean;
+  ackMessageTextZh: string;
+  ackMessageTextEn: string;
 };
 
 function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): ResolvedAccount {
@@ -83,6 +89,9 @@ function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): Resolve
   const dmPolicy = account?.dmPolicy ?? account?.dmSecurity;
   const homeChannel = account?.homeChannel;
   const enabled = Boolean(appId && appSecret);
+  const ackMessage = account?.ackMessage ?? false;
+  const ackMessageTextZh = account?.ackMessageTextZh ?? "收到，正在处理...";
+  const ackMessageTextEn = account?.ackMessageTextEn ?? "Received, processing...";
 
   return {
     accountId: resolvedAccountId || appId || null,
@@ -93,6 +102,9 @@ function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): Resolve
     dmPolicy,
     homeChannel,
     enabled,
+    ackMessage,
+    ackMessageTextZh,
+    ackMessageTextEn,
   };
 }
 

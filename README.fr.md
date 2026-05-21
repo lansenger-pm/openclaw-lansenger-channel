@@ -22,6 +22,8 @@ Connecte OpenClaw à Lansenger — une plateforme de messagerie d'entreprise —
 - **Traitement des médias entrants** — téléchargement d'images/fichiers/vocaux, détection d'extension, chemins de fichiers pour l'agent
 - **Révocation de messages** — révoquer les messages précédemment envoyés (chatType : bot ou groupe uniquement)
 - **Démarrage automatique** — la passerelle connecte automatiquement tous les comptes de bots configurés au démarrage
+- **Debounce entrant** — fusionner les messages consécutifs rapides du même émetteur via la config OpenClaw `messages.inbound.debounceMs`
+- **Message ack** — envoyer un message « reçu, en cours de traitement... » avant le traitement de l'agent ; auto-révoqué après la réponse ; langue auto-détectée
 - **Zéro modification du core** — mode plugin pur, `git diff HEAD` reste INTACT
 
 ## Matrice de capacités des types de messages
@@ -166,6 +168,33 @@ Les identifiants peuvent aussi être fournis via la configuration `openclaw.json
 | `groupPolicy` | Politique de groupe : `open` (tous les groupes), `allowlist` (groupes autorisés uniquement), `disabled` (messages de groupe désactivés) | `allowlist` |
 | `groupAllowFrom` | IDs de groupes autorisés à déclencher le bot | `[]` |
 | `groups` | Configuration par groupe (requireMention, enabled, allowFrom) | — |
+| `ackMessage` | Envoyer un message de confirmation avant le traitement de l'agent (auto-révoqué après la réponse) | `false` |
+| `ackMessageTextZh` | Texte du message ack en chinois | `收到，正在处理...` |
+| `ackMessageTextEn` | Texte du message ack en anglais | `Received, processing...` |
+
+### Debounce entrant (fusion de messages)
+
+Lorsqu'un utilisateur envoie plusieurs messages rapides consécutifs, le mécanisme de debounce d'OpenClaw peut les fusionner en un seul tour d'agent. Configurer dans `openclaw.json` :
+
+```json
+{
+  "messages": {
+    "inbound": {
+      "debounceMs": 3000,
+      "byChannel": { "lansenger": 3000 }
+    }
+  }
+}
+```
+
+| Champ | Description | Valeur par défaut |
+|-------|-------------|-------------------|
+| `messages.inbound.debounceMs` | Fenêtre de debounce globale (ms) ; les messages consécutifs du même émetteur dans cette fenêtre sont fusionnés | `0` (désactivé) |
+| `messages.inbound.byChannel.lansenger` | Remplacement par canal (prioritaire sur la valeur globale) | — |
+| `messages.queue.mode` | Mode de file quand l'agent traite déjà : `steer`, `followup`, `collect`, `queue`, `interrupt` | `steer` (recommandé) |
+
+- Les messages média et commandes de contrôle ne sont PAS debounceés — ils sont traités immédiatement
+- Quand le debounce est actif, les textes fusionnés sont joints par `\n` ; les chemins média sont concaténés ; les métadonnées du dernier message sont utilisées
 
 ### Configuration multi-bot
 
@@ -414,6 +443,7 @@ Les mises à jour de statut d'approbation utilisent le format DynamicMsg appCard
 
 ## Journal des modifications
 
+- **v3.7.0** — Debounce entrant : intégration d'OpenClaw `messages.inbound.debounceMs` pour fusionner les messages consécutifs rapides ; fonctionnalité de message ack (`ackMessage` config) : envoyer « reçu, en cours de traitement... » avant le traitement, auto-révoqué après la réponse, langue auto-détectée
 - **v3.6.0** — Correction boucle de redémarrage infini du health-monitor : enregistrement `gateway.startAccount`/`stopAccount` pour que le channelManager runtime store reçoive `running=true` + `connected=true` ; callbacks WS lifecycle rapportent les changements de connexion via `createAccountStatusSink`
 - **v3.5.0** — Correction de la livraison en double des messages (déduplication par tour) ; suppression du suffixe UUID OpenClaw des noms de fichiers ; documentation whitelist MEDIA ; conseil alsoAllow ; corrections d'exactitude README
 - **v3.3.0** — Fusion du plugin tools dans le plugin canal ; outils agent désormais intégrés (pas d'installation séparée) ; suppression des peerDependencies sur `@lansenger-pm/openclaw-lansenger-tools`

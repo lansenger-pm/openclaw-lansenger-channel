@@ -136,6 +136,21 @@
             "type": "string",
             "description": "Default chat ID for cron/notification delivery / 定时任务/通知的默认聊天 ID（自动从第一条私聊消息检测）"
           },
+          "ackMessage": {
+            "type": "boolean",
+            "default": false,
+            "description": "Send a brief 'received, processing...' acknowledgment message to the user before the agent starts processing. The message is auto-revoked after the agent reply is delivered. Language is auto-detected from the user's message. / 在代理处理前发送一条简短的'收到，正在处理...'确认消息，代理回复送达后自动撤回。语言根据用户消息自动检测。"
+          },
+          "ackMessageTextZh": {
+            "type": "string",
+            "default": "收到，正在处理...",
+            "description": "Chinese ack message text (used when user writes in Chinese) / 中文确认消息文案（用户使用中文时）"
+          },
+          "ackMessageTextEn": {
+            "type": "string",
+            "default": "Received, processing...",
+            "description": "English ack message text (used when user writes in English) / 英文确认消息文案（用户使用英文时）"
+          },
           "accounts": {
             "type": "object",
             "description": "Multi-bot configuration / 多机器人配置（key 为 AppId）",
@@ -209,6 +224,20 @@
           "placeholder": "Auto-detected from first DM / 自动从第一条私聊消息检测",
           "sensitive": false,
           "help": "Default chat for cron/notifications. Auto-set from first p2p message / 定时任务/通知的默认聊天窗口，自动从第一条私聊消息设置"
+        },
+        "ackMessage": {
+          "label": "Ack Message / 确认消息",
+          "help": "Send a brief acknowledgment message before the agent processes. Auto-revoked after agent reply. Language is auto-detected. / 在代理处理前发送确认消息，代理回复后自动撤回，语言自动检测。"
+        },
+        "ackMessageTextZh": {
+          "label": "Ack Text (Chinese) / 确认文案（中文）",
+          "placeholder": "收到，正在处理...",
+          "help": "Chinese acknowledgment text / 中文确认消息文案"
+        },
+        "ackMessageTextEn": {
+          "label": "Ack Text (English) / 确认文案（英文）",
+          "placeholder": "Received, processing...",
+          "help": "English acknowledgment text / 英文确认消息文案"
         },
         "groupPolicy": {
           "label": "Group Policy / 群聊策略",

@@ -20,6 +20,8 @@ Lansenger (蓝信) channel plugin for OpenClaw — WebSocket inbound, HTTP API o
 - **Inbound media processing** — download images/files/voice, detect extension, provide file paths to agent
 - **Message revocation** — revoke previously sent messages (chatType: bot or group only)
 - **Auto-start** — gateway automatically connects all configured bot accounts on boot
+- **Inbound debounce** — merge rapid consecutive messages from the same sender using OpenClaw's `messages.inbound.debounceMs` config
+- **Ack message** — send a brief "received, processing..." acknowledgment before the agent starts; auto-revoked after agent reply; language auto-detected
 - **Zero core modification** — pure plugin mode, `git diff HEAD` stays PRISTINE
 
 ## Message Type Capability Matrix
@@ -158,6 +160,33 @@ Credentials can also be provided via `openclaw.json` config (see Optional Config
 | `groupPolicy` | Group policy: `open`, `allowlist`, `disabled` | `allowlist` |
 | `groupAllowFrom` | Group IDs allowed to trigger the bot | `[]` |
 | `groups` | Per-group configuration (requireMention, enabled, allowFrom) | — |
+| `ackMessage` | Send a brief acknowledgment message before agent processing (auto-revoked after reply) | `false` |
+| `ackMessageTextZh` | Chinese ack message text | `收到，正在处理...` |
+| `ackMessageTextEn` | English ack message text | `Received, processing...` |
+
+### Inbound Debounce (Message Merging)
+
+When users send multiple rapid messages, OpenClaw's debounce mechanism can merge them into a single agent turn. Configure in `openclaw.json`:
+
+```json
+{
+  "messages": {
+    "inbound": {
+      "debounceMs": 3000,
+      "byChannel": { "lansenger": 3000 }
+    }
+  }
+}
+```
+
+| Field | Description | Default |
+|-------|-------------|---------|
+| `messages.inbound.debounceMs` | Global debounce window (ms); same-sender consecutive messages within this window are merged | `0` (disabled) |
+| `messages.inbound.byChannel.lansenger` | Per-channel override (takes precedence over global) | — |
+| `messages.queue.mode` | Queue mode when agent is already processing: `steer`, `followup`, `collect`, `queue`, `interrupt` | `steer` (recommended) |
+
+- Media messages and control commands are NOT debounced — they are processed immediately
+- When debounce is active, merged messages' texts are joined with `\n`; media paths are concatenated; the last message's metadata is used
 
 ### Multi-Bot Configuration
 
@@ -406,6 +435,7 @@ Approval status updates use the DynamicMsg appCard format. The `updateCardStatus
 
 ## Changelog
 
+- **v3.7.0** — Inbound debounce: integrate OpenClaw `messages.inbound.debounceMs` for merging rapid consecutive messages; ack message feature (`ackMessage` config): send "收到，正在处理..." before agent processing, auto-revoked after reply, language auto-detected
 - **v3.6.0** — Fix health-monitor infinite restart loop: register `gateway.startAccount`/`stopAccount` so channelManager runtime store gets `running=true` + `connected=true`; WS lifecycle callbacks report connection status changes to runtime store via `createAccountStatusSink`
 - **v3.5.0** — Fix duplicate message delivery (per-turn dedup); strip OpenClaw UUID suffix from filenames; MEDIA whitelist docs; alsoAllow tip; README accuracy fixes
 - **v3.3.0** — Merge tools plugin into channel plugin; agent tools now built-in (no separate install); remove peerDependencies on `@lansenger-pm/openclaw-lansenger-tools`

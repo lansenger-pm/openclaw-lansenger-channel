@@ -22,6 +22,8 @@
 - **入站媒體處理**——下載圖片/檔案/語音，偵測副檔名，向代理提供檔案路徑
 - **訊息撤回**——撤回已傳送的訊息（chatType 僅支援 bot 與 group）
 - **自動啟動**——閘道啟動時自動連接所有已設定的機器人帳戶
+- **入站防抖合併**——利用 OpenClaw 的 `messages.inbound.debounceMs` 配置，合併同一發送者的連續快速訊息
+- **確認訊息**——在代理處理前傳送「收到，正在處理...」確認訊息，代理回覆後自動撤回，語言自動偵測
 - **零核心修改**——純插件模式，`git diff HEAD` 保持 PRISTINE
 
 ## 訊息類型能力矩陣
@@ -166,6 +168,33 @@ openclaw pairing approve lansenger <配對碼>
 | `groupPolicy` | 群聊策略：`open`（所有群）、`allowlist`（僅允許列表群）、`disabled`（禁止群訊息） | `allowlist` |
 | `groupAllowFrom` | 允許觸發機器人的群 ID | `[]` |
 | `groups` | 群級設定（requireMention、enabled、allowFrom） | — |
+| `ackMessage` | 在代理處理前傳送確認訊息（代理回覆後自動撤回） | `false` |
+| `ackMessageTextZh` | 中文確認訊息文案 | `收到，正在處理...` |
+| `ackMessageTextEn` | 英文確認訊息文案 | `Received, processing...` |
+
+### 入站防抖合併（訊息合併）
+
+當使用者連續傳送多條訊息時，OpenClaw 的防抖機制可以將它們合併為一次代理對話。在 `openclaw.json` 中設定：
+
+```json
+{
+  "messages": {
+    "inbound": {
+      "debounceMs": 3000,
+      "byChannel": { "lansenger": 3000 }
+    }
+  }
+}
+```
+
+| 欄位 | 說明 | 預設值 |
+|------|------|--------|
+| `messages.inbound.debounceMs` | 全域防抖視窗（毫秒）；同一發送者在視窗內的連續訊息會被合併 | `0`（停用） |
+| `messages.inbound.byChannel.lansenger` | 藍信頻道專屬覆蓋（優先於全域） | — |
+| `messages.queue.mode` | 代理處理中的佇列模式：`steer`、`followup`、`collect`、`queue`、`interrupt` | `steer`（推薦） |
+
+- 媒體訊息和控制命令不走防抖，立即處理
+- 防抖生效時，合併訊息的文字以 `\n` 拼接；媒體路徑合併；使用最後一條訊息的元資料
 
 ### 多機器人設定
 
@@ -414,6 +443,7 @@ Agent 路由由 OpenClaw 的 `bindings[]` 設定管理——見[多 Agent 路由
 
 ## 更新日誌
 
+- **v3.7.0** — 入站防抖合併：接入 OpenClaw `messages.inbound.debounceMs`，合併同一使用者的連續快速訊息；確認訊息功能（`ackMessage` 配置）：代理處理前傳送「收到，正在處理...」，回覆後自動撤回，語言自動偵測
 - **v3.6.0** — 修正 health-monitor 無限重啟循環：註冊 `gateway.startAccount`/`stopAccount`，讓 channelManager runtime store 正確記錄 `running=true` + `connected=true`；WS 生命週期回呼透過 `createAccountStatusSink` 即時上報連線狀態變更
 - **v3.5.0** — 修正重複訊息遞送（每回合去重）；從檔案名稱中移除 OpenClaw UUID 後綴；MEDIA 白名單文件；alsoAllow 提示；README 准確性修正
 - **v3.3.0** — 合併 tools 插件至頻道插件；代理工具現已內建（無需單獨安裝）；移除 `@lansenger-pm/openclaw-lansenger-tools` 的 peerDependencies
