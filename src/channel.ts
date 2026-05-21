@@ -36,6 +36,7 @@ type LansengerAccount = {
   ackMessage?: boolean;
   ackMessageTextZh?: string;
   ackMessageTextEn?: string;
+  revokeAckMessage?: boolean;
 };
 
 type ResolvedAccount = {
@@ -51,6 +52,7 @@ type ResolvedAccount = {
   ackMessage: boolean;
   ackMessageTextZh: string;
   ackMessageTextEn: string;
+  revokeAckMessage: boolean;
 };
 
 function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): ResolvedAccount {
@@ -92,6 +94,7 @@ function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): Resolve
   const ackMessage = account?.ackMessage !== undefined ? account.ackMessage : (section?.ackMessage ?? false);
   const ackMessageTextZh = account?.ackMessageTextZh ?? section?.ackMessageTextZh ?? "收到，正在处理...";
   const ackMessageTextEn = account?.ackMessageTextEn ?? section?.ackMessageTextEn ?? "Received, processing...";
+  const revokeAckMessage = account?.revokeAckMessage !== undefined ? account.revokeAckMessage : (section?.revokeAckMessage ?? true);
 
   return {
     accountId: resolvedAccountId || appId || null,
@@ -105,6 +108,7 @@ function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): Resolve
     ackMessage,
     ackMessageTextZh,
     ackMessageTextEn,
+    revokeAckMessage,
   };
 }
 

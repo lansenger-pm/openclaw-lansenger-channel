@@ -773,7 +773,7 @@ async function handleInbound(
       },
     } as any);
     log.info(`turn.run completed: sessionKey=${sessionKey}`);
-    if (ackMessageId) {
+    if (ackMessageId && account.revokeAckMessage) {
       try {
         const entry = runningAccounts.get(runningKey);
         const revokeClient = entry?.client ?? makeClient(account, sdkLogger());
@@ -785,7 +785,7 @@ async function handleInbound(
     }
   } catch (e: unknown) {
     log.error(`turn.run failed: ${e instanceof Error ? e.message : String(e)}`);
-    if (ackMessageId) {
+    if (ackMessageId && account.revokeAckMessage) {
       try {
         const entry = runningAccounts.get(runningKey);
         const revokeClient = entry?.client ?? makeClient(account, sdkLogger());

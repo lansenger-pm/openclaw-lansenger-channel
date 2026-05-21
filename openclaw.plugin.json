@@ -139,7 +139,12 @@
           "ackMessage": {
             "type": "boolean",
             "default": false,
-            "description": "Send a brief 'received, processing...' acknowledgment message to the user before the agent starts processing. The message is auto-revoked after the agent reply is delivered. Language is auto-detected from the user's message. / 在代理处理前发送一条简短的'收到，正在处理...'确认消息，代理回复送达后自动撤回。语言根据用户消息自动检测。"
+            "description": "Send a brief 'received, processing...' acknowledgment message before the agent starts processing. Language is auto-detected from the user's message. / 在代理处理前发送一条简短的'收到，正在处理...'确认消息。语言根据用户消息自动检测。"
+          },
+          "revokeAckMessage": {
+            "type": "boolean",
+            "default": true,
+            "description": "Auto-revoke the ack message after the agent reply is delivered. Set to false to leave the ack message visible (some users prefer seeing it over a 'message revoked' system notice). / 代理回复送达后自动撤回确认消息。设为 false 则保留确认消息可见（有些用户宁愿看到确认消息也不愿看到撤回的系统通知）。"
           },
           "ackMessageTextZh": {
             "type": "string",
@@ -167,6 +172,7 @@
                 "groupPolicy": { "type": "string", "enum": ["open", "allowlist", "disabled"], "default": "allowlist", "description": "Group chat policy / 群聊策略" },
                 "groupAllowFrom": { "type": "array", "items": { "type": "string" }, "description": "Group IDs allowed to trigger the bot / 允许触发机器人的群聊 ID 列表" },
                 "ackMessage": { "type": "boolean", "description": "Send ack message before agent processing (inherits from top-level if unset) / 代理处理前发送确认消息（未设置时继承顶层配置）" },
+                "revokeAckMessage": { "type": "boolean", "description": "Auto-revoke ack message after agent reply (inherits from top-level if unset, default true) / 代理回复后自动撤回确认消息（未设置时继承顶层配置，默认 true）" },
                 "ackMessageTextZh": { "type": "string", "default": "收到，正在处理...", "description": "Chinese ack message text / 中文确认消息文案" },
                 "ackMessageTextEn": { "type": "string", "default": "Received, processing...", "description": "English ack message text / 英文确认消息文案" }
               }
@@ -230,7 +236,11 @@
         },
         "ackMessage": {
           "label": "Ack Message / 确认消息",
-          "help": "Send a brief acknowledgment message before the agent processes. Auto-revoked after agent reply. Language is auto-detected. / 在代理处理前发送确认消息，代理回复后自动撤回，语言自动检测。"
+          "help": "Send a brief acknowledgment message before the agent processes. Language is auto-detected. / 在代理处理前发送确认消息，语言自动检测。"
+        },
+        "revokeAckMessage": {
+          "label": "Revoke Ack Message / 撤回确认消息",
+          "help": "Auto-revoke the ack message after the agent reply. Set false to keep the ack visible (avoids 'message revoked' system notices). / 代理回复后自动撤回确认消息。设为 false 则保留确认消息可见（避免出现撤回的系统通知）。"
         },
         "ackMessageTextZh": {
           "label": "Ack Text (Chinese) / 确认文案（中文）",
@@ -323,6 +333,10 @@
         "accounts.*.ackMessage": {
           "label": "Ack Message / 确认消息",
           "help": "Send ack message for this bot (inherits from top-level if unset) / 该机器人是否发送确认消息（未设置时继承顶层配置）"
+        },
+        "accounts.*.revokeAckMessage": {
+          "label": "Revoke Ack Message / 撤回确认消息",
+          "help": "Auto-revoke ack for this bot after agent reply (inherits from top-level if unset, default true) / 该机器人代理回复后自动撤回确认消息（未设置时继承顶层配置，默认 true）"
         },
         "accounts.*.ackMessageTextZh": {
           "label": "Ack Text (Chinese) / 确认文案（中文）",

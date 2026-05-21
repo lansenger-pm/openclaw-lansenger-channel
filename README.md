@@ -160,7 +160,8 @@ Credentials can also be provided via `openclaw.json` config (see Optional Config
 | `groupPolicy` | Group policy: `open`, `allowlist`, `disabled` | `allowlist` |
 | `groupAllowFrom` | Group IDs allowed to trigger the bot | `[]` |
 | `groups` | Per-group configuration (requireMention, enabled, allowFrom) | — |
-| `ackMessage` | Send a brief acknowledgment message before agent processing (auto-revoked after reply) | `false` |
+| `ackMessage` | Send a brief acknowledgment message before agent processing | `false` |
+| `revokeAckMessage` | Auto-revoke ack message after agent reply is delivered. Set `false` to keep ack visible (some users prefer it over a "message revoked" system notice) | `true` |
 | `ackMessageTextZh` | Chinese ack message text | `收到，正在处理...` |
 | `ackMessageTextEn` | English ack message text | `Received, processing...` |
 
@@ -435,7 +436,7 @@ Approval status updates use the DynamicMsg appCard format. The `updateCardStatus
 
 ## Changelog
 
-- **v3.7.0** — Inbound debounce: integrate OpenClaw `messages.inbound.debounceMs` for merging rapid consecutive messages; ack message feature (`ackMessage` config): send "收到，正在处理..." before agent processing, auto-revoked after reply, language auto-detected
+- **v3.7.0** — Inbound debounce: integrate OpenClaw `messages.inbound.debounceMs` for merging rapid consecutive messages; ack message feature (`ackMessage` / `revokeAckMessage` config): send a brief acknowledgment before agent processing, optionally auto-revoked after reply (`revokeAckMessage` default `true`), language auto-detected
 - **v3.6.0** — Fix health-monitor infinite restart loop: register `gateway.startAccount`/`stopAccount` so channelManager runtime store gets `running=true` + `connected=true`; WS lifecycle callbacks report connection status changes to runtime store via `createAccountStatusSink`
 - **v3.5.0** — Fix duplicate message delivery (per-turn dedup); strip OpenClaw UUID suffix from filenames; MEDIA whitelist docs; alsoAllow tip; README accuracy fixes
 - **v3.3.0** — Merge tools plugin into channel plugin; agent tools now built-in (no separate install); remove peerDependencies on `@lansenger-pm/openclaw-lansenger-tools`

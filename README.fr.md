@@ -168,7 +168,8 @@ Les identifiants peuvent aussi être fournis via la configuration `openclaw.json
 | `groupPolicy` | Politique de groupe : `open` (tous les groupes), `allowlist` (groupes autorisés uniquement), `disabled` (messages de groupe désactivés) | `allowlist` |
 | `groupAllowFrom` | IDs de groupes autorisés à déclencher le bot | `[]` |
 | `groups` | Configuration par groupe (requireMention, enabled, allowFrom) | — |
-| `ackMessage` | Envoyer un message de confirmation avant le traitement de l'agent (auto-révoqué après la réponse) | `false` |
+| `ackMessage` | Envoyer un message de confirmation avant le traitement de l'agent | `false` |
+| `revokeAckMessage` | Révoquer automatiquement le message ack après la réponse de l'agent. Mettre `false` pour garder le message visible (certains utilisateurs préfèrent voir le message plutôt qu'une notification « message révoqué ») | `true` |
 | `ackMessageTextZh` | Texte du message ack en chinois | `收到，正在处理...` |
 | `ackMessageTextEn` | Texte du message ack en anglais | `Received, processing...` |
 
@@ -443,7 +444,7 @@ Les mises à jour de statut d'approbation utilisent le format DynamicMsg appCard
 
 ## Journal des modifications
 
-- **v3.7.0** — Debounce entrant : intégration d'OpenClaw `messages.inbound.debounceMs` pour fusionner les messages consécutifs rapides ; fonctionnalité de message ack (`ackMessage` config) : envoyer « reçu, en cours de traitement... » avant le traitement, auto-révoqué après la réponse, langue auto-détectée
+- **v3.7.0** — Debounce entrant : intégration d'OpenClaw `messages.inbound.debounceMs` pour fusionner les messages consécutifs rapides ; fonctionnalité de message ack (`ackMessage` / `revokeAckMessage` config) : envoyer « reçu, en cours de traitement... » avant le traitement, révocabilité automatique après la réponse (`revokeAckMessage` défaut `true`), langue auto-détectée
 - **v3.6.0** — Correction boucle de redémarrage infini du health-monitor : enregistrement `gateway.startAccount`/`stopAccount` pour que le channelManager runtime store reçoive `running=true` + `connected=true` ; callbacks WS lifecycle rapportent les changements de connexion via `createAccountStatusSink`
 - **v3.5.0** — Correction de la livraison en double des messages (déduplication par tour) ; suppression du suffixe UUID OpenClaw des noms de fichiers ; documentation whitelist MEDIA ; conseil alsoAllow ; corrections d'exactitude README
 - **v3.3.0** — Fusion du plugin tools dans le plugin canal ; outils agent désormais intégrés (pas d'installation séparée) ; suppression des peerDependencies sur `@lansenger-pm/openclaw-lansenger-tools`
