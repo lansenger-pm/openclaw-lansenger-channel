@@ -165,7 +165,10 @@
                 "allowFrom": { "type": "array", "items": { "type": "string" }, "description": "Allowed user IDs / 允许的用户 ID 列表" },
                 "dmPolicy": { "type": "string", "enum": ["pairing", "allowlist", "open", "disabled"], "default": "pairing", "description": "DM security policy / 私聊安全策略" },
                 "groupPolicy": { "type": "string", "enum": ["open", "allowlist", "disabled"], "default": "allowlist", "description": "Group chat policy / 群聊策略" },
-                "groupAllowFrom": { "type": "array", "items": { "type": "string" }, "description": "Group IDs allowed to trigger the bot / 允许触发机器人的群聊 ID 列表" }
+                "groupAllowFrom": { "type": "array", "items": { "type": "string" }, "description": "Group IDs allowed to trigger the bot / 允许触发机器人的群聊 ID 列表" },
+                "ackMessage": { "type": "boolean", "default": false, "description": "Send ack message before agent processing (inherits from top-level if unset) / 代理处理前发送确认消息（未设置时继承顶层配置）" },
+                "ackMessageTextZh": { "type": "string", "default": "收到，正在处理...", "description": "Chinese ack message text / 中文确认消息文案" },
+                "ackMessageTextEn": { "type": "string", "default": "Received, processing...", "description": "English ack message text / 英文确认消息文案" }
               }
             }
           }
@@ -316,6 +319,20 @@
           "placeholder": "添加群聊 chatId / Add group chatId",
           "sensitive": false,
           "help": "Group chat IDs allowed to trigger this bot / 允许触发该机器人的群聊 ID"
+        },
+        "accounts.*.ackMessage": {
+          "label": "Ack Message / 确认消息",
+          "help": "Send ack message for this bot (inherits from top-level if unset) / 该机器人是否发送确认消息（未设置时继承顶层配置）"
+        },
+        "accounts.*.ackMessageTextZh": {
+          "label": "Ack Text (Chinese) / 确认文案（中文）",
+          "placeholder": "收到，正在处理...",
+          "help": "Chinese ack text for this bot / 该机器人中文确认文案"
+        },
+        "accounts.*.ackMessageTextEn": {
+          "label": "Ack Text (English) / 确认文案（英文）",
+          "placeholder": "Received, processing...",
+          "help": "English ack text for this bot / 该机器人英文确认文案"
         }
       }
     }
