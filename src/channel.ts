@@ -253,6 +253,113 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
       resolveAllowFrom: (account) => account.allowFrom,
       defaultPolicy: "pairing",
     },
+    collectWarnings: (ctx) => {
+      const warnings: string[] = [];
+      const section = (ctx.cfg.channels as Record<string, any>)?.["lansenger"];
+      if (!section) return warnings;
+      const accounts = section.accounts as Record<string, any> | undefined;
+      const topLevelAppId = section.appId;
+      const topLevelAppSecret = section.appSecret;
+      const hasAnyCompleteAccount = accounts
+        ? Object.values(accounts).some((a: any) => Boolean(a?.appId && a?.appSecret))
+        : false;
+      const envHasAppId = Boolean(process.env.LANSENGER_APP_ID);
+      const envHasAppSecret = Boolean(process.env.LANSENGER_APP_SECRET);
+      if (!topLevelAppId && !topLevelAppSecret && !hasAnyCompleteAccount && !envHasAppId && !envHasAppSecret) {
+        warnings.push("Lansenger channel is not configured: missing appId and appSecret. Run 'openclaw channels add' to set up credentials. / 蓝信频道未配置：缺少 appId 和 appSecret。运行 'openclaw channels add' 设置凭证。");
+      } else if (topLevelAppId && !topLevelAppSecret && !hasAnyCompleteAccount && !envHasAppSecret) {
+        warnings.push("Lansenger channel has appId but no appSecret. Add the appSecret to complete setup. / 蓝信频道有 appId 但缺少 appSecret。");
+      } else if (!topLevelAppId && topLevelAppSecret && !hasAnyCompleteAccount && !envHasAppId) {
+        warnings.push("Lansenger channel has appSecret but no appId. Add the appId to complete setup. / 蓝信频道有 appSecret 但缺少 appId。");
+      }
+      if (accounts) {
+        for (const [key, acc] of Object.entries(accounts)) {
+          if (acc?.appId && !acc?.appSecret) {
+            warnings.push(`Lansenger account '${key}' has appId but no appSecret. / 蓝信子账号 '${key}' 有 appId 但缺少 appSecret。`);
+          } else if (!acc?.appId && acc?.appSecret) {
+            warnings.push(`Lansenger account '${key}' has appSecret but no appId. / 蓝信子账号 '${key}' 有 appSecret 但缺少 appId。`);
+          } else if (!acc?.appId && !acc?.appSecret) {
+            warnings.push(`Lansenger account '${key}' has no appId or appSecret. / 蓝信子账号 '${key}' 缺少 appId 和 appSecret。`);
+          }
+        }
+      }
+      const dmPolicy = section.dmPolicy ?? section.dmSecurity;
+      if (dmPolicy && dmPolicy !== "pairing") {
+        warnings.push(`Lansenger dmPolicy is '${dmPolicy}', but personal bots only receive DMs from their owner — 'pairing' is the recommended mode. / 蓝信私聊策略为 '${dmPolicy}'，但个人机器人仅接收创建者私聊，推荐使用 'pairing'。`);
+      }
+      const topLevelGatewayUrl = section.apiGatewayUrl;
+      if (!topLevelGatewayUrl && !process.env.LANSENGER_API_GATEWAY_URL && (topLevelAppId || hasAnyCompleteAccount || envHasAppId)) {
+        warnings.push("Lansenger apiGatewayUrl is not set — most enterprise deployments require a custom gateway URL (e.g. https://apigw.lx.qianxin.com). The default https://open.e.lanxin.cn/open/apigw only works for Lansenger public cloud. / 蓝信 apiGatewayUrl 未设置 — 大部分企业部署需要自定义网关地址（如 https://apigw.lx.qianxin.com），默认地址仅适用于蓝信公有云。");
+      }
+      if (accounts) {
+        for (const [key, acc] of Object.entries(accounts)) {
+          if (acc?.appId && !acc?.apiGatewayUrl && !topLevelGatewayUrl && !process.env.LANSENGER_API_GATEWAY_URL) {
+            warnings.push(`Lansenger account '${key}' has appId but no apiGatewayUrl (and top-level not set either). / 蓝信子账号 '${key}' 有 appId 但未设置 apiGatewayUrl（顶层也未设置）。`);
+          }
+          const accDmPolicy = acc?.dmPolicy;
+          if (accDmPolicy && accDmPolicy !== "pairing") {
+            warnings.push(`Lansenger account '${key}' dmPolicy is '${accDmPolicy}', but personal bots only receive DMs from their owner. / 蓝信子账号 '${key}' 私聊策略为 '${accDmPolicy}'，但个人机器人仅接收创建者私聊。`);
+          }
+        }
+      }
+      return warnings;
+    },
+    collectAuditFindings: (ctx) => {
+      const findings: Array<{ checkId: string; severity: "info" | "warn" | "critical"; title: string; detail: string; remediation?: string }> = [];
+      const section = (ctx.cfg.channels as Record<string, any>)?.["lansenger"];
+      if (!section) return findings;
+      const accounts = section.accounts as Record<string, any> | undefined;
+      const topLevelAppId = section.appId;
+      const topLevelAppSecret = section.appSecret;
+      const hasAnyCompleteAccount = accounts
+        ? Object.values(accounts).some((a: any) => Boolean(a?.appId && a?.appSecret))
+        : false;
+      const envHasAppId = Boolean(process.env.LANSENGER_APP_ID);
+      const envHasAppSecret = Boolean(process.env.LANSENGER_APP_SECRET);
+      if (!topLevelAppId && !topLevelAppSecret && !hasAnyCompleteAccount && !envHasAppId && !envHasAppSecret) {
+        findings.push({ checkId: "lansenger/credentials-missing", severity: "critical", title: "Lansenger credentials not configured / 蓝信凭证未配置", detail: "The Lansenger channel has no appId or appSecret configured. The bot cannot connect. / 蓝信频道未配置 appId 和 appSecret，机器人无法连接。", remediation: "Run 'openclaw channels add' to configure credentials, or set LANSENGER_APP_ID and LANSENGER_APP_SECRET environment variables. / 运行 'openclaw channels add' 配置凭证，或设置环境变量 LANSENGER_APP_ID 和 LANSENGER_APP_SECRET。" });
+      } else if (topLevelAppId && !topLevelAppSecret && !hasAnyCompleteAccount && !envHasAppSecret) {
+        findings.push({ checkId: "lansenger/credentials-incomplete", severity: "critical", title: "Lansenger appSecret missing / 蓝信 appSecret 缺失", detail: "appId is set but appSecret is missing. The bot cannot authenticate. / 已配置 appId 但缺少 appSecret，机器人无法认证。", remediation: "Set the appSecret: openclaw config set channels.lansenger.appSecret <your-secret>. / 设置 appSecret：openclaw config set channels.lansenger.appSecret <你的密钥>。" });
+      } else if (!topLevelAppId && topLevelAppSecret && !hasAnyCompleteAccount && !envHasAppId) {
+        findings.push({ checkId: "lansenger/credentials-incomplete", severity: "critical", title: "Lansenger appId missing / 蓝信 appId 缺失", detail: "appSecret is set but appId is missing. The bot cannot identify itself. / 已配置 appSecret 但缺少 appId，机器人无法标识自身。", remediation: "Set the appId: openclaw config set channels.lansenger.appId <your-app-id>. / 设置 appId：openclaw config set channels.lansenger.appId <你的App-ID>。" });
+      }
+      if (accounts) {
+        for (const [key, acc] of Object.entries(accounts)) {
+          if (acc?.appId && !acc?.appSecret) {
+            findings.push({ checkId: "lansenger/account-credentials-incomplete", severity: "warn", title: `Account '${key}' missing appSecret / 子账号 '${key}' 缺少 appSecret`, detail: `Account '${key}' has appId but no appSecret. / 子账号 '${key}' 有 appId 但缺少 appSecret。`, remediation: `openclaw config set channels.lansenger.accounts.${key}.appSecret <secret>` });
+          } else if (!acc?.appId && acc?.appSecret) {
+            findings.push({ checkId: "lansenger/account-credentials-incomplete", severity: "warn", title: `Account '${key}' missing appId / 子账号 '${key}' 缺少 appId`, detail: `Account '${key}' has appSecret but no appId. / 子账号 '${key}' 有 appSecret 但缺少 appId。`, remediation: `openclaw config set channels.lansenger.accounts.${key}.appId <appid>` });
+          }
+        }
+      }
+      const dmPolicy = section.dmPolicy ?? section.dmSecurity;
+      if (dmPolicy && dmPolicy !== "pairing") {
+        findings.push({ checkId: "lansenger/dmpolicy-not-pairing", severity: "warn", title: `dmPolicy '${dmPolicy}' is not recommended for personal bots / 私聊策略 '${dmPolicy}' 不适合个人机器人`, detail: "Lansenger personal bots only receive DMs from their owner. 'pairing' is the only effective mode. / 蓝信个人机器人仅接收创建者私聊，'pairing' 是唯一有效模式。", remediation: "openclaw config set channels.lansenger.dmPolicy pairing" });
+      }
+      if (accounts) {
+        for (const [key, acc] of Object.entries(accounts)) {
+          const accDmPolicy = acc?.dmPolicy;
+          if (accDmPolicy && accDmPolicy !== "pairing") {
+            findings.push({ checkId: "lansenger/account-dmpolicy-not-pairing", severity: "warn", title: `Account '${key}' dmPolicy '${accDmPolicy}' not recommended / 子账号 '${key}' 私聊策略 '${accDmPolicy}' 不适合个人机器人`, detail: "Personal bots only receive DMs from their owner. / 个人机器人仅接收创建者私聊。", remediation: `openclaw config set channels.lansenger.accounts.${key}.dmPolicy pairing` });
+          }
+        }
+      }
+      if (section.groupPolicy || section.groupAllowFrom) {
+        findings.push({ checkId: "lansenger/group-config-unused", severity: "info", title: "Group config is set but personal bots cannot join groups / 群聊配置已设置但个人机器人暂不支持进群", detail: "Personal bots currently cannot join Lansenger groups. groupPolicy and groupAllowFrom settings have no effect. / 个人机器人暂不支持加入蓝信群聊，groupPolicy 和 groupAllowFrom 设置暂不生效。", remediation: "These settings are reserved for future group support. You can leave them as-is. / 这些设置为群聊功能预留，可保持不变。" });
+      }
+      const topLevelGatewayUrl = section.apiGatewayUrl;
+      if (!topLevelGatewayUrl && !process.env.LANSENGER_API_GATEWAY_URL && (topLevelAppId || hasAnyCompleteAccount || envHasAppId)) {
+        findings.push({ checkId: "lansenger/apigatewayurl-not-set", severity: "warn", title: "apiGatewayUrl not set / API 网关地址未设置", detail: "Most enterprise deployments require a custom gateway URL (e.g. https://apigw.lx.qianxin.com). The default https://open.e.lanxin.cn/open/apigw only works for Lansenger public cloud. / 大部分企业部署需要自定义网关地址，默认地址仅适用于蓝信公有云。", remediation: "openclaw config set channels.lansenger.apiGatewayUrl https://apigw.lx.qianxin.com (or your enterprise gateway URL)" });
+      }
+      if (accounts) {
+        for (const [key, acc] of Object.entries(accounts)) {
+          if (acc?.appId && !acc?.apiGatewayUrl && !topLevelGatewayUrl && !process.env.LANSENGER_API_GATEWAY_URL) {
+            findings.push({ checkId: "lansenger/account-apigatewayurl-not-set", severity: "warn", title: `Account '${key}' apiGatewayUrl not set / 子账号 '${key}' API 网关地址未设置`, detail: `Account '${key}' has appId but no apiGatewayUrl (and top-level not set either). / 子账号 '${key}' 有 appId 但未设置 apiGatewayUrl，顶层也未设置。`, remediation: `openclaw config set channels.lansenger.accounts.${key}.apiGatewayUrl <gateway-url> or set top-level apiGatewayUrl` });
+          }
+        }
+      }
+      return findings;
+    },
   },
 
   pairing: {
@@ -718,6 +825,34 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
       }
 
       return { success: false, error: `Unknown action: ${ctx.action}` };
+    },
+  },
+  doctor: {
+    repairConfig: ({ cfg }) => {
+      const channels = { ...((cfg.channels as Record<string, any>) ?? {}) };
+      const section = channels.lansenger ?? {};
+      const changes: string[] = [];
+      const updated = { ...section };
+      const dmPolicy = updated.dmPolicy ?? updated.dmSecurity;
+      if (dmPolicy && dmPolicy !== "pairing") {
+        updated.dmPolicy = "pairing";
+        if (updated.dmSecurity) delete updated.dmSecurity;
+        changes.push(`Set dmPolicy to 'pairing' (personal bots only receive DMs from owner) / 将私聊策略设为 'pairing'`);
+      }
+      const accounts = updated.accounts as Record<string, any> | undefined;
+      if (accounts) {
+        const accountsCopy = { ...accounts };
+        for (const [key, acc] of Object.entries(accountsCopy)) {
+          const accDmPolicy = acc?.dmPolicy;
+          if (accDmPolicy && accDmPolicy !== "pairing") {
+            accountsCopy[key] = { ...acc, dmPolicy: "pairing" };
+            changes.push(`Set account '${key}' dmPolicy to 'pairing' / 将子账号 '${key}' 私聊策略设为 'pairing'`);
+          }
+        }
+        updated.accounts = accountsCopy;
+      }
+      channels.lansenger = updated;
+      return { config: { ...cfg, channels }, changes };
     },
   },
 };

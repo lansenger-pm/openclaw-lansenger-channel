@@ -436,7 +436,9 @@ Approval status updates use the DynamicMsg appCard format. The `updateCardStatus
 
 ## Changelog
 
-- **v3.7.0** — Inbound debounce: integrate OpenClaw `messages.inbound.debounceMs` for merging rapid consecutive messages; ack message feature (`ackMessage` / `revokeAckMessage` config): send a brief acknowledgment before agent processing, optionally auto-revoked after reply (`revokeAckMessage` default `true`), language auto-detected
+- **v3.8.0** — Add `security.collectWarnings` and `security.collectAuditFindings` for `openclaw doctor --lint` integration (checks: credentials missing/incomplete, dmPolicy not pairing for personal bots, group config unused). Add `doctor.repairConfig` to auto-fix dmPolicy to pairing. Require OpenClaw >= 2026.5.20.
+- **v3.7.8** — Add `revokeAckMessage` config (default `true`): control whether ack messages are auto-revoked after agent reply. Set `false` to keep ack visible.
+- **v3.7.0** — Inbound debounce: integrate OpenClaw `messages.inbound.debounceMs` for merging rapid consecutive messages; ack message feature (`ackMessage` config): send a brief acknowledgment before agent processing, language auto-detected
 - **v3.6.0** — Fix health-monitor infinite restart loop: register `gateway.startAccount`/`stopAccount` so channelManager runtime store gets `running=true` + `connected=true`; WS lifecycle callbacks report connection status changes to runtime store via `createAccountStatusSink`
 - **v3.5.0** — Fix duplicate message delivery (per-turn dedup); strip OpenClaw UUID suffix from filenames; MEDIA whitelist docs; alsoAllow tip; README accuracy fixes
 - **v3.3.0** — Merge tools plugin into channel plugin; agent tools now built-in (no separate install); remove peerDependencies on `@lansenger-pm/openclaw-lansenger-tools`
