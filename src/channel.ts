@@ -288,12 +288,16 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
         warnings.push(`Lansenger dmPolicy is '${dmPolicy}', but personal bots only receive DMs from their owner — 'pairing' is the recommended mode. / 蓝信私聊策略为 '${dmPolicy}'，但个人机器人仅接收创建者私聊，推荐使用 'pairing'。`);
       }
       const topLevelGatewayUrl = section.apiGatewayUrl;
-      if (!topLevelGatewayUrl && !process.env.LANSENGER_API_GATEWAY_URL && (topLevelAppId || hasAnyCompleteAccount || envHasAppId)) {
+      const envHasGatewayUrl = Boolean(process.env.LANSENGER_API_GATEWAY_URL);
+      const allAccountsWithAppIdHaveGatewayUrl = accounts
+        ? Object.values(accounts).every((a: any) => !a?.appId || Boolean(a?.apiGatewayUrl))
+        : true;
+      if (!topLevelGatewayUrl && !envHasGatewayUrl && !allAccountsWithAppIdHaveGatewayUrl && (topLevelAppId || hasAnyCompleteAccount || envHasAppId)) {
         warnings.push("Lansenger apiGatewayUrl is not set — most enterprise deployments require a custom gateway URL (e.g. https://apigw.lx.qianxin.com). The default https://open.e.lanxin.cn/open/apigw only works for Lansenger public cloud. / 蓝信 apiGatewayUrl 未设置 — 大部分企业部署需要自定义网关地址（如 https://apigw.lx.qianxin.com），默认地址仅适用于蓝信公有云。");
       }
       if (accounts) {
         for (const [key, acc] of Object.entries(accounts)) {
-          if (acc?.appId && !acc?.apiGatewayUrl && !topLevelGatewayUrl && !process.env.LANSENGER_API_GATEWAY_URL) {
+          if (acc?.appId && !acc?.apiGatewayUrl && !topLevelGatewayUrl && !envHasGatewayUrl) {
             warnings.push(`Lansenger account '${key}' has appId but no apiGatewayUrl (and top-level not set either). / 蓝信子账号 '${key}' 有 appId 但未设置 apiGatewayUrl（顶层也未设置）。`);
           }
           const accDmPolicy = acc?.dmPolicy;
@@ -348,12 +352,16 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
         findings.push({ checkId: "lansenger/group-config-unused", severity: "info", title: "Group config is set but personal bots cannot join groups / 群聊配置已设置但个人机器人暂不支持进群", detail: "Personal bots currently cannot join Lansenger groups. groupPolicy and groupAllowFrom settings have no effect. / 个人机器人暂不支持加入蓝信群聊，groupPolicy 和 groupAllowFrom 设置暂不生效。", remediation: "These settings are reserved for future group support. You can leave them as-is. / 这些设置为群聊功能预留，可保持不变。" });
       }
       const topLevelGatewayUrl = section.apiGatewayUrl;
-      if (!topLevelGatewayUrl && !process.env.LANSENGER_API_GATEWAY_URL && (topLevelAppId || hasAnyCompleteAccount || envHasAppId)) {
+      const envHasGatewayUrl = Boolean(process.env.LANSENGER_API_GATEWAY_URL);
+      const allAccountsWithAppIdHaveGatewayUrl = accounts
+        ? Object.values(accounts).every((a: any) => !a?.appId || Boolean(a?.apiGatewayUrl))
+        : true;
+      if (!topLevelGatewayUrl && !envHasGatewayUrl && !allAccountsWithAppIdHaveGatewayUrl && (topLevelAppId || hasAnyCompleteAccount || envHasAppId)) {
         findings.push({ checkId: "lansenger/apigatewayurl-not-set", severity: "warn", title: "apiGatewayUrl not set / API 网关地址未设置", detail: "Most enterprise deployments require a custom gateway URL (e.g. https://apigw.lx.qianxin.com). The default https://open.e.lanxin.cn/open/apigw only works for Lansenger public cloud. / 大部分企业部署需要自定义网关地址，默认地址仅适用于蓝信公有云。", remediation: "openclaw config set channels.lansenger.apiGatewayUrl https://apigw.lx.qianxin.com (or your enterprise gateway URL)" });
       }
       if (accounts) {
         for (const [key, acc] of Object.entries(accounts)) {
-          if (acc?.appId && !acc?.apiGatewayUrl && !topLevelGatewayUrl && !process.env.LANSENGER_API_GATEWAY_URL) {
+          if (acc?.appId && !acc?.apiGatewayUrl && !topLevelGatewayUrl && !envHasGatewayUrl) {
             findings.push({ checkId: "lansenger/account-apigatewayurl-not-set", severity: "warn", title: `Account '${key}' apiGatewayUrl not set / 子账号 '${key}' API 网关地址未设置`, detail: `Account '${key}' has appId but no apiGatewayUrl (and top-level not set either). / 子账号 '${key}' 有 appId 但未设置 apiGatewayUrl，顶层也未设置。`, remediation: `openclaw config set channels.lansenger.accounts.${key}.apiGatewayUrl <gateway-url> or set top-level apiGatewayUrl` });
           }
         }

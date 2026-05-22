@@ -446,9 +446,8 @@ Agent 路由由 OpenClaw 的 `bindings[]` 設定管理——見[多 Agent 路由
 
 ## 更新日誌
 
-- **v3.8.0** — 新增 `security.collectWarnings` 和 `security.collectAuditFindings` 支援 `openclaw doctor --lint` 檢查（憑證缺失/不完整、dmPolicy 不適合個人機械人、群聊設定暫無效、apiGatewayUrl 未設定）。新增 `doctor.repairConfig` 自動修復 dmPolicy。依賴 OpenClaw >= 2026.5.20。
-- **v3.7.8** — 新增 `revokeAckMessage` 配置（預設 `true`）：控制代理回覆後是否自動撤回確認訊息。設為 `false` 則保留確認訊息可見。
-- **v3.7.0** — 入站防抖合併：接入 OpenClaw `messages.inbound.debounceMs`，合併同一使用者的連續快速訊息；確認訊息功能（`ackMessage` 配置）：代理處理前發送「收到，正在處理...」，語言自動偵測
+- **v3.8.0** — 新增 `security.collectWarnings` 和 `security.collectAuditFindings` 支援 `openclaw doctor --lint` 檢查（憑證缺失/不完整、dmPolicy 不適合個人機械人、apiGatewayUrl 未設定、群聊設定暫無效）。新增 `doctor.repairConfig` 自動修復 dmPolicy。依賴 OpenClaw >= 2026.5.20。
+- **v3.7.0** — 入站防抖合併：接入 OpenClaw `messages.inbound.debounceMs`，合併同一使用者的連續快速訊息；確認訊息功能（`ackMessage` / `revokeAckMessage` 配置）：代理處理前發送「收到，正在處理...」，可選代理回覆後自動撤回（`revokeAckMessage` 預設 `true`），語言自動偵測
 - **v3.6.0** — 修正 health-monitor 無限重啟循環：註冊 `gateway.startAccount`/`stopAccount`，讓 channelManager runtime store 正確記錄 `running=true` + `connected=true`；WS 生命週期回呼透過 `createAccountStatusSink` 即時上報連線狀態變更
 - **v3.5.0** — 修正重複訊息發送（每回合去重）；從檔案名稱中移除 OpenClaw UUID 後綴；MEDIA 白名單文件；alsoAllow 提示；README 准確性修正
 - **v3.3.0** — 合併 tools 插件至頻道插件；代理工具現已內建（無需單獨安裝）；移除 `@lansenger-pm/openclaw-lansenger-tools` 的 peerDependencies
