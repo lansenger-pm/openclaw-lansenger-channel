@@ -346,8 +346,8 @@ const lansengerOnboarding = {
     const account = accountId ? accounts?.[accountId] : section;
     const currentAllowFrom: string[] = account?.allowFrom ?? [];
     const input = await prompter.text({
-      message: "Lansenger User ID (蓝信用户 ID，格式：2285568-xxx)",
-      placeholder: "2285568-xxxxxxx",
+      message: "Lansenger User ID (蓝信用户 ID，格式：orgId-applicationId)",
+      placeholder: "xxx-xxxxxxx",
       initialValue: currentAllowFrom[0] ? String(currentAllowFrom[0]) : undefined,
       validate: (v: string) => String(v ?? "").trim() ? undefined : "Required / 必填",
     });
@@ -439,12 +439,12 @@ const lansengerOnboarding = {
     if (!appId) {
       appId = String(await prompter.text({
         message: "Lansenger App ID / 蓝信 App ID",
-        placeholder: "e.g. 2285568-10117376",
+        placeholder: "e.g. xxx-xxxxxxx",
         validate: (v: string) => String(v ?? "").trim() ? undefined : "Required / 必填",
       })).trim();
       appSecret = String(await prompter.text({
         message: "Lansenger App Secret / 蓝信 App Secret",
-        placeholder: "e.g. 57E718CA1CAC20F2...",
+        placeholder: "e.g. ABCDEF123456...",
         validate: (v: string) => String(v ?? "").trim() ? undefined : "Required / 必填",
       })).trim();
       apiGatewayUrl = String(await prompter.text({

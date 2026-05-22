@@ -109,7 +109,7 @@ Add these to `~/.openclaw/.env` or your environment:
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `LANSENGER_APP_ID` | Personal bot App ID | `your-appid` |
-| `LANSENGER_APP_SECRET` | Personal bot App Secret | `57E718CA1CAC20F2...` |
+| `LANSENGER_APP_SECRET` | Personal bot App Secret | `ABCDEF123456...` |
 | `LANSENGER_API_GATEWAY_URL` | Lansenger API Gateway URL override | `https://open.e.lanxin.cn/open/apigw` |
 
 Credentials can also be provided via `openclaw.json` config (see Optional Configuration below). Config values take precedence; env vars are used as fallback when config is unset.
@@ -129,7 +129,7 @@ Credentials can also be provided via `openclaw.json` config (see Optional Config
       "appId": "your-appid",
       "appSecret": "your-secret",
       "apiGatewayUrl": "https://open.e.lanxin.cn/open/apigw",
-      "homeChannel": "2285568-xxx",
+      "homeChannel": "xxx-xxx",
       "enabled": true,
       "allowFrom": ["your-appid"],
       "dmPolicy": "pairing",
@@ -270,7 +270,7 @@ Use `bindings` to route Lansenger DMs or groups to different agents (same patter
       agentId: "agent-a",
       match: {
         channel: "lansenger",
-        peer: { kind: "direct", id: "2285568-xxx" },
+        peer: { kind: "direct", id: "xxx-xxx" },
       },
     },
     {
@@ -287,7 +287,7 @@ Use `bindings` to route Lansenger DMs or groups to different agents (same patter
 Routing fields:
 * `match.channel`: `"lansenger"`
 * `match.peer.kind`: `"direct"` (DM) or `"group"` (group chat)
-* `match.peer.id`: user ID (`2285568-xxx`) or group chat ID
+* `match.peer.id`: user ID (`xxx-xxx`) or group chat ID
 
 In single-agent mode, all messages route to the default agent (`main`) automatically — no bindings needed.
 

@@ -228,11 +228,11 @@ finalize: async ({ cfg, accountId }: any) => {
     channel: CHANNEL,
     helpTitle: "Lansenger user ID / 蓝信用户 ID",
     helpLines: [
-      "Lansenger user IDs have format: appId-userId (e.g. 2285568-xxxxxxx)",
-      "蓝信用户 ID 格式：appId-userId（如 2285568-xxxxxxx）",
+      "Lansenger user IDs have format: orgId-applicationId (e.g. xxx-xxxxxxx)",
+      "蓝信用户 ID 格式：orgId-applicationId（如 xxx-xxxxxxx）",
     ],
-    message: "蓝信允许的用户 ID（格式：2285568-xxx）/ Lansenger allowFrom (user IDs, format: 2285568-xxx)",
-    placeholder: "2285568-xxxxxxx",
+    message: "蓝信允许的用户 ID（格式：orgId-applicationId）/ Lansenger allowFrom (user IDs, format: orgId-applicationId)",
+    placeholder: "xxx-xxxxxxx",
     invalidWithoutCredentialNote: "蓝信 allowFrom 需要格式为 appId-userId 的用户 ID。/ Lansenger allowFrom requires user IDs in format appId-userId.",
     parseId: (entry: string) => entry.trim() || null,
     resolveEntries: async ({ entries }: any) => entries.map((entry: string) => ({

@@ -117,7 +117,7 @@ openclaw pairing approve lansenger <配對碼>
 | 變數 | 說明 | 範例 |
 |------|------|------|
 | `LANSENGER_APP_ID` | 個人機械人 App ID | `your-appid` |
-| `LANSENGER_APP_SECRET` | 個人機械人 App Secret | `57E718CA1CAC20F2...` |
+| `LANSENGER_APP_SECRET` | 個人機械人 App Secret | `ABCDEF123456...` |
 | `LANSENGER_API_GATEWAY_URL` | 藍信 API 網關 URL 覆蓋 | `https://open.e.lanxin.cn/open/apigw` |
 
 憑證也可透過 `openclaw.json` 配置提供（見下方可選設定）。配置值優先；環境變數僅在配置未設定時作為回退。
@@ -137,7 +137,7 @@ openclaw pairing approve lansenger <配對碼>
       "appId": "your-appid",
       "appSecret": "your-secret",
       "apiGatewayUrl": "https://open.e.lanxin.cn/open/apigw",
-      "homeChannel": "2285568-xxx",
+      "homeChannel": "xxx-xxx",
       "enabled": true,
       "allowFrom": ["your-appid"],
       "dmPolicy": "pairing",
@@ -280,7 +280,7 @@ openclaw channels status --probe
       agentId: "agent-a",
       match: {
         channel: "lansenger",
-        peer: { kind: "direct", id: "2285568-xxx" },
+        peer: { kind: "direct", id: "xxx-xxx" },
       },
     },
     {
@@ -297,7 +297,7 @@ openclaw channels status --probe
 路由欄位：
 * `match.channel`: `"lansenger"`
 * `match.peer.kind`: `"direct"`（私聊）或 `"group"`（羣組聊天）
-* `match.peer.id`: 使用者 ID（`2285568-xxx`）或羣組聊天 ID
+* `match.peer.id`: 使用者 ID（`xxx-xxx`）或羣組聊天 ID
 
 單 Agent 模式下，所有訊息自動路由至預設 Agent（`main`），無需 bindings 設定。
 

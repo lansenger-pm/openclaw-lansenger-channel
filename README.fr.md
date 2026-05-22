@@ -117,7 +117,7 @@ Ajoutez ces variables à `~/.openclaw/.env` ou à votre environnement :
 | Variable | Description | Exemple |
 |----------|-------------|---------|
 | `LANSENGER_APP_ID` | App ID du bot personnel | `your-appid` |
-| `LANSENGER_APP_SECRET` | App Secret du bot personnel | `57E718CA1CAC20F2...` |
+| `LANSENGER_APP_SECRET` | App Secret du bot personnel | `ABCDEF123456...` |
 | `LANSENGER_API_GATEWAY_URL` | URL de la passerelle API Lansenger (remplacement) | `https://open.e.lanxin.cn/open/apigw` |
 
 Les identifiants peuvent aussi être fournis via la configuration `openclaw.json` (voir Configuration optionnelle ci-dessous). Les valeurs de configuration sont prioritaires ; les variables d'environnement sont utilisées comme repli lorsque la configuration n'est pas définie.
@@ -137,7 +137,7 @@ Les identifiants peuvent aussi être fournis via la configuration `openclaw.json
       "appId": "your-appid",
       "appSecret": "your-secret",
       "apiGatewayUrl": "https://open.e.lanxin.cn/open/apigw",
-      "homeChannel": "2285568-xxx",
+      "homeChannel": "xxx-xxx",
       "enabled": true,
       "allowFrom": ["your-appid"],
       "dmPolicy": "pairing",
@@ -278,7 +278,7 @@ Utilisez `bindings` pour router les DM Lansenger ou les conversations de groupe 
       agentId: "agent-a",
       match: {
         channel: "lansenger",
-        peer: { kind: "direct", id: "2285568-xxx" },
+        peer: { kind: "direct", id: "xxx-xxx" },
       },
     },
     {
@@ -295,7 +295,7 @@ Utilisez `bindings` pour router les DM Lansenger ou les conversations de groupe 
 Champs de routage :
 * `match.channel`: `"lansenger"`
 * `match.peer.kind`: `"direct"` (DM) ou `"group"` (chat de groupe)
-* `match.peer.id`: ID utilisateur (`2285568-xxx`) ou ID de chat de groupe
+* `match.peer.id`: ID utilisateur (`xxx-xxx`) ou ID de chat de groupe
 
 En mode mono-agent, tous les messages routent vers l'agent par défaut (`main`) automatiquement — pas de bindings nécessaires.
 

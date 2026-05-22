@@ -88,7 +88,7 @@
           },
           "appId": {
             "type": "string",
-            "description": "Lansenger bot App ID / 蓝信机器人 App ID（格式：2285568-xxx）"
+            "description": "Lansenger bot App ID / 蓝信机器人 App ID（格式：orgId-applicationId）"
           },
           "appSecret": {
             "type": "string",
@@ -196,13 +196,13 @@
         },
         "appId": {
           "label": "App ID / 蓝信 App ID",
-          "placeholder": "e.g. 2285568-10117376",
+          "placeholder": "e.g. xxx-xxxxxxx",
           "sensitive": false,
           "help": "Lansenger Desktop → Contacts → Bots → Personal Bots → click ℹ️ icon to view credentials. Mobile client does NOT support viewing credentials. / 蓝信桌面端 → 通讯录 → 智能机器人 → 个人机器人 → 点击右侧 ℹ️ 图标查看凭证。移动端不支持查看凭证。"
         },
         "appSecret": {
           "label": "App Secret / 蓝信 App Secret",
-          "placeholder": "e.g. 57E718CA1CAC20F2...",
+          "placeholder": "e.g. ABCDEF123456...",
           "sensitive": true,
           "help": "Lansenger Desktop → Contacts → Bots → Personal Bots → click ℹ️ icon to view credentials. Mobile client does NOT support viewing credentials. / 蓝信桌面端 → 通讯录 → 智能机器人 → 个人机器人 → 点击右侧 ℹ️ 图标查看凭证。移动端不支持查看凭证。"
         },
@@ -216,7 +216,7 @@
           "label": "Allow From / 允许的用户",
           "placeholder": "Add user ID / 添加用户 ID",
           "sensitive": false,
-          "help": "Lansenger user IDs allowed to send DMs to the bot (format: 2285568-xxx) / 允许向机器人发送私聊的蓝信用户 ID（格式：2285568-xxx）"
+          "help": "Lansenger user IDs allowed to send DMs to the bot (format: orgId-applicationId) / 允许向机器人发送私聊的蓝信用户 ID（格式：orgId-applicationId）"
         },
         "dmPolicy": {
           "label": "DM Policy / 私聊安全策略",
