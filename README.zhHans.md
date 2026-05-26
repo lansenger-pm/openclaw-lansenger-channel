@@ -321,7 +321,7 @@ openclaw channels status --probe
 
 当用户发送图片、视频、文件或语音消息时，插件会：
 
-1. 通过蓝信媒体 API 下载所有 `mediaIds`
+1. 通过蓝信媒体 API 下载所有 `mediaIds`（视频：第一个以视频类型下载，第二个以图片类型下载作为封面）
 2. 从 Content-Type/Content-Disposition 头检测文件扩展名（回退：文件魔数）
 3. 保存到临时文件，将路径附加到 `InboundEvent.mediaPaths[]`
 4. 在代理文本中添加提示："附件已保存到本地 — 使用读取工具查看"
@@ -444,6 +444,7 @@ Agent 路由由 OpenClaw 的 `bindings[]` 配置管理——见[多 Agent 路由
 
 ## 更新日志
 
+- **v3.10.0** — 修复视频消息：API要求 `mediaIds=[视频mediaId, 封面图片mediaId]`（数组长度必须为2）。`sendFile()` 自动用ffmpeg提取首帧作为封面并上传。`send-text` 文件附件现在根据文件类型设置正确的 mediaType，不再硬编码为3。入站视频封面以图片类型下载。
 - **v3.9.0** — 文件上传接口改为 `/v1/app/medias/create`（支持更大文件，默认图片10M/其他20M，type 参数改用字符串 `image`/`video`/`audio`/`file`）。旧接口 `/v1/medias/create` 仅限1M且为头像上传专用。
 - **v3.8.0** — 新增 `security.collectWarnings` 和 `security.collectAuditFindings` 支持 `openclaw doctor --lint` 检查（凭证缺失/不完整、dmPolicy 不适合个人机器人、apiGatewayUrl 未设置、群聊配置暂无效）。新增 `doctor.repairConfig` 自动修复 dmPolicy。依赖 OpenClaw >= 2026.5.20。
 - **v3.7.0** — 入站防抖合并：接入 OpenClaw `messages.inbound.debounceMs`，合并同一用户的连续快速消息；确认消息功能（`ackMessage` / `revokeAckMessage` 配置）：代理处理前发送"收到，正在处理..."，可选代理回复后自动撤回（`revokeAckMessage` 默认 `true`），语言自动检测

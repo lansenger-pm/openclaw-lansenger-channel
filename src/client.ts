@@ -39,6 +39,41 @@ export async function probeVideoMeta(filePath: string, logger?: ClientLogger): P
   }
 }
 
+export async function extractVideoThumbnail(filePath: string, logger?: ClientLogger): Promise<string | null> {
+  const log = logger ?? silentLogger;
+  const tmpPath = path.join(os.tmpdir(), `lansenger_cover_${crypto.randomUUID()}.jpg`);
+  try {
+    const args = [
+      "-y",
+      "-i", filePath,
+      "-vframes", "1",
+      "-q:v", "2",
+      "-f", "image2",
+      tmpPath,
+    ];
+    await new Promise<string>((resolve, reject) => {
+      childProcess.execFile("ffmpeg", args, { timeout: 10_000 }, (err, out, stderr) => {
+        if (err) reject(err);
+        else resolve(out ?? "");
+      });
+    });
+    try {
+      const stat = await fs.stat(tmpPath);
+      if (stat.size > 0) {
+        log.info(`extractVideoThumbnail: ${filePath} → ${tmpPath} (${stat.size} bytes)`);
+        return tmpPath;
+      }
+    } catch {}
+    log.info(`extractVideoThumbnail: thumbnail file empty or missing for ${filePath}`);
+    try { await fs.unlink(tmpPath); } catch {}
+    return null;
+  } catch (e: any) {
+    log.info(`extractVideoThumbnail: ffmpeg unavailable or failed for ${filePath} — ${e.message ?? e}`);
+    try { await fs.unlink(tmpPath); } catch {}
+    return null;
+  }
+}
+
 export type ClientLogger = {
   info: (message: string) => void;
   error: (message: string) => void;
@@ -298,6 +333,25 @@ export class LansengerClient {
     }
     const uploadResult = await this.uploadMedia(filePath, uploadType, originalName, meta);
     if ("error" in uploadResult) return { success: false, error: uploadResult.error };
+
+    if (mt === 1 && uploadType === "video") {
+      let coverMediaId: string | undefined;
+      const thumbPath = await extractVideoThumbnail(filePath, this.log);
+      if (thumbPath) {
+        const coverResult = await this.uploadMedia(thumbPath, "image");
+        try { await fs.unlink(thumbPath); } catch {}
+        if ("error" in coverResult) {
+          this.log.info(`sendFile: video cover upload failed (${coverResult.error}), sending without cover`);
+        } else {
+          coverMediaId = coverResult.mediaId;
+        }
+      } else {
+        this.log.info(`sendFile: video thumbnail extraction failed, sending without cover`);
+      }
+      const mediaIds = coverMediaId ? [uploadResult.mediaId, coverMediaId] : [uploadResult.mediaId];
+      return this.sendTextWithMedia(chatId, caption ?? "", mt, mediaIds);
+    }
+
     return this.sendTextWithMedia(chatId, caption ?? "", mt, [uploadResult.mediaId]);
   }
 
@@ -817,9 +871,17 @@ export class LansengerClient {
     }
     if (msgType === "video") {
       const ids: string[] = payload.video?.mediaIds ?? [];
-      const label = ids.length > 1 ? `[Video: ${ids.length} files]` : "[Video]";
-      const paths = await this.downloadAllMedia(ids, "video");
-      return { text: paths.length > 0 ? label : "[Video]", mediaPaths: paths.length > 0 ? paths : undefined };
+      const videoPaths: string[] = [];
+      if (ids.length >= 1) {
+        const vPaths = await this.downloadAllMedia(ids.slice(0, 1), "video");
+        videoPaths.push(...vPaths);
+      }
+      if (ids.length >= 2) {
+        const cPaths = await this.downloadAllMedia(ids.slice(1), "image");
+        videoPaths.push(...cPaths);
+      }
+      const label = ids.length > 1 ? `[Video with cover]` : "[Video]";
+      return { text: videoPaths.length > 0 ? label : "[Video]", mediaPaths: videoPaths.length > 0 ? videoPaths : undefined };
     }
     if (msgType === "file") {
       const ids: string[] = payload.file?.mediaIds ?? [];

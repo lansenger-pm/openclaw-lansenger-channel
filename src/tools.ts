@@ -2,6 +2,7 @@ import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import { getRunningClient, getRunningAccount, getLastInboundChatId } from "./runtime.js";
 import type { LansengerClient } from "./client.js";
+import { mediaTypeFromPath, uploadMediaTypeFromPath } from "./client.js";
 import type { ResolvedAccount } from "./channel.js";
 
 function resolveTarget(to?: string): string {
@@ -222,12 +223,7 @@ export function registerLansengerTools(api: any) {
         } catch {
           return jsonResult({ error: `File not found: ${filePath}` });
         }
-        const uploadResult = await client.uploadMedia(resolved);
-        if ("error" in uploadResult) return jsonResult({ error: uploadResult.error });
-        const reminder = (params.reminderAll || (params.reminderUserIds && params.reminderUserIds.length > 0))
-          ? { all: Boolean(params.reminderAll), userIds: params.reminderUserIds ?? [] }
-          : undefined;
-        const result = await client.sendTextWithMedia(to, content, 3, [uploadResult.mediaId], reminder);
+        const result = await client.sendFile(to, resolved, content);
         return jsonResult({ success: result.success, messageId: result.messageId ?? null });
       }
       const reminder = (params.reminderAll || (params.reminderUserIds && params.reminderUserIds.length > 0))

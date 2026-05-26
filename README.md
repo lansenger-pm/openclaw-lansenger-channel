@@ -313,7 +313,7 @@ In single-agent mode, all messages route to the default agent (`main`) automatic
 
 When users send images, videos, files, or voice messages, the plugin:
 
-1. Downloads all `mediaIds` via the Lansenger media API
+1. Downloads all `mediaIds` via the Lansenger media API (video: first as video type, second as image type for cover)
 2. Detects file extension from Content-Type/Content-Disposition headers (fallback: magic bytes)
 3. Saves to temp files and attaches paths to `InboundEvent.mediaPaths[]`
 4. Adds a hint in agent text: "Attached files saved locally — use the read tool to view"
@@ -436,6 +436,7 @@ Approval status updates use the DynamicMsg appCard format. The `updateCardStatus
 
 ## Changelog
 
+- **v3.10.0** — Fix video message: API requires `mediaIds=[video, coverImage]` (2 elements). `sendFile()` now auto-extracts first frame via ffmpeg and uploads as cover. `send-text` with file attachment now uses correct mediaType instead of hardcoded `3`. Inbound video downloads cover as image type.
 - **v3.9.0** — Switch file upload to `/v1/app/medias/create` API (supports larger files up to 10M/20M, uses string type `image`/`video`/`audio`/`file` instead of numeric media type). Previous `/v1/medias/create` was limited to 1M and intended for avatar uploads only.
 - **v3.8.0** — Add `security.collectWarnings` and `security.collectAuditFindings` for `openclaw doctor --lint` integration (checks: credentials missing/incomplete, dmPolicy not pairing, apiGatewayUrl not set, group config unused). Add `doctor.repairConfig` to auto-fix dmPolicy to pairing. Require OpenClaw >= 2026.5.20.
 - **v3.7.0** — Inbound debounce: integrate OpenClaw `messages.inbound.debounceMs` for merging rapid consecutive messages; ack message feature (`ackMessage` / `revokeAckMessage` config): send a brief acknowledgment before agent processing, optionally auto-revoked after reply (`revokeAckMessage` default `true`), language auto-detected

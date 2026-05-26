@@ -323,7 +323,7 @@ openclaw channels status --probe
 
 當使用者發送圖片、影片、檔案或語音訊息時，插件會：
 
-1. 透過藍信媒體 API 下載所有 `mediaIds`
+1. 透過藍信媒體 API 下載所有 `mediaIds`（影片：第一個以影片類型下載，第二個以圖片類型下載作為封面）
 2. 從 Content-Type/Content-Disposition 標頭偵測副檔名（回退：檔案魔數）
 3. 儲存至暫存檔案，將路徑附加至 `InboundEvent.mediaPaths[]`
 4. 在代理文字中加入提示：「附件已儲存至本地 — 使用讀取工具查看」
@@ -446,6 +446,7 @@ Agent 路由由 OpenClaw 的 `bindings[]` 設定管理——見[多 Agent 路由
 
 ## 更新日誌
 
+- **v3.10.0** — 修復影片訊息：API要求 `mediaIds=[影片mediaId, 封面圖片mediaId]`（陣列長度必須為2）。`sendFile()` 自動用ffmpeg提取首帧作為封面並上傳。`send-text` 檔案附件現在根據檔案類型設定正確的 mediaType，不再硬編碼為3。入站影片封面以圖片類型下載。
 - **v3.9.0** — 檔案上傳介面改為 `/v1/app/medias/create`（支援更大檔案，預設圖片10M/其他20M，type 參數改用字串 `image`/`video`/`audio`/`file`）。舊介面 `/v1/medias/create`僅限1M且為頭像上傳專用。
 - **v3.8.0** — 新增 `security.collectWarnings` 和 `security.collectAuditFindings` 支援 `openclaw doctor --lint` 檢查（憑證缺失/不完整、dmPolicy 不適合個人機械人、apiGatewayUrl 未設定、群聊設定暫無效）。新增 `doctor.repairConfig` 自動修復 dmPolicy。依賴 OpenClaw >= 2026.5.20。
 - **v3.7.0** — 入站防抖合併：接入 OpenClaw `messages.inbound.debounceMs`，合併同一使用者的連續快速訊息；確認訊息功能（`ackMessage` / `revokeAckMessage` 配置）：代理處理前發送「收到，正在處理...」，可選代理回覆後自動撤回（`revokeAckMessage` 預設 `true`），語言自動偵測

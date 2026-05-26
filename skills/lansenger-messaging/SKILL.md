@@ -295,7 +295,7 @@ Status colors: #FFB116 (pending), #198754 (approved), #dc3545 (denied)
 | text       | Plain text content                                |
 | formatText | Markdown text content                             |
 | image      | Local file paths (use read tool to view)          |
-| video      | Local file paths                                  |
+| video      | Local file paths (video + cover image)            |
 | file       | Local file paths                                  |
 | voice      | Local file path (.amr)                            |
 | position   | Location name, address, lat/long                  |
@@ -341,6 +341,7 @@ OpenClaw's `MEDIA:` tag mechanism has a **MIME whitelist** — only these file t
 | headStatusInfo div wrapping    | description supports div-style for color. colour is the DOT/圆点 color. Separate. |
 | Message too long               | ~4000 character limit. Split into multiple messages.                              |
 | Video upload missing metadata  | The API requires width/height/duration for video uploads. The adapter auto-probes with ffprobe — ensure ffprobe is installed on the gateway host. If unavailable, video uploads may fail or display incorrectly.                                  |
+| Video missing cover image      | The Lansenger API requires `mediaIds` array to have **2 elements** for video: `[videoMediaId, coverImageMediaId]`. The adapter auto-extracts the video first frame as a JPEG via ffmpeg and uploads it as the cover. If ffmpeg is unavailable, video is sent with only 1 mediaId (may display incorrectly). |
 | Tools not available            | Tools are built into the channel plugin. If unavailable, use `message(action=send, filePath=...)` for file sending (works without `group:plugins`). As a last resort, use CLI: `pipx install lansenger-cli`, then `lansenger message send-text <chatId> <content>`. |
 | CLI command not found          | Install: `pipx install lansenger-cli` or `pip install lansenger-cli`. Then verify: `lansenger --help`. |
 | CLI wrong credentials / sends as wrong bot | **Always use `-P <appId>`** (global flag after `lansenger`). Without it, CLI uses the `default` profile which may be a different bot. Sync first: `lansenger -P <appId> config show` → if missing, run `lansenger -P <appId> config set` commands. |
