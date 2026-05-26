@@ -106,7 +106,13 @@ All tools accept optional `to` (chatId). Leave empty to auto-detect current conv
 |----------------|----------|----------|----------------------------------------------------|
 | filePath       | string   | ✅        | Absolute local path (workspace, /tmp, Desktop, etc.) |
 | caption        | string   | ❌        | Plain-text caption (no Markdown)                   |
+| coverImagePath | string   | ❌*       | **Required for video**: cover/thumbnail image path. API requires mediaIds=[video, cover]. Extract with: `ffmpeg -i video.mp4 -vframes 1 -q:v 2 cover.jpg` |
+| videoWidth     | integer  | ❌*       | **Required for video**: video width in pixels. Get with: `ffprobe -v error -select_streams v:0 -show_entries stream=width -of csv=p=0 video.mp4` |
+| videoHeight    | integer  | ❌*       | **Required for video**: video height in pixels. Get with: `ffprobe -v error -select_streams v:0 -show_entries stream=height -of csv=p=0 video.mp4` |
+| videoDuration  | integer  | ❌*       | **Required for video**: video duration in seconds. Get with: `ffprobe -v error -select_streams v:0 -show_entries stream=duration -of csv=p=0 video.mp4` |
 | to             | string   | ❌        | Target chatId (auto if omitted)                    |
+
+\* *Required when sending video files (`.mp4`, `.mov`, etc.). The Lansenger API mandates cover image + metadata for video type. If these are missing, the send will fail with an error message.*
 
 ### lansenger_send_text
 
@@ -340,8 +346,7 @@ OpenClaw's `MEDIA:` tag mechanism has a **MIME whitelist** — only these file t
 | AppCard `text-indent: 0`       | Use `0em` with unit. Bare 0 causes silent failure.                               |
 | headStatusInfo div wrapping    | description supports div-style for color. colour is the DOT/圆点 color. Separate. |
 | Message too long               | ~4000 character limit. Split into multiple messages.                              |
-| Video upload missing metadata  | The API requires width/height/duration for video uploads. The adapter auto-probes with ffprobe — ensure ffprobe is installed on the gateway host. If unavailable, video uploads may fail or display incorrectly.                                  |
-| Video missing cover image      | The Lansenger API requires `mediaIds` array to have **2 elements** for video: `[videoMediaId, coverImageMediaId]`. The adapter auto-extracts the video first frame as a JPEG via ffmpeg and uploads it as the cover. If ffmpeg is unavailable, video is sent with only 1 mediaId (may display incorrectly). |
+| Video missing cover or metadata  | **The API requires:** 1) `coverImagePath` (cover/thumbnail image) — mediaIds must be `[videoId, coverId]`; 2) `videoWidth` + `videoHeight` + `videoDuration` — the upload API requires these params. Before sending a video, you MUST: extract a cover frame (`ffmpeg -i video.mp4 -vframes 1 -q:v 2 cover.jpg`) and probe metadata (`ffprobe`). Provide all four as tool params. |
 | Tools not available            | Tools are built into the channel plugin. If unavailable, use `message(action=send, filePath=...)` for file sending (works without `group:plugins`). As a last resort, use CLI: `pipx install lansenger-cli`, then `lansenger message send-text <chatId> <content>`. |
 | CLI command not found          | Install: `pipx install lansenger-cli` or `pip install lansenger-cli`. Then verify: `lansenger --help`. |
 | CLI wrong credentials / sends as wrong bot | **Always use `-P <appId>`** (global flag after `lansenger`). Without it, CLI uses the `default` profile which may be a different bot. Sync first: `lansenger -P <appId> config show` → if missing, run `lansenger -P <appId> config set` commands. |

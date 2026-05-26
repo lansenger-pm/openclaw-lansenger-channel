@@ -1,12 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { LansengerClient, mediaTypeFromPath, uploadMediaTypeFromPath, probeVideoMeta, buildI18n, DEFAULT_API_GATEWAY_URL, MAX_MESSAGE_LENGTH } from "./client.js";
-
-const { mockExecFile } = vi.hoisted(() => ({
-  mockExecFile: vi.fn(),
-}));
-vi.mock("node:child_process", () => ({
-  execFile: mockExecFile,
-}));
+import { LansengerClient, mediaTypeFromPath, uploadMediaTypeFromPath, buildI18n, DEFAULT_API_GATEWAY_URL, MAX_MESSAGE_LENGTH } from "./client.js";
 
 function makeClient(): LansengerClient {
   return new LansengerClient({ appId: "test-id", appSecret: "test-secret" });
@@ -665,47 +658,5 @@ describe("postJson error handling", () => {
     const client = new LansengerClient({ appId: "id", appSecret: "secret" });
     const result = await client.sendText("user-1", "Hello");
     expect(result.success).toBe(false);
-  });
-});
-
-describe("probeVideoMeta", () => {
-  afterEach(() => {
-    mockExecFile.mockReset();
-  });
-
-  it("parses ffprobe csv output correctly", async () => {
-    mockExecFile.mockImplementation((_cmd: any, _args: any, _opts: any, cb: any) => {
-      cb(null, "1920,1080,30.5\n", "");
-    });
-    const result = await probeVideoMeta("/tmp/test.mp4");
-    expect(result.width).toBe(1920);
-    expect(result.height).toBe(1080);
-    expect(result.duration).toBe(31);
-  });
-
-  it("handles duration=0 as undefined", async () => {
-    mockExecFile.mockImplementation((_cmd: any, _args: any, _opts: any, cb: any) => {
-      cb(null, "640,480,0\n", "");
-    });
-    const result = await probeVideoMeta("/tmp/test.mp4");
-    expect(result.width).toBe(640);
-    expect(result.height).toBe(480);
-    expect(result.duration).toBeUndefined();
-  });
-
-  it("returns empty object when ffprobe fails", async () => {
-    mockExecFile.mockImplementation((_cmd: any, _args: any, _opts: any, cb: any) => {
-      cb(new Error("ffprobe not found"), "", "");
-    });
-    const result = await probeVideoMeta("/tmp/test.mp4");
-    expect(result).toEqual({});
-  });
-
-  it("returns empty object for incomplete metadata", async () => {
-    mockExecFile.mockImplementation((_cmd: any, _args: any, _opts: any, cb: any) => {
-      cb(null, "N/A,N/A\n", "");
-    });
-    const result = await probeVideoMeta("/tmp/test.mp4");
-    expect(result).toEqual({});
   });
 });

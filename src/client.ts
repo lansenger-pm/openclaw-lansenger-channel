@@ -2,77 +2,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as crypto from "node:crypto";
-import * as childProcess from "node:child_process";
 import WebSocket from "ws";
-
-export type VideoMeta = { width?: number; height?: number; duration?: number };
-
-export async function probeVideoMeta(filePath: string, logger?: ClientLogger): Promise<VideoMeta> {
-  const log = logger ?? silentLogger;
-  try {
-    const args = [
-      "-v", "error",
-      "-select_streams", "v:0",
-      "-show_entries", "stream=width,height,duration",
-      "-of", "csv=p=0",
-      filePath,
-    ];
-    const stdout = await new Promise<string>((resolve, reject) => {
-      childProcess.execFile("ffprobe", args, { timeout: 10_000 }, (err, out) => {
-        if (err) reject(err);
-        else resolve(out ?? "");
-      });
-    });
-    const parts = stdout.trim().split(",");
-    const width = parts[0] ? parseInt(parts[0], 10) : undefined;
-    const height = parts[1] ? parseInt(parts[1], 10) : undefined;
-    const duration = parts[2] ? parseFloat(parts[2]) : undefined;
-    if (width && height) {
-      log.info(`probeVideoMeta: ${filePath} → ${width}x${height} duration=${duration ?? "n/a"}s`);
-      return { width, height, duration: duration && duration > 0 ? Math.round(duration) : undefined };
-    }
-    log.info(`probeVideoMeta: ${filePath} → incomplete metadata (${stdout.trim()})`);
-    return {};
-  } catch (e: any) {
-    log.info(`probeVideoMeta: ffprobe unavailable or failed for ${filePath} — ${e.message ?? e}`);
-    return {};
-  }
-}
-
-export async function extractVideoThumbnail(filePath: string, logger?: ClientLogger): Promise<string | null> {
-  const log = logger ?? silentLogger;
-  const tmpPath = path.join(os.tmpdir(), `lansenger_cover_${crypto.randomUUID()}.jpg`);
-  try {
-    const args = [
-      "-y",
-      "-i", filePath,
-      "-vframes", "1",
-      "-q:v", "2",
-      "-f", "image2",
-      tmpPath,
-    ];
-    await new Promise<string>((resolve, reject) => {
-      childProcess.execFile("ffmpeg", args, { timeout: 10_000 }, (err, out, stderr) => {
-        if (err) reject(err);
-        else resolve(out ?? "");
-      });
-    });
-    try {
-      const stat = await fs.stat(tmpPath);
-      if (stat.size > 0) {
-        log.info(`extractVideoThumbnail: ${filePath} → ${tmpPath} (${stat.size} bytes)`);
-        return tmpPath;
-      }
-    } catch {}
-    log.info(`extractVideoThumbnail: thumbnail file empty or missing for ${filePath}`);
-    try { await fs.unlink(tmpPath); } catch {}
-    return null;
-  } catch (e: any) {
-    log.info(`extractVideoThumbnail: ffmpeg unavailable or failed for ${filePath} — ${e.message ?? e}`);
-    try { await fs.unlink(tmpPath); } catch {}
-    return null;
-  }
-}
 
 export type ClientLogger = {
   info: (message: string) => void;
@@ -298,20 +228,20 @@ export class LansengerClient {
     }
   }
 
-  async uploadMedia(filePath: string, uploadType?: string, originalName?: string, videoMeta?: VideoMeta): Promise<{ mediaId: string } | { error: string }> {
+  async uploadMedia(filePath: string, uploadType?: string, originalName?: string, videoWidth?: number, videoHeight?: number, videoDuration?: number): Promise<{ mediaId: string } | { error: string }> {
     const token = await this.getAppToken();
     if (!token) return { error: "No access token" };
     const typeStr = uploadType ?? uploadMediaTypeFromPath(filePath);
     try {
       let url = `${this.apiGatewayUrl}${API_ENDPOINTS.uploadMedia}?type=${typeStr}&app_token=${token}`;
-      if (typeStr === "video" && videoMeta) {
-        if (videoMeta.width) url += `&width=${videoMeta.width}`;
-        if (videoMeta.height) url += `&height=${videoMeta.height}`;
-        if (videoMeta.duration) url += `&duration=${videoMeta.duration}`;
+      if (typeStr === "video") {
+        if (videoWidth) url += `&width=${videoWidth}`;
+        if (videoHeight) url += `&height=${videoHeight}`;
+        if (videoDuration) url += `&duration=${videoDuration}`;
       }
       const fileContent = await fs.readFile(filePath);
       const filename = originalName ?? path.basename(filePath);
-      this.log.info(`uploadMedia: filePath=${filePath} uploadType=${typeStr} originalName=${originalName ?? "n/a"} filename=${filename} videoMeta=${typeStr === "video" && videoMeta ? `${videoMeta.width ?? "?"}x${videoMeta.height ?? "?"} dur=${videoMeta.duration ?? "?"}` : "n/a"}`);
+      this.log.info(`uploadMedia: filePath=${filePath} uploadType=${typeStr} originalName=${originalName ?? "n/a"} filename=${filename} video=${typeStr === "video" ? `${videoWidth ?? "?"}x${videoHeight ?? "?"} dur=${videoDuration ?? "?"}` : "n/a"}`);
       const form = new FormData();
       form.append("media", new Blob([fileContent]), filename);
       const resp = await fetch(url, { method: "POST", body: form });
@@ -324,32 +254,24 @@ export class LansengerClient {
     }
   }
 
-  async sendFile(chatId: string, filePath: string, caption?: string, mediaType?: number, originalName?: string, videoMeta?: VideoMeta): Promise<ApiResult> {
+  async sendFile(chatId: string, filePath: string, caption?: string, mediaType?: number, originalName?: string, coverImagePath?: string, videoWidth?: number, videoHeight?: number, videoDuration?: number): Promise<ApiResult> {
     const mt = mediaType ?? mediaTypeFromPath(filePath);
     const uploadType = uploadMediaTypeFromPath(filePath);
-    let meta = videoMeta;
-    if (uploadType === "video" && !meta) {
-      meta = await probeVideoMeta(filePath, this.log);
-    }
-    const uploadResult = await this.uploadMedia(filePath, uploadType, originalName, meta);
-    if ("error" in uploadResult) return { success: false, error: uploadResult.error };
 
     if (mt === 1 && uploadType === "video") {
-      let coverMediaId: string | undefined;
-      const thumbPath = await extractVideoThumbnail(filePath, this.log);
-      if (thumbPath) {
-        const coverResult = await this.uploadMedia(thumbPath, "image");
-        try { await fs.unlink(thumbPath); } catch {}
-        if ("error" in coverResult) {
-          this.log.info(`sendFile: video cover upload failed (${coverResult.error}), sending without cover`);
-        } else {
-          coverMediaId = coverResult.mediaId;
-        }
-      } else {
-        this.log.info(`sendFile: video thumbnail extraction failed, sending without cover`);
+      if (!coverImagePath) return { success: false, error: "Video messages require a cover image (coverImagePath). Use ffmpeg or similar tool to extract a frame, then provide the image path." };
+      if (!videoWidth || !videoHeight) return { success: false, error: "Video uploads require width and height (videoWidth, videoHeight). Use ffprobe or similar tool to obtain these values." };
+    }
+
+    const uploadResult = await this.uploadMedia(filePath, uploadType, originalName, mt === 1 ? videoWidth : undefined, mt === 1 ? videoHeight : undefined, mt === 1 ? videoDuration : undefined);
+    if ("error" in uploadResult) return { success: false, error: uploadResult.error };
+
+    if (mt === 1 && coverImagePath) {
+      const coverResult = await this.uploadMedia(coverImagePath, "image");
+      if ("error" in coverResult) {
+        return { success: false, error: `Video cover image upload failed: ${coverResult.error}` };
       }
-      const mediaIds = coverMediaId ? [uploadResult.mediaId, coverMediaId] : [uploadResult.mediaId];
-      return this.sendTextWithMedia(chatId, caption ?? "", mt, mediaIds);
+      return this.sendTextWithMedia(chatId, caption ?? "", mt, [uploadResult.mediaId, coverResult.mediaId]);
     }
 
     return this.sendTextWithMedia(chatId, caption ?? "", mt, [uploadResult.mediaId]);

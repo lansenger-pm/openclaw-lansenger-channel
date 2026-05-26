@@ -27,6 +27,10 @@ const SendFileSchema = {
   properties: {
     filePath: { type: "string", description: "Absolute local path to the file to send. Any path works — Documents, Desktop, workspace, /tmp, etc." },
     caption: { type: "string", description: "Plain-text caption for the file (Markdown will NOT render on Lansenger). Optional." },
+    coverImagePath: { type: "string", description: "REQUIRED for video files: local path to a cover/thumbnail image for the video. The Lansenger API requires mediaIds=[video, coverImage] for video type. Use ffmpeg to extract the first frame: ffmpeg -i video.mp4 -vframes 1 -q:v 2 cover.jpg" },
+    videoWidth: { type: "integer", description: "REQUIRED for video files: video width in pixels. Use ffprobe: ffprobe -v error -select_streams v:0 -show_entries stream=width -of csv=p=0 video.mp4" },
+    videoHeight: { type: "integer", description: "REQUIRED for video files: video height in pixels. Use ffprobe: ffprobe -v error -select_streams v:0 -show_entries stream=height -of csv=p=0 video.mp4" },
+    videoDuration: { type: "integer", description: "REQUIRED for video files: video duration in seconds. Use ffprobe: ffprobe -v error -select_streams v:0 -show_entries stream=duration -of csv=p=0 video.mp4" },
     to: { type: "string", description: "Chat ID to send to. Leave empty to auto-detect from current session." },
   },
   required: ["filePath"],
@@ -183,11 +187,15 @@ export function registerLansengerTools(api: any) {
     name: "lansenger_send_file",
     description: "Send a local file as an attachment on Lansenger (蓝信). Any local file works — workspace, Documents, /tmp, etc. Do NOT use MEDIA: tags for files outside the workspace; they silently fail. Always use this tool instead.",
     parameters: SendFileSchema,
-    async execute(_toolCallId: string, params: any) {
+async execute(_toolCallId: string, params: any) {
       const tc = makeToolClient();
       if (!tc) return jsonResult({ error: "Lansenger account not configured or not running." });
       const filePath = params.filePath;
       const caption = params.caption ?? "";
+      const coverImagePath = params.coverImagePath;
+      const videoWidth = params.videoWidth;
+      const videoHeight = params.videoHeight;
+      const videoDuration = params.videoDuration;
       const to = resolveTarget(params.to);
       if (!filePath) return jsonResult({ error: "filePath is required" });
       if (!to) return jsonResult({ error: "No target specified. Provide a 'to' parameter (chat ID)." });
@@ -198,10 +206,19 @@ export function registerLansengerTools(api: any) {
       } catch {
         return jsonResult({ error: `File not found: ${filePath}` });
       }
-      const result = await tc.client.sendFile(to, resolved, caption);
+      const resolvedCover = coverImagePath ? path.resolve(coverImagePath) : undefined;
+      if (resolvedCover) {
+        try {
+          const coverStat = await fs.stat(resolvedCover);
+          if (!coverStat.isFile()) return jsonResult({ error: `Cover image is not a file: ${coverImagePath}` });
+        } catch {
+          return jsonResult({ error: `Cover image not found: ${coverImagePath}` });
+        }
+      }
+      const result = await tc.client.sendFile(to, resolved, caption, undefined, undefined, resolvedCover, videoWidth, videoHeight, videoDuration);
       return jsonResult({ success: result.success, messageId: result.messageId ?? null });
     },
-});
+  });
 
   api.registerTool({
     name: "lansenger_send_text",

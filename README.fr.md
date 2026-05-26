@@ -444,6 +444,7 @@ Les mises à jour de statut d'approbation utilisent le format DynamicMsg appCard
 
 ## Journal des modifications
 
+- **v3.11.0** — Suppression de la dépendance `child_process` (bloquait l'install OpenClaw). Vidéo requiert désormais `coverImagePath` + `videoWidth/Height/Duration` manuels (ffmpeg/ffprobe avant send-file). Vidéo entrante : couverture en type image.
 - **v3.10.0** — Correction des messages vidéo : l'API exige `mediaIds=[vidéo, imageCouverture]` (2 éléments). `sendFile()` extrait automatiquement la première frame via ffmpeg et l'upload comme couverture. `send-text` avec fichier utilise désormais le mediaType correct au lieu du codé en dur `3`. Vidéo entrante : couverture téléchargée comme type image.
 - **v3.9.0** — Passage à l'API `/v1/app/medias/create` pour l'upload de fichiers (fichiers plus volumineux, 10M/20M par défaut, type en chaîne `image`/`video`/`audio`/`file` au lieu de numérique). L'ancienne API `/v1/medias/create` était limitée à 1M et destinée aux avatars uniquement.
 - **v3.8.0** — Ajout de `security.collectWarnings` et `security.collectAuditFindings` pour `openclaw doctor --lint` (vérifications : identifiants absents/incomplets, dmPolicy non pairing, apiGatewayUrl non défini, config de groupe inutilisée). Ajout de `doctor.repairConfig` pour auto-corriger dmPolicy. Requiert OpenClaw >= 2026.5.20.

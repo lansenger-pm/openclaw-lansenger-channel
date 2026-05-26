@@ -444,6 +444,7 @@ Agent 路由由 OpenClaw 的 `bindings[]` 配置管理——见[多 Agent 路由
 
 ## 更新日志
 
+- **v3.11.0** — 移除 `child_process` 依赖（之前导致 OpenClaw 安装被拦截）。视频现在要求手动提供 `coverImagePath` + `videoWidth/Height/Duration` 参数（调用 send-file 前先用 ffmpeg/ffprobe 提取）。入站视频封面以图片类型下载。
 - **v3.10.0** — 修复视频消息：API要求 `mediaIds=[视频mediaId, 封面图片mediaId]`（数组长度必须为2）。`sendFile()` 自动用ffmpeg提取首帧作为封面并上传。`send-text` 文件附件现在根据文件类型设置正确的 mediaType，不再硬编码为3。入站视频封面以图片类型下载。
 - **v3.9.0** — 文件上传接口改为 `/v1/app/medias/create`（支持更大文件，默认图片10M/其他20M，type 参数改用字符串 `image`/`video`/`audio`/`file`）。旧接口 `/v1/medias/create` 仅限1M且为头像上传专用。
 - **v3.8.0** — 新增 `security.collectWarnings` 和 `security.collectAuditFindings` 支持 `openclaw doctor --lint` 检查（凭证缺失/不完整、dmPolicy 不适合个人机器人、apiGatewayUrl 未设置、群聊配置暂无效）。新增 `doctor.repairConfig` 自动修复 dmPolicy。依赖 OpenClaw >= 2026.5.20。
