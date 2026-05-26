@@ -436,6 +436,7 @@ Approval status updates use the DynamicMsg appCard format. The `updateCardStatus
 
 ## Changelog
 
+- **v3.9.0** — Switch file upload to `/v1/app/medias/create` API (supports larger files up to 10M/20M, uses string type `image`/`video`/`audio`/`file` instead of numeric media type). Previous `/v1/medias/create` was limited to 1M and intended for avatar uploads only.
 - **v3.8.0** — Add `security.collectWarnings` and `security.collectAuditFindings` for `openclaw doctor --lint` integration (checks: credentials missing/incomplete, dmPolicy not pairing, apiGatewayUrl not set, group config unused). Add `doctor.repairConfig` to auto-fix dmPolicy to pairing. Require OpenClaw >= 2026.5.20.
 - **v3.7.0** — Inbound debounce: integrate OpenClaw `messages.inbound.debounceMs` for merging rapid consecutive messages; ack message feature (`ackMessage` / `revokeAckMessage` config): send a brief acknowledgment before agent processing, optionally auto-revoked after reply (`revokeAckMessage` default `true`), language auto-detected
 - **v3.6.0** — Fix health-monitor infinite restart loop: register `gateway.startAccount`/`stopAccount` so channelManager runtime store gets `running=true` + `connected=true`; WS lifecycle callbacks report connection status changes to runtime store via `createAccountStatusSink`

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { lansengerPlugin, resolveAccount } from "./channel.js";
-import { LansengerClient, mediaTypeFromPath, buildI18n } from "./client.js";
+import { LansengerClient, mediaTypeFromPath, uploadMediaTypeFromPath, buildI18n } from "./client.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -123,6 +123,31 @@ describe("mediaTypeFromPath", () => {
     expect(mediaTypeFromPath("doc.pdf")).toBe(3);
     expect(mediaTypeFromPath("data.xlsx")).toBe(3);
     expect(mediaTypeFromPath("archive.zip")).toBe(3);
+  });
+});
+
+describe("uploadMediaTypeFromPath", () => {
+  it("detects images", () => {
+    expect(uploadMediaTypeFromPath("photo.jpg")).toBe("image");
+    expect(uploadMediaTypeFromPath("photo.png")).toBe("image");
+    expect(uploadMediaTypeFromPath("photo.gif")).toBe("image");
+    expect(uploadMediaTypeFromPath("photo.webp")).toBe("image");
+  });
+
+  it("detects videos", () => {
+    expect(uploadMediaTypeFromPath("clip.mp4")).toBe("video");
+    expect(uploadMediaTypeFromPath("clip.mov")).toBe("video");
+  });
+
+  it("detects audio", () => {
+    expect(uploadMediaTypeFromPath("song.mp3")).toBe("audio");
+    expect(uploadMediaTypeFromPath("song.amr")).toBe("audio");
+  });
+
+  it("defaults to file", () => {
+    expect(uploadMediaTypeFromPath("doc.pdf")).toBe("file");
+    expect(uploadMediaTypeFromPath("data.xlsx")).toBe("file");
+    expect(uploadMediaTypeFromPath("archive.zip")).toBe("file");
   });
 });
 

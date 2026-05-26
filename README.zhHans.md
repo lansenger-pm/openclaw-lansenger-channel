@@ -444,6 +444,7 @@ Agent 路由由 OpenClaw 的 `bindings[]` 配置管理——见[多 Agent 路由
 
 ## 更新日志
 
+- **v3.9.0** — 文件上传接口改为 `/v1/app/medias/create`（支持更大文件，默认图片10M/其他20M，type 参数改用字符串 `image`/`video`/`audio`/`file`）。旧接口 `/v1/medias/create` 仅限1M且为头像上传专用。
 - **v3.8.0** — 新增 `security.collectWarnings` 和 `security.collectAuditFindings` 支持 `openclaw doctor --lint` 检查（凭证缺失/不完整、dmPolicy 不适合个人机器人、apiGatewayUrl 未设置、群聊配置暂无效）。新增 `doctor.repairConfig` 自动修复 dmPolicy。依赖 OpenClaw >= 2026.5.20。
 - **v3.7.0** — 入站防抖合并：接入 OpenClaw `messages.inbound.debounceMs`，合并同一用户的连续快速消息；确认消息功能（`ackMessage` / `revokeAckMessage` 配置）：代理处理前发送"收到，正在处理..."，可选代理回复后自动撤回（`revokeAckMessage` 默认 `true`），语言自动检测
 - **v3.6.0** — 修复 health-monitor 无限重启循环：注册 `gateway.startAccount`/`stopAccount`，让 channelManager runtime store 正确记录 `running=true` + `connected=true`；WS 生命周期回调通过 `createAccountStatusSink` 实时上报连接状态变更

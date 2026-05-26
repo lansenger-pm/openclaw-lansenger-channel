@@ -41,7 +41,7 @@ const API_ENDPOINTS = {
   wsEndpoint: "/v1/ws/endpoint/create",
   privateMessage: "/v1/bot/messages/create",
   groupMessage: "/v1/messages/group/create",
-  uploadMedia: "/v1/medias/create",
+  uploadMedia: "/v1/app/medias/create",
   fetchMedia: "/v1/medias",
   revokeMessage: "/v1/messages/revoke",
   dynamicUpdate: "/v1/messages/dynamic/update",
@@ -59,6 +59,14 @@ export function mediaTypeFromPath(filePath: string): number {
   if ([".jpg", ".jpeg", ".png", ".webp", ".gif"].includes(ext)) return 2;
   if ([".mp4", ".mov", ".avi", ".mkv", ".webm", ".3gp"].includes(ext)) return 1;
   return 3;
+}
+
+export function uploadMediaTypeFromPath(filePath: string): string {
+  const ext = path.extname(filePath).toLowerCase();
+  if ([".jpg", ".jpeg", ".png", ".webp", ".gif"].includes(ext)) return "image";
+  if ([".mp4", ".mov", ".avi", ".mkv", ".webm", ".3gp"].includes(ext)) return "video";
+  if ([".mp3", ".wav", ".ogg", ".flac", ".aac", ".m4a", ".amr"].includes(ext)) return "audio";
+  return "file";
 }
 
 function detectImageExt(bytes: Buffer): string {
@@ -220,15 +228,15 @@ export class LansengerClient {
     }
   }
 
-  async uploadMedia(filePath: string, mediaType?: number, originalName?: string): Promise<{ mediaId: string } | { error: string }> {
+  async uploadMedia(filePath: string, uploadType?: string, originalName?: string): Promise<{ mediaId: string } | { error: string }> {
     const token = await this.getAppToken();
     if (!token) return { error: "No access token" };
-    const mt = mediaType ?? mediaTypeFromPath(filePath);
+    const typeStr = uploadType ?? uploadMediaTypeFromPath(filePath);
     try {
-      const url = `${this.apiGatewayUrl}${API_ENDPOINTS.uploadMedia}?type=${mt}&app_token=${token}`;
+      const url = `${this.apiGatewayUrl}${API_ENDPOINTS.uploadMedia}?type=${typeStr}&app_token=${token}`;
       const fileContent = await fs.readFile(filePath);
       const filename = originalName ?? path.basename(filePath);
-      this.log.info(`uploadMedia: filePath=${filePath} originalName=${originalName ?? "n/a"} filename=${filename}`);
+      this.log.info(`uploadMedia: filePath=${filePath} uploadType=${typeStr} originalName=${originalName ?? "n/a"} filename=${filename}`);
       const form = new FormData();
       form.append("media", new Blob([fileContent]), filename);
       const resp = await fetch(url, { method: "POST", body: form });
@@ -243,7 +251,8 @@ export class LansengerClient {
 
   async sendFile(chatId: string, filePath: string, caption?: string, mediaType?: number, originalName?: string): Promise<ApiResult> {
     const mt = mediaType ?? mediaTypeFromPath(filePath);
-    const uploadResult = await this.uploadMedia(filePath, mt, originalName);
+    const uploadType = uploadMediaTypeFromPath(filePath);
+    const uploadResult = await this.uploadMedia(filePath, uploadType, originalName);
     if ("error" in uploadResult) return { success: false, error: uploadResult.error };
     return this.sendTextWithMedia(chatId, caption ?? "", mt, [uploadResult.mediaId]);
   }
