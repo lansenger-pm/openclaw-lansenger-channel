@@ -2,7 +2,42 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as crypto from "node:crypto";
+import * as childProcess from "node:child_process";
 import WebSocket from "ws";
+
+export type VideoMeta = { width?: number; height?: number; duration?: number };
+
+export async function probeVideoMeta(filePath: string, logger?: ClientLogger): Promise<VideoMeta> {
+  const log = logger ?? silentLogger;
+  try {
+    const args = [
+      "-v", "error",
+      "-select_streams", "v:0",
+      "-show_entries", "stream=width,height,duration",
+      "-of", "csv=p=0",
+      filePath,
+    ];
+    const stdout = await new Promise<string>((resolve, reject) => {
+      childProcess.execFile("ffprobe", args, { timeout: 10_000 }, (err, out) => {
+        if (err) reject(err);
+        else resolve(out ?? "");
+      });
+    });
+    const parts = stdout.trim().split(",");
+    const width = parts[0] ? parseInt(parts[0], 10) : undefined;
+    const height = parts[1] ? parseInt(parts[1], 10) : undefined;
+    const duration = parts[2] ? parseFloat(parts[2]) : undefined;
+    if (width && height) {
+      log.info(`probeVideoMeta: ${filePath} → ${width}x${height} duration=${duration ?? "n/a"}s`);
+      return { width, height, duration: duration && duration > 0 ? Math.round(duration) : undefined };
+    }
+    log.info(`probeVideoMeta: ${filePath} → incomplete metadata (${stdout.trim()})`);
+    return {};
+  } catch (e: any) {
+    log.info(`probeVideoMeta: ffprobe unavailable or failed for ${filePath} — ${e.message ?? e}`);
+    return {};
+  }
+}
 
 export type ClientLogger = {
   info: (message: string) => void;
@@ -228,15 +263,20 @@ export class LansengerClient {
     }
   }
 
-  async uploadMedia(filePath: string, uploadType?: string, originalName?: string): Promise<{ mediaId: string } | { error: string }> {
+  async uploadMedia(filePath: string, uploadType?: string, originalName?: string, videoMeta?: VideoMeta): Promise<{ mediaId: string } | { error: string }> {
     const token = await this.getAppToken();
     if (!token) return { error: "No access token" };
     const typeStr = uploadType ?? uploadMediaTypeFromPath(filePath);
     try {
-      const url = `${this.apiGatewayUrl}${API_ENDPOINTS.uploadMedia}?type=${typeStr}&app_token=${token}`;
+      let url = `${this.apiGatewayUrl}${API_ENDPOINTS.uploadMedia}?type=${typeStr}&app_token=${token}`;
+      if (typeStr === "video" && videoMeta) {
+        if (videoMeta.width) url += `&width=${videoMeta.width}`;
+        if (videoMeta.height) url += `&height=${videoMeta.height}`;
+        if (videoMeta.duration) url += `&duration=${videoMeta.duration}`;
+      }
       const fileContent = await fs.readFile(filePath);
       const filename = originalName ?? path.basename(filePath);
-      this.log.info(`uploadMedia: filePath=${filePath} uploadType=${typeStr} originalName=${originalName ?? "n/a"} filename=${filename}`);
+      this.log.info(`uploadMedia: filePath=${filePath} uploadType=${typeStr} originalName=${originalName ?? "n/a"} filename=${filename} videoMeta=${typeStr === "video" && videoMeta ? `${videoMeta.width ?? "?"}x${videoMeta.height ?? "?"} dur=${videoMeta.duration ?? "?"}` : "n/a"}`);
       const form = new FormData();
       form.append("media", new Blob([fileContent]), filename);
       const resp = await fetch(url, { method: "POST", body: form });
@@ -249,10 +289,14 @@ export class LansengerClient {
     }
   }
 
-  async sendFile(chatId: string, filePath: string, caption?: string, mediaType?: number, originalName?: string): Promise<ApiResult> {
+  async sendFile(chatId: string, filePath: string, caption?: string, mediaType?: number, originalName?: string, videoMeta?: VideoMeta): Promise<ApiResult> {
     const mt = mediaType ?? mediaTypeFromPath(filePath);
     const uploadType = uploadMediaTypeFromPath(filePath);
-    const uploadResult = await this.uploadMedia(filePath, uploadType, originalName);
+    let meta = videoMeta;
+    if (uploadType === "video" && !meta) {
+      meta = await probeVideoMeta(filePath, this.log);
+    }
+    const uploadResult = await this.uploadMedia(filePath, uploadType, originalName, meta);
     if ("error" in uploadResult) return { success: false, error: uploadResult.error };
     return this.sendTextWithMedia(chatId, caption ?? "", mt, [uploadResult.mediaId]);
   }

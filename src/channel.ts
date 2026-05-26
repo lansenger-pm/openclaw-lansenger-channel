@@ -34,10 +34,10 @@ type LansengerAccount = {
   homeChannel?: string;
   enabled?: boolean;
   ackMessage?: boolean;
+  revokeAckMessage?: boolean;
   ackMessageTextZh?: string;
   ackMessageTextEn?: string;
-  revokeAckMessage?: boolean;
-};
+}
 
 type ResolvedAccount = {
   accountId: string | null;
