@@ -444,28 +444,7 @@ Les mises à jour de statut d'approbation utilisent le format DynamicMsg appCard
 
 ## Journal des modifications
 
-- **v3.12.0** — Compatibilité OpenClaw 2026.5.27 : migration `api.runtime.channel.turn` → `api.runtime.channel.inbound` (OpenClaw a retiré l'alias `turn` de `PluginRuntimeChannel` ; le namespace `inbound` fournit la même fonction `run`). Dépendance dev `openclaw` : `^2026.5.20` → `^2026.5.27`.
-- **v3.11.0** — Suppression de la dépendance `child_process` (bloquait l'install OpenClaw). Vidéo requiert désormais `coverImagePath` + `videoWidth/Height/Duration` manuels (ffmpeg/ffprobe avant send-file). Vidéo entrante : couverture en type image.
-- **v3.10.0** — Correction des messages vidéo : l'API exige `mediaIds=[vidéo, imageCouverture]` (2 éléments). `sendFile()` extrait automatiquement la première frame via ffmpeg et l'upload comme couverture. `send-text` avec fichier utilise désormais le mediaType correct au lieu du codé en dur `3`. Vidéo entrante : couverture téléchargée comme type image.
-- **v3.9.0** — Passage à l'API `/v1/app/medias/create` pour l'upload de fichiers (fichiers plus volumineux, 10M/20M par défaut, type en chaîne `image`/`video`/`audio`/`file` au lieu de numérique). L'ancienne API `/v1/medias/create` était limitée à 1M et destinée aux avatars uniquement.
-- **v3.8.0** — Ajout de `security.collectWarnings` et `security.collectAuditFindings` pour `openclaw doctor --lint` (vérifications : identifiants absents/incomplets, dmPolicy non pairing, apiGatewayUrl non défini, config de groupe inutilisée). Ajout de `doctor.repairConfig` pour auto-corriger dmPolicy. Requiert OpenClaw >= 2026.5.20.
-- **v3.7.0** — Debounce entrant : intégration d'OpenClaw `messages.inbound.debounceMs` pour fusionner les messages consécutifs rapides ; fonctionnalité de message ack (`ackMessage` / `revokeAckMessage` config) : envoyer « reçu, en cours de traitement... » avant le traitement, révocabilité automatique après la réponse (`revokeAckMessage` défaut `true`), langue auto-détectée
-- **v3.6.0** — Correction boucle de redémarrage infini du health-monitor : enregistrement `gateway.startAccount`/`stopAccount` pour que le channelManager runtime store reçoive `running=true` + `connected=true` ; callbacks WS lifecycle rapportent les changements de connexion via `createAccountStatusSink`
-- **v3.5.0** — Correction de la livraison en double des messages (déduplication par tour) ; suppression du suffixe UUID OpenClaw des noms de fichiers ; documentation whitelist MEDIA ; conseil alsoAllow ; corrections d'exactitude README
-- **v3.3.0** — Fusion du plugin tools dans le plugin canal ; outils agent désormais intégrés (pas d'installation séparée) ; suppression des peerDependencies sur `@lansenger-pm/openclaw-lansenger-tools`
-- **v3.2.10** — Alerte au démarrage si `group:plugins` absent de l'allowlist ; `configWrites` dans le schema de config canal ; plugin compagnon via `globalThis.__lansenger_channel`
-- **v3.1.0** — Wizard multi-compte ; alignement dmPolicy (dmSecurity→dmPolicy + paired→pairing) ; prompts bilingues ; shouldPrompt skip steps configurés ; migration config multi-compte
-- **v3.0.0** — Ajout `lansenger_send_format_text` (Markdown + @mention) ; réécriture SKILL.md ; correction headStatusInfo description+colour
-- **v2.10.0** — Conversion px→pt appCard ; classification erreurs sendImageUrl ; journalisation outils
-- **v2.9.0** — Adaptateur statut ; repli env vars ; uiHints chinois ; README nettoyage (5 langues)
-- **v2.8.0** — Routage multi-agent OpenClaw `bindings[]` ; groupPolicy/groupAllowFrom/groups ; SKILL.md AgentSkills
-- **v2.7.0** — Enregistrement outils objets simples ; état runtime client/target
-- **v2.6.0** — Enregistrement inconditionnel ; suppression ghost delete_message
-- **v2.5.0** — formatText reminder ; AppArticles `summary` ; revoke bot/group uniquement
-- **v2.4.0** — Correction assemblage message ; corrections appArticles/linkCard
-- **v2.3.0** — Suppression envoi groupe/privé legacy ; routage via msgTarget
-- **v2.2.0** — Ajout 9 outils agent
-- **v2.0.0** — Version initiale
+Historique complet des versions : [CHANGELOG.md](CHANGELOG.md).
 
 ## Licence
 

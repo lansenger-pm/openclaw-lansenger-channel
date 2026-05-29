@@ -444,27 +444,7 @@ Agent 路由由 OpenClaw 的 `bindings[]` 配置管理——见[多 Agent 路由
 
 ## 更新日志
 
-- **v3.12.0** — 修复与 OpenClaw 2026.5.27 的兼容性：迁移 `api.runtime.channel.turn` → `api.runtime.channel.inbound`（OpenClaw 从 `PluginRuntimeChannel` 移除了旧 `turn` 运行时别名，新 `inbound` 命名空间提供相同的 `run` 函数）。升级 `openclaw` 开发依赖从 `^2026.5.20` 到 `^2026.5.27`。
-- **v3.11.0** — 移除 `child_process` 依赖（之前导致 OpenClaw 安装被拦截）。视频现在要求手动提供 `coverImagePath` + `videoWidth/Height/Duration` 参数（调用 send-file 前先用 ffmpeg/ffprobe 提取）。入站视频封面以图片类型下载。
-- **v3.10.0** — 修复视频消息：API要求 `mediaIds=[视频mediaId, 封面图片mediaId]`（数组长度必须为2）。`sendFile()` 自动用ffmpeg提取首帧作为封面并上传。`send-text` 文件附件现在根据文件类型设置正确的 mediaType，不再硬编码为3。入站视频封面以图片类型下载。
-- **v3.9.0** — 文件上传接口改为 `/v1/app/medias/create`（支持更大文件，默认图片10M/其他20M，type 参数改用字符串 `image`/`video`/`audio`/`file`）。旧接口 `/v1/medias/create` 仅限1M且为头像上传专用。
-- **v3.8.0** — 新增 `security.collectWarnings` 和 `security.collectAuditFindings` 支持 `openclaw doctor --lint` 检查（凭证缺失/不完整、dmPolicy 不适合个人机器人、apiGatewayUrl 未设置、群聊配置暂无效）。新增 `doctor.repairConfig` 自动修复 dmPolicy。依赖 OpenClaw >= 2026.5.20。
-- **v3.7.0** — 入站防抖合并：接入 OpenClaw `messages.inbound.debounceMs`，合并同一用户的连续快速消息；确认消息功能（`ackMessage` / `revokeAckMessage` 配置）：代理处理前发送"收到，正在处理..."，可选代理回复后自动撤回（`revokeAckMessage` 默认 `true`），语言自动检测
-- **v3.6.0** — 修复 health-monitor 无限重启循环：注册 `gateway.startAccount`/`stopAccount`，让 channelManager runtime store 正确记录 `running=true` + `connected=true`；WS 生命周期回调通过 `createAccountStatusSink` 实时上报连接状态变更
-- **v3.5.0** — 修复重复消息送达（每回合去重）；剥离文件名中的 OpenClaw UUID 后缀；MEDIA 白名单文档；alsoAllow 提示；README 准确性修复
-- **v3.3.0** — 合并 tools 插件至频道插件；代理工具现已内置（无需单独安装）；移除 `@lansenger-pm/openclaw-lansenger-tools` 的 peerDependencies
-- **v3.1.0** — 多账号设置向导；dmPolicy 对齐 OpenClaw 标准（dmSecurity→dmPolicy + paired→pairing）；中英双语提示文案；凭证 shouldPrompt 跳过已配置步骤；多账号配置迁移清理
-- **v3.0.0** — 新增 `lansenger_send_format_text` 工具（Markdown + @提及）；重写 SKILL.md；修正 headStatusInfo description+colour 语义
-- **v2.10.0** — appCard font-size px→pt 自动转换；sendImageUrl 错误分类；工具注册日志
-- **v2.9.0** — 状态适配器；环境变量回退；uiHints 中文标签；README 精简（5 语言）
-- **v2.8.0** — OpenClaw `bindings[]` 多 Agent 路由；groupPolicy/groupAllowFrom/groups 群聊准入；SKILL.md AgentSkills 规范
-- **v2.7.0** — 纯对象工具注册；运行时状态获取 client/target
-- **v2.6.0** — 无条件注册工具；移除幽灵 delete_message
-- **v2.5.0** — formatText reminder；AppArticles `summary`；撤回仅 bot/group
-- **v2.4.0** — 修复消息体组装；appArticles/linkCard 字段修复
-- **v2.3.0** — 移除遗留群聊/私聊发送；全部通过 msgTarget 路由
-- **v2.2.0** — 添加 9 个 agent 工具
-- **v2.0.0** — 初始发布
+完整版本历史见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 许可证
 

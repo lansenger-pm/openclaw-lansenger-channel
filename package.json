@@ -31,7 +31,8 @@
     "README.zhHant.md",
     "README.zhHantHK.md",
     "README.fr.md",
-    "LICENSE"
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "description": "Lansenger (蓝信) channel plugin for OpenClaw — WebSocket inbound, HTTP API outbound, text/markdown/media/linkCard/appCard/approval delivery",
   "license": "MIT",
