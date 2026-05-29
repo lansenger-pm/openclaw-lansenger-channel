@@ -446,6 +446,7 @@ Agent 路由由 OpenClaw 的 `bindings[]` 設定管理——見[多 Agent 路由
 
 ## 更新日誌
 
+- **v3.12.0** — 修復與 OpenClaw 2026.5.27 的相容性：遷移 `api.runtime.channel.turn` → `api.runtime.channel.inbound`（OpenClaw 從 `PluginRuntimeChannel` 移除舊 `turn` 運行時別名，新 `inbound` 命名空間提供相同的 `run` 函數）。升級 `openclaw` 開發依賴從 `^2026.5.20` 到 `^2026.5.27`。
 - **v3.11.0** — 移除 `child_process` 依賴（之前導致 OpenClaw 安裝被攔截）。影片現在要求手動提供 `coverImagePath` + `videoWidth/Height/Duration` 參數（呼叫 send-file 前先用 ffmpeg/ffprobe 提取）。入站影片封面以圖片類型下載。
 - **v3.10.0** — 修復影片訊息：API要求 `mediaIds=[影片mediaId, 封面圖片mediaId]`（陣列長度必須為2）。`sendFile()` 自動用ffmpeg提取首帧作為封面並上傳。`send-text` 檔案附件現在根據檔案類型設定正確的 mediaType，不再硬編碼為3。入站影片封面以圖片類型下載。
 - **v3.9.0** — 檔案上傳介面改為 `/v1/app/medias/create`（支援更大檔案，預設圖片10M/其他20M，type 參數改用字串 `image`/`video`/`audio`/`file`）。舊介面 `/v1/medias/create`僅限1M且為頭像上傳專用。

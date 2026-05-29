@@ -436,6 +436,7 @@ Approval status updates use the DynamicMsg appCard format. The `updateCardStatus
 
 ## Changelog
 
+- **v3.12.0** — Fix compatibility with OpenClaw 2026.5.27: migrate `api.runtime.channel.turn` → `api.runtime.channel.inbound` (OpenClaw removed the old `turn` runtime alias from `PluginRuntimeChannel`; the new `inbound` namespace provides the same `run` function with identical parameters). Bump `openclaw` devDependency from `^2026.5.20` to `^2026.5.27`.
 - **v3.11.0** — Remove `child_process` dependency (was blocking OpenClaw install). Video now requires manual `coverImagePath` + `videoWidth/Height/Duration` params (use ffmpeg/ffprobe before calling send-file). Inbound video cover downloaded as image type.
 - **v3.10.0** — Fix video message: API requires `mediaIds=[video, coverImage]` (2 elements). `sendFile()` now auto-extracts first frame via ffmpeg and uploads as cover. `send-text` with file attachment now uses correct mediaType instead of hardcoded `3`. Inbound video downloads cover as image type.
 - **v3.9.0** — Switch file upload to `/v1/app/medias/create` API (supports larger files up to 10M/20M, uses string type `image`/`video`/`audio`/`file` instead of numeric media type). Previous `/v1/medias/create` was limited to 1M and intended for avatar uploads only.
