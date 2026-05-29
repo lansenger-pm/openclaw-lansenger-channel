@@ -1,6 +1,6 @@
 {
   "name": "@lansenger-pm/openclaw-lansenger-channel",
-  "version": "3.11.0",
+  "version": "3.12.0",
   "type": "module",
   "main": "dist/index.js",
   "exports": {
@@ -123,7 +123,7 @@
   "devDependencies": {
     "@types/node": "^25.7.0",
     "@types/ws": "^8.18.1",
-    "openclaw": "^2026.5.20",
+    "openclaw": "^2026.5.27",
     "typescript": "^6.0.3",
     "vitest": "^4.1.6"
   },

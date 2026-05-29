@@ -172,8 +172,8 @@ export function startLansengerGateway(api: OpenClawPluginApi): void {
   const rtKeys = rt ? Object.keys(rt) : [];
   const channelKeys = rt?.channel ? Object.keys(rt.channel) : [];
   log.info(`plugin startup: runtime available=${!!rt} runtimeKeys=${rtKeys.join(",")} channelKeys=${channelKeys.join(",")}`);
-  if (!rt?.channel?.turn) {
-    log.error(`plugin startup: api.runtime.channel.turn is UNDEFINED — inbound messages will fail! OpenClaw version may be too old (need 2026.5.x+)`);
+  if (!rt?.channel?.inbound) {
+    log.error(`plugin startup: api.runtime.channel.inbound is UNDEFINED — inbound messages will fail! OpenClaw version may be too old (need 2026.5.27+)`);
   }
   if (!rt?.channel?.pairing) {
     log.warn(`plugin startup: api.runtime.channel.pairing is UNDEFINED — DM pairing will be disabled`);
@@ -665,8 +665,8 @@ async function handleInbound(
   }
 
   try {
-    log.info(`turn.run starting: sessionKey=${sessionKey} agentId=${agentId} accountId=${account.accountId}`);
-    await api.runtime.channel.turn.run({
+    log.info(`inbound.run starting: sessionKey=${sessionKey} agentId=${agentId} accountId=${account.accountId}`);
+    await api.runtime.channel.inbound.run({
       channel: "lansenger",
       accountId: account.accountId ?? undefined,
       raw: event,
@@ -772,7 +772,7 @@ async function handleInbound(
         },
       },
     } as any);
-    log.info(`turn.run completed: sessionKey=${sessionKey}`);
+    log.info(`inbound.run completed: sessionKey=${sessionKey}`);
     if (ackMessageId && account.revokeAckMessage) {
       try {
         const entry = runningAccounts.get(runningKey);
@@ -784,7 +784,7 @@ async function handleInbound(
       }
     }
   } catch (e: unknown) {
-    log.error(`turn.run failed: ${e instanceof Error ? e.message : String(e)}`);
+    log.error(`inbound.run failed: ${e instanceof Error ? e.message : String(e)}`);
     if (ackMessageId && account.revokeAckMessage) {
       try {
         const entry = runningAccounts.get(runningKey);
