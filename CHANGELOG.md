@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.12.2] - 2026-06-03
+
+### Outbound Hook Expansion
+
+- **`reply_payload_sending` hook**: Register typed plugin hook via `api.on()` for lansenger channel. Intercepts reply payloads before delivery for logging, approval context injection, and payload rewrite/cancel decisions.
+- **`normalizePayload` expansion**: Code block detection (`\`\`\``) now marks `_lansengerFormatText: true` even when payload has `mediaUrl` or `presentation`, ensuring Markdown rendering for code-rich replies.
+- **`beforeDeliverPayload` approval-resolved**: When `hint.kind === "approval-resolved"`, proactively updates the original appCard status via `updateDynamicCard`. Provides crash-recovery safety for card status updates since the delivery pipeline replays on gateway restart.
+- **`shouldSuppressLocalPayloadPrompt`**: Suppresses local text prompt when native approval route is active (`hint.kind === "approval-pending"` with `nativeRouteActive === true`). Prevents duplicate approval prompts (native appCard + local text).
+- **`pendingApprovalCards` Map**: Tracks sent approval card messageIds keyed by chatId, enabling `beforeDeliverPayload` to correlate approval-resolved payloads with the original card.
+- **Text chunking**: Add `textChunkLimit: 4000`, `chunkerMode: "markdown"`, and `chunker` (using SDK `chunkMarkdownTextWithMode`). Long agent replies are automatically split into multiple Lansenger messages, preserving Markdown structure across chunks.
+- **`resolveEffectiveTextChunkLimit`**: Uses SDK `resolveTextChunkLimit` to allow config-level override of the chunk limit.
+
+### Approval Flow Enhancement
+
+- `approvalCapability.transport.send` now stores card `messageId` in `pendingApprovalCards` Map for later correlation in `beforeDeliverPayload`.
+- Card status updates (pending → approved/denied) now happen both via `transport.update` (approval framework) and `beforeDeliverPayload` (delivery pipeline). The latter provides crash-recovery safety.
+
 ## [3.12.1] - 2026-06-03
 
 ### OpenClaw 2026.5.28 Compatibility
@@ -19,6 +36,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 ### Security
 
 - **SecretRef support for appSecret**: `resolveAccount()` now detects SecretRef objects via `coerceSecretRef()` and resolves from env vars. No need to store appSecret as plaintext in config.
+- **Plaintext appSecret warning**: `resolveAccount()` now emits a `log.warn` when `appSecret` is stored as a plaintext string in `openclaw.json`, advising migration to SecretRef via `openclaw secrets configure`.
+- **README security notes**: All 5 locale READMEs now include a prominent security advisory urging users to migrate plaintext `appSecret` to SecretRef storage.
 - **SSRF protection for sendImageUrl**: `assertHttpUrlTargetsPrivateNetwork()` blocks RFC1918/link-local/metadata-IP targets by default (aligned with Feishu/Discord/BlueBubbles channels in 2026.5.28).
 - **`dangerouslyAllowPrivateNetwork` config**: Opt-in at top-level or per-account to allow private network image URLs. Audit finding (`lansenger/dangerously-allow-private-network`) warns when enabled.
 - **`mediaLocalRoots` config**: Restrict local file delivery to configured directories. If empty, all paths allowed. Prevents agents from accessing arbitrary files outside allowed roots. Available at top-level and per-account.

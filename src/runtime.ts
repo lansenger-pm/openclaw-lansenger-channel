@@ -8,6 +8,7 @@ import type { InboundEvent, ClientLogger, ApiResult, AppCardData } from "./clien
 import { resolveAccount, makeClient, isPathAllowed } from "./channel.js";
 import type { ResolvedAccount } from "./channel.js";
 import { errorShape } from "openclaw/plugin-sdk/gateway-runtime";
+import { pendingApprovalCards } from "./channel.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -175,6 +176,24 @@ export function startLansengerGateway(api: OpenClawPluginApi): void {
       log.info(`message_sending hook: sessionKey=${sessionKey.slice(0, 32)} type=${event?.type} action=${event?.action}`);
     }
   });
+
+  if (api.on) {
+    api.on("reply_payload_sending", (event: any, ctx: any) => {
+      if (ctx?.channelId === "lansenger" || event?.channel === "lansenger") {
+        const payload = event?.payload;
+        const sessionKey = ctx?.sessionKey ?? "";
+        const kind = event?.kind ?? "unknown";
+        log.info(`reply_payload_sending hook: channel=lansenger sessionKey=${sessionKey.slice(0, 32)} kind=${kind} hasText=${Boolean(payload?.text)} hasMedia=${Boolean(payload?.mediaUrl)} hasPresentation=${Boolean(payload?.presentation)}`);
+
+        if (payload?.channelData?.execApproval) {
+          const chatId = payload?.channelData?.__lansenger_target ?? "";
+          log.info(`reply_payload_sending: approval payload detected — execApproval=${payload.channelData.execApproval}`);
+        }
+
+        return void 0;
+      }
+    });
+  }
 
   const rt = api.runtime as any;
   const rtKeys = rt ? Object.keys(rt) : [];

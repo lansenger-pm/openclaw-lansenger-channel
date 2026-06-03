@@ -122,6 +122,16 @@ openclaw pairing approve lansenger <配對碼>
 
 憑證也可透過 `openclaw.json` 配置提供（見下方可選設定）。配置值優先；環境變數僅在配置未設定時作為回退。
 
+> ⚠️ **安全：將 appSecret 遷移至 SecretRef 儲存**
+>
+> 自 v3.12.1 起，藍信頻道插件支援 OpenClaw SecretRef 儲存 `appSecret`。如果 `appSecret` 以明文儲存在 `openclaw.json` 中，任何讀取配置的工作區工具都能看到它。請執行以下指令遷移：
+>
+> ```
+> openclaw secrets configure
+> ```
+>
+> 選擇 `channels.lansenger.accounts.*.appSecret` 欄位將其轉換為 SecretRef。遷移後，配置中將包含 `__OPENCLAW_SECRET__({ref_id})` 而非原始密鑰值，實際值儲存在系統憑證庫中。
+
 ### 取得憑證
 
 **藍信桌面端** → **通訊錄** → **智慧機器人** → **個人機器人** → 點擊 **ℹ️** 圖標

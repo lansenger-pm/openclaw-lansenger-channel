@@ -114,6 +114,16 @@ Add these to `~/.openclaw/.env` or your environment:
 
 Credentials can also be provided via `openclaw.json` config (see Optional Configuration below). Config values take precedence; env vars are used as fallback when config is unset.
 
+> ⚠️ **Security: Migrate appSecret to SecretRef storage**
+>
+> As of v3.12.1, the Lansenger channel plugin supports OpenClaw SecretRef for `appSecret`. If your `appSecret` is stored as plaintext in `openclaw.json`, any workspace tool that reads config can see it. Migrate by running:
+>
+> ```
+> openclaw secrets configure
+> ```
+>
+> Select the `channels.lansenger.accounts.*.appSecret` field to convert it to a SecretRef. After migration, the config will contain `__OPENCLAW_SECRET__({ref_id})` instead of the raw secret value, while the actual value is stored in the system credential store.
+
 ### Get Credentials
 
 **Lansenger Desktop** → **Contacts** → **Bots** → **Personal Bots** → click **ℹ️** icon

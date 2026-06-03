@@ -12,6 +12,7 @@ import {
 import { createSubsystemLogger } from "openclaw/plugin-sdk/logging-core";
 import { coerceSecretRef, type SecretRef } from "openclaw/plugin-sdk/secret-ref-runtime";
 import { isPrivateNetworkOptInEnabled } from "openclaw/plugin-sdk/ssrf-policy";
+import { chunkMarkdownTextWithMode, resolveTextChunkLimit } from "openclaw/plugin-sdk/reply-chunking";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -22,6 +23,9 @@ import { getRunningClient, getLastInboundTime, stripOpenClawUuidSuffix, gatewayS
 import { lansengerSetupWizard } from "./setup-wizard.js";
 
 const log = createSubsystemLogger("lansenger");
+const LANSENGER_TEXT_CHUNK_LIMIT = 4000;
+
+const pendingApprovalCards = new Map<string, { messageId: string; lang: "zh" | "en" }>();
 
 function isPathAllowed(filePath: string, roots: string[]): boolean {
   if (roots.length === 0) return true;
@@ -118,6 +122,13 @@ function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): Resolve
   const appId = account?.appId ?? process.env.LANSENGER_APP_ID ?? "";
   const rawSecret = account?.appSecret ?? process.env.LANSENGER_APP_SECRET ?? "";
   const appSecret = resolveSecretValue(rawSecret);
+  const configSecret = account?.appSecret;
+  if (typeof configSecret === "string" && configSecret.trim() && !configSecret.startsWith("__OPENCLAW_SECRET__")) {
+    log.warn(
+      `⚠️ appSecret for account '${resolvedAccountId || "default"}' is stored as plaintext in openclaw.json. ` +
+      `Migrate to SecretRef for better security: run 'openclaw secrets configure'`
+    );
+  }
   const apiGatewayUrl = account?.apiGatewayUrl ?? process.env.LANSENGER_API_GATEWAY_URL ?? DEFAULT_API_GATEWAY_URL;
   const allowFrom: string[] = account?.allowFrom ?? [];
   const dmPolicy = account?.dmPolicy ?? account?.dmSecurity;
@@ -477,16 +488,45 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
       deliveryMode: "direct" as const,
       normalizePayload: (params: any) => {
         const payload = params.payload as any;
+        const hasCodeBlock = payload?.text && /```/.test(payload.text);
         if (payload?.text && !payload?.mediaUrl && !payload?.presentation) {
+          return { ...payload, _lansengerFormatText: true };
+        }
+        if (hasCodeBlock && payload?.text) {
           return { ...payload, _lansengerFormatText: true };
         }
         return payload ?? null;
       },
-      beforeDeliverPayload: (params: any) => {
+      beforeDeliverPayload: async (params: any) => {
         const target = params.target as any;
         const payload = params.payload as any;
+        const hint = params.hint as any;
         const sessionKey = (params as any).sessionKey ?? "";
-        log.info(`beforeDeliverPayload: to=${target?.to} sessionKey=${sessionKey.slice(0, 32)} payloadKind=${payload?.text ? "text" : "other"}`);
+
+        if (hint?.kind === "approval-resolved") {
+          const chatId = target?.to;
+          const cardInfo = pendingApprovalCards.get(chatId);
+          if (cardInfo?.messageId) {
+            const account = resolveAccount(params.cfg, target?.accountId ?? undefined);
+            const client = makeClient(account);
+            const status: "approved" | "denied" = payload?.text?.includes("✅") ? "approved" : "denied";
+            try {
+              await client.updateCardStatus(cardInfo.messageId, status, cardInfo.lang);
+              log.info(`beforeDeliverPayload: approval card updated — messageId=${cardInfo.messageId} status=${status}`);
+              pendingApprovalCards.delete(chatId);
+            } catch (e: unknown) {
+              log.error(`beforeDeliverPayload: card update failed — ${e instanceof Error ? e.message : String(e)}`);
+            }
+          } else {
+            log.info(`beforeDeliverPayload: approval-resolved but no pending card found for chatId=${chatId}`);
+          }
+        }
+
+        if (hint?.kind === "approval-pending") {
+          log.info(`beforeDeliverPayload: approval-pending — to=${target?.to} nativeRoute=${hint?.nativeRouteActive ?? false}`);
+        }
+
+        log.info(`beforeDeliverPayload: to=${target?.to} sessionKey=${sessionKey.slice(0, 32)} hint=${hint?.kind ?? "none"} payloadKind=${payload?.text ? "text" : "other"}`);
       },
       sendFormattedText: async (ctx) => {
         const sessionKey = (ctx as any).sessionKey as string | undefined;
@@ -494,6 +534,22 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
         const client = makeClient(account);
         const result = await client.sendFormatText(ctx.to, ctx.text);
         return [{ channel: "lansenger", messageId: result.messageId ?? "", sessionKey }];
+      },
+      textChunkLimit: LANSENGER_TEXT_CHUNK_LIMIT,
+      chunkerMode: "markdown",
+      chunker: (text: string, limit: number, ctx?: any) => {
+        const mode = ctx?.formatting?.chunkMode ?? "length";
+        return chunkMarkdownTextWithMode(text, limit, mode as "length" | "newline");
+      },
+      resolveEffectiveTextChunkLimit: (params: any) => {
+        return resolveTextChunkLimit(params.cfg, "lansenger", params.accountId, { fallbackLimit: LANSENGER_TEXT_CHUNK_LIMIT });
+      },
+      shouldSuppressLocalPayloadPrompt: (params: any) => {
+        const hint = params.hint as any;
+        if (hint?.kind === "approval-pending" && hint?.nativeRouteActive) {
+          return true;
+        }
+        return false;
       },
     },
   },
@@ -806,6 +862,9 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
             const lang = client.getUserLang(target.to);
             const appCard = (lang === "zh" ? payload.zh : payload.en) ?? payload.en;
             const result = await client.sendAppCard(target.to, appCard as AppCardData);
+            if (result.messageId) {
+              pendingApprovalCards.set(target.to, { messageId: result.messageId, lang: lang as "zh" | "en" });
+            }
             return { delivered: result.success, messageId: result.messageId ?? null };
           }
           if (payload?.type === "text" && payload?.text) {
@@ -925,5 +984,5 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
   },
 };
 
-export { resolveAccount, makeClient, isPathAllowed };
+export { resolveAccount, makeClient, isPathAllowed, pendingApprovalCards, LANSENGER_TEXT_CHUNK_LIMIT };
 export type { ResolvedAccount };

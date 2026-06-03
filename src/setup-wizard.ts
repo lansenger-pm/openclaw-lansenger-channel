@@ -6,13 +6,16 @@ import {
   patchChannelConfigForAccount,
   createAccountScopedAllowFromSection,
   splitSetupEntries,
+  createSetupTranslator,
 } from "openclaw/plugin-sdk/setup-runtime";
 import {
   createTopLevelChannelDmPolicy,
   formatDocsLink,
 } from "openclaw/plugin-sdk/channel-setup";
+import { lt } from "./setup-i18n.js";
 
 const CHANNEL = "lansenger";
+const t = createSetupTranslator();
 
 function getSection(cfg: OpenClawConfig): Record<string, any> | undefined {
   return (cfg.channels as Record<string, any>)?.[CHANNEL];
@@ -36,14 +39,14 @@ function resolveAccountFromCfg(cfg: OpenClawConfig, accountId?: string): Record<
 }
 
 const HELP_LINES = [
-  "Lansenger Desktop → Contacts → Bots → Personal Bots / 蓝信桌面端 → 通讯录 → 智能机器人 → 个人机器人",
-  "Click the ℹ️ icon to view App ID and App Secret / 点击 ℹ️ 图标查看凭证",
-  "Personal Bots only — organization bots not supported / 仅支持个人机器人",
-  "Mobile client does NOT support viewing credentials / 移动端不支持查看凭证",
-  `Docs: ${formatDocsLink("https://open.e.lanxin.cn/docs", "lansenger")}`,
+  lt("introDesktopPath"),
+  lt("introClickInfo"),
+  lt("introPersonalOnly"),
+  lt("introNoMobile"),
+  t("wizard.channels.docs", { link: formatDocsLink("https://open.e.lanxin.cn/docs", "lansenger") }),
   "",
-  "✅ Agent tools are included in this plugin (no separate install needed). / 代理工具已内置于此插件，无需单独安装。",
-  "CLI is an optional alternative: pip install lansenger-cli / CLI 为可选替代方案：pip install lansenger-cli",
+  lt("introToolsIncluded"),
+  lt("introCliAlt"),
 ];
 
 function makeInspect(field: string, envVar: string) {
@@ -66,11 +69,11 @@ export const lansengerSetupWizard: any = {
   channel: CHANNEL,
 
   status: createStandardChannelSetupStatus({
-    channelLabel: "Lansenger (蓝信)",
-    configuredLabel: "已配置 / configured",
-    unconfiguredLabel: "需要 App ID 和 App Secret / needs App ID and App Secret",
-    configuredHint: "已配置 / configured",
-    unconfiguredHint: "需要配置 / needs setup",
+    channelLabel: lt("channelLabel"),
+    configuredLabel: t("wizard.channels.statusConfigured"),
+    unconfiguredLabel: t("wizard.channels.statusNeedsAppCredentials"),
+    configuredHint: t("wizard.channels.statusConfigured"),
+    unconfiguredHint: t("wizard.channels.statusNeedsSetup"),
     configuredScore: 1,
     unconfiguredScore: 10,
     resolveConfigured: ({ cfg }: any) => {
@@ -85,7 +88,7 @@ export const lansengerSetupWizard: any = {
   }),
 
   introNote: {
-    title: "Lansenger Setup / 蓝信配置",
+    title: lt("introTitle"),
     lines: HELP_LINES,
     shouldShow: ({ cfg }: any) => {
       const section = getSection(cfg);
@@ -101,16 +104,13 @@ export const lansengerSetupWizard: any = {
     {
       inputKey: "appToken",
       providerHint: "lansenger",
-      credentialLabel: "Lansenger App ID",
+      credentialLabel: lt("appIdLabel"),
       preferredEnvVar: "LANSENGER_APP_ID",
-      helpTitle: "Lansenger App ID / 蓝信 App ID",
-      helpLines: [
-        "App ID from your Lansenger Personal Bot / 个人机器人的 App ID",
-        "Found alongside App Secret → Contacts → Bots → Personal Bots / 通讯录 → 智能机器人 → 个人机器人",
-      ],
-      envPrompt: "检测到环境变量 LANSENGER_APP_ID，是否使用？/ LANSENGER_APP_ID detected. Use env var?",
-      keepPrompt: "App ID 已配置，是否保留？/ App ID already configured. Keep it?",
-      inputPrompt: "输入蓝信 App ID / Enter Lansenger App ID",
+      helpTitle: lt("appIdLabel"),
+      helpLines: [lt("appIdHelpLine1"), lt("appIdHelpLine2")],
+      envPrompt: lt("appIdEnvPrompt"),
+      keepPrompt: lt("appIdKeepPrompt"),
+      inputPrompt: lt("appIdInputPrompt"),
       shouldPrompt: ({ state }: any) => !state.hasConfiguredValue,
       allowEnv: ({ accountId }: any) => !accountId || accountId === "default" || accountId === DEFAULT_ACCOUNT_ID,
       inspect: makeInspect("appId", "LANSENGER_APP_ID"),
@@ -122,16 +122,13 @@ export const lansengerSetupWizard: any = {
     {
       inputKey: "secret",
       providerHint: "lansenger",
-      credentialLabel: "Lansenger App Secret",
+      credentialLabel: lt("secretLabel"),
       preferredEnvVar: "LANSENGER_APP_SECRET",
-      helpTitle: "Lansenger App Secret / 蓝信 App Secret",
-      helpLines: [
-        "App Secret from your Lansenger Personal Bot / 个人机器人的 App Secret",
-        "Found alongside App ID → Contacts → Bots → Personal Bots / 通讯录 → 智能机器人 → 个人机器人",
-      ],
-      envPrompt: "检测到环境变量 LANSENGER_APP_SECRET，是否使用？/ LANSENGER_APP_SECRET detected. Use env var?",
-      keepPrompt: "App Secret 已配置，是否保留？/ App Secret already configured. Keep it?",
-      inputPrompt: "输入蓝信 App Secret / Enter Lansenger App Secret",
+      helpTitle: lt("secretLabel"),
+      helpLines: [lt("secretHelpLine1"), lt("secretHelpLine2")],
+      envPrompt: lt("secretEnvPrompt"),
+      keepPrompt: lt("secretKeepPrompt"),
+      inputPrompt: lt("secretInputPrompt"),
       shouldPrompt: ({ state }: any) => !state.hasConfiguredValue,
       allowEnv: ({ accountId }: any) => !accountId || accountId === "default" || accountId === DEFAULT_ACCOUNT_ID,
       inspect: makeInspect("appSecret", "LANSENGER_APP_SECRET"),
@@ -145,7 +142,7 @@ export const lansengerSetupWizard: any = {
   textInputs: [
     {
       inputKey: "baseUrl",
-      message: "API 网关地址（可选，默认蓝信公有云）/ API Gateway URL (optional, default Lansenger public cloud)",
+      message: lt("baseUrlMessage"),
       placeholder: "https://open.e.lanxin.cn/open/apigw",
       required: false,
       initialValue: ({ cfg, accountId }: any) => {
@@ -159,7 +156,7 @@ export const lansengerSetupWizard: any = {
     },
   ],
 
-finalize: async ({ cfg, accountId }: any) => {
+  finalize: async ({ cfg, accountId }: any) => {
     const channels = { ...((cfg.channels as Record<string, any>) ?? {}) };
     let section = { ...(channels[CHANNEL] ?? {}) };
     let accounts = section.accounts as Record<string, any> | undefined;
@@ -214,6 +211,25 @@ finalize: async ({ cfg, accountId }: any) => {
     channels[CHANNEL] = section;
     cfg = { ...cfg, channels };
 
+    const finalAccounts = section.accounts as Record<string, any> | undefined;
+    let hasPlaintextSecret = false;
+    if (finalAccounts && Object.keys(finalAccounts).length > 0) {
+      hasPlaintextSecret = Object.values(finalAccounts).some((a: any) =>
+        typeof a?.appSecret === "string" && a.appSecret.trim() && !a.appSecret.startsWith("__OPENCLAW_SECRET__")
+      );
+    } else {
+      hasPlaintextSecret = typeof section.appSecret === "string" && section.appSecret.trim() && !section.appSecret.startsWith("__OPENCLAW_SECRET__");
+    }
+    if (hasPlaintextSecret) {
+      console.log("");
+      console.log(lt("finalizePlaintext1"));
+      console.log(lt("finalizePlaintext2"));
+      console.log("");
+      console.log(lt("finalizePlaintext3"));
+      console.log(lt("finalizePlaintext4"));
+      console.log("");
+    }
+
     const effectiveAccountId = accountId && accountId !== "default" && accountId !== DEFAULT_ACCOUNT_ID
       ? accountId
       : (section.accounts ? Object.keys(section.accounts)[0] : "default");
@@ -226,14 +242,11 @@ finalize: async ({ cfg, accountId }: any) => {
 
   allowFrom: createAccountScopedAllowFromSection({
     channel: CHANNEL,
-    helpTitle: "Lansenger user ID / 蓝信用户 ID",
-    helpLines: [
-      "Lansenger user IDs have format: orgId-applicationId (e.g. xxx-xxxxxxx)",
-      "蓝信用户 ID 格式：orgId-applicationId（如 xxx-xxxxxxx）",
-    ],
-    message: "蓝信允许的用户 ID（格式：orgId-applicationId）/ Lansenger allowFrom (user IDs, format: orgId-applicationId)",
+    helpTitle: lt("allowFromHelpTitle"),
+    helpLines: [lt("allowFromHelpLine1")],
+    message: lt("allowFromMessage"),
     placeholder: "xxx-xxxxxxx",
-    invalidWithoutCredentialNote: "蓝信 allowFrom 需要格式为 appId-userId 的用户 ID。/ Lansenger allowFrom requires user IDs in format appId-userId.",
+    invalidWithoutCredentialNote: lt("allowFromInvalidNote"),
     parseId: (entry: string) => entry.trim() || null,
     resolveEntries: async ({ entries }: any) => entries.map((entry: string) => ({
       input: entry,
@@ -243,7 +256,7 @@ finalize: async ({ cfg, accountId }: any) => {
   }),
 
   dmPolicy: createTopLevelChannelDmPolicy({
-    label: "Lansenger",
+    label: lt("channelLabel"),
     channel: CHANNEL,
     policyKey: "channels.lansenger.dmPolicy",
     allowFromKey: "channels.lansenger.allowFrom",
@@ -256,15 +269,38 @@ finalize: async ({ cfg, accountId }: any) => {
   disable: (cfg: any) => setSetupChannelEnabled(cfg, CHANNEL, false),
 
   companionNote: {
-    title: "Messaging Tools / 消息工具",
+    title: lt("companionTitle"),
     lines: [
-      "Agent tools (lansenger_send_file, etc.) are included in this plugin — no separate install needed. / 代理工具（lansenger_send_file 等）已内置于此插件，无需单独安装。",
+      lt("companionLine1"),
       "",
-      "CLI is an optional alternative (works via bash): / CLI 为可选替代方案（通过 bash 调用）：",
+      lt("companionLine2"),
       "  pip install lansenger-cli",
       "",
-      "Without CLI, the agent can still use built-in tools for files, cards, and formatted messages. / 未安装 CLI 时，代理仍可使用内置工具发送文件、卡片和格式化消息。",
+      lt("companionLine3"),
     ],
     shouldShow: () => true,
+  },
+
+  securityNote: {
+    title: lt("securityTitle"),
+    lines: [
+      lt("securityLine1"),
+      lt("securityLine2"),
+      "",
+      lt("securityLine3"),
+      "  openclaw secrets configure",
+      "",
+      lt("securityLine4"),
+    ],
+    shouldShow: ({ cfg }: any) => {
+      const section = getSection(cfg);
+      const accounts = section?.accounts as Record<string, any> | undefined;
+      if (accounts && Object.keys(accounts).length > 0) {
+        return Object.values(accounts).some((a: any) =>
+          typeof a?.appSecret === "string" && a.appSecret.trim() && !a.appSecret.startsWith("__OPENCLAW_SECRET__")
+        );
+      }
+      return typeof section?.appSecret === "string" && section.appSecret.trim() && !section.appSecret.startsWith("__OPENCLAW_SECRET__");
+    },
   },
 };

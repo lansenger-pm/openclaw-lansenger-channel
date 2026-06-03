@@ -6,11 +6,13 @@ import type { InboundEvent } from "./client.js";
 function makeApi(overrides?: Record<string, any>): any {
   const methods: Record<string, any> = {};
   const httpRoutes: any[] = [];
+  const hookHandlers: Record<string, any> = {};
   const api = {
     config: overrides?.config ?? { channels: { lansenger: { appId: "test-app", appSecret: "test-secret" } } },
     registerGatewayMethod: (name: string, handler: any) => { methods[name] = handler; },
     registerHttpRoute: (route: any) => { httpRoutes.push(route); },
-    registerHook: () => {},
+    registerHook: (name: string, handler: any) => { hookHandlers[name] = handler; },
+    on: (name: string, handler: any, opts?: any) => { hookHandlers[name] = handler; },
     runtime: overrides?.runtime ?? {
       channel: {
         pairing: {
@@ -33,6 +35,9 @@ function makeApi(overrides?: Record<string, any>): any {
         turn: {
           run: async () => {},
         },
+        inbound: {
+          run: async () => {},
+        },
         session: {
           resolveStorePath: () => "/tmp/store",
           recordInboundSession: () => {},
@@ -44,6 +49,7 @@ function makeApi(overrides?: Record<string, any>): any {
     },
     _methods: methods,
     _httpRoutes: httpRoutes,
+    _hookHandlers: hookHandlers,
   };
   return api;
 }
@@ -117,6 +123,23 @@ describe("startLansengerGateway", () => {
     expect(g.getRunningClient).toBeDefined();
     expect(g.getRunningAccount).toBeDefined();
     expect(g.getLastInboundChatId).toBeDefined();
+  });
+
+  it("registers message_sending and reply_payload_sending hooks", () => {
+    const api = makeApi();
+    startLansengerGateway(api);
+    expect(api._hookHandlers["message_sending"]).toBeDefined();
+    expect(api._hookHandlers["reply_payload_sending"]).toBeDefined();
+  });
+
+  it("reply_payload_sending hook returns void for lansenger channel", () => {
+    const api = makeApi();
+    startLansengerGateway(api);
+    const handler = api._hookHandlers["reply_payload_sending"];
+    const event = { payload: { text: "test" }, kind: "final", channel: "lansenger" };
+    const ctx = { channelId: "lansenger", sessionKey: "agent:main:lansenger:dm:user1" };
+    const result = handler(event, ctx);
+    expect(result).toBeUndefined();
   });
 
   describe("lansenger.sendCard", () => {

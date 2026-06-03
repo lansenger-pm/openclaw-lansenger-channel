@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { lansengerPlugin, resolveAccount } from "./channel.js";
+import { lansengerPlugin, resolveAccount, pendingApprovalCards } from "./channel.js";
 import { LansengerClient, mediaTypeFromPath, uploadMediaTypeFromPath, buildI18n } from "./client.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -698,5 +698,113 @@ describe("approvalCapability", () => {
     const result = build({ cfg, resolved: { kind: "denied" }, target: { to: "chat-1" } });
     expect(result.type).toBe("text");
     expect(result.text).toContain("已拒绝");
+  });
+});
+
+describe("normalizePayload", () => {
+  const outbound = (lansengerPlugin as any).outbound ?? (lansengerPlugin as any).base?.outbound;
+  const base = outbound?.base ?? outbound;
+
+  it("marks pure text as formatText", () => {
+    const result = base.normalizePayload({ payload: { text: "hello world" }, cfg: {} });
+    expect(result._lansengerFormatText).toBe(true);
+  });
+
+  it("does not mark text with mediaUrl as formatText", () => {
+    const result = base.normalizePayload({ payload: { text: "caption", mediaUrl: "/tmp/img.jpg" }, cfg: {} });
+    expect(result._lansengerFormatText).toBeUndefined();
+  });
+
+  it("does not mark text with presentation as formatText", () => {
+    const result = base.normalizePayload({ payload: { text: "hello", presentation: {} }, cfg: {} });
+    expect(result._lansengerFormatText).toBeUndefined();
+  });
+
+  it("marks text with code blocks as formatText even with mediaUrl", () => {
+    const result = base.normalizePayload({ payload: { text: "```js\nconsole.log('hi')\n```", mediaUrl: "/tmp/img.jpg" }, cfg: {} });
+    expect(result._lansengerFormatText).toBe(true);
+  });
+
+  it("marks text with inline code block as formatText", () => {
+    const result = base.normalizePayload({ payload: { text: "Here is code:\n```\nx=1\n```\nDone." }, cfg: {} });
+    expect(result._lansengerFormatText).toBe(true);
+  });
+
+  it("returns null for empty payload", () => {
+    const result = base.normalizePayload({ payload: null, cfg: {} });
+    expect(result).toBeNull();
+  });
+});
+
+describe("shouldSuppressLocalPayloadPrompt", () => {
+  const outbound = (lansengerPlugin as any).outbound ?? (lansengerPlugin as any).base?.outbound;
+  const base = outbound?.base ?? outbound;
+
+  it("suppresses local prompt for approval-pending with native route active", () => {
+    const result = base.shouldSuppressLocalPayloadPrompt({ payload: { text: "审批请求" }, hint: { kind: "approval-pending", approvalKind: "exec", nativeRouteActive: true } });
+    expect(result).toBe(true);
+  });
+
+  it("does not suppress local prompt for approval-pending without native route", () => {
+    const result = base.shouldSuppressLocalPayloadPrompt({ payload: { text: "审批请求" }, hint: { kind: "approval-pending", approvalKind: "exec", nativeRouteActive: false } });
+    expect(result).toBe(false);
+  });
+
+  it("does not suppress local prompt for approval-resolved", () => {
+    const result = base.shouldSuppressLocalPayloadPrompt({ payload: { text: "✅ 已批准" }, hint: { kind: "approval-resolved", approvalKind: "exec" } });
+    expect(result).toBe(false);
+  });
+
+  it("does not suppress local prompt without hint", () => {
+    const result = base.shouldSuppressLocalPayloadPrompt({ payload: { text: "hello" } });
+    expect(result).toBe(false);
+  });
+});
+
+describe("textChunkLimit and chunker", () => {
+  const outbound = (lansengerPlugin as any).outbound ?? (lansengerPlugin as any).base?.outbound;
+  const base = outbound?.base ?? outbound;
+
+  it("declares textChunkLimit as 4000", () => {
+    expect(base.textChunkLimit).toBe(4000);
+  });
+
+  it("declares chunkerMode as markdown", () => {
+    expect(base.chunkerMode).toBe("markdown");
+  });
+
+  it("chunker splits long markdown text", () => {
+    const longText = "Line 1\n\nLine 2\n\nLine 3\n\n" + "A".repeat(4000) + "\n\nLine 5";
+    const chunks = base.chunker(longText, 4000);
+    expect(chunks.length).toBeGreaterThan(1);
+    for (const chunk of chunks) {
+      expect(chunk.length).toBeLessThanOrEqual(4000 * 1.1);
+    }
+  });
+
+  it("chunker preserves short text as single chunk", () => {
+    const shortText = "Hello world";
+    const chunks = base.chunker(shortText, 4000);
+    expect(chunks.length).toBe(1);
+    expect(chunks[0]).toBe("Hello world");
+  });
+});
+
+describe("pendingApprovalCards", () => {
+  beforeEach(() => {
+    pendingApprovalCards.clear();
+  });
+
+  it("stores and retrieves card info", () => {
+    pendingApprovalCards.set("chat-1", { messageId: "msg-123", lang: "zh" });
+    const info = pendingApprovalCards.get("chat-1");
+    expect(info?.messageId).toBe("msg-123");
+    expect(info?.lang).toBe("zh");
+  });
+
+  it("deletes card info after retrieval", () => {
+    pendingApprovalCards.set("chat-1", { messageId: "msg-123", lang: "zh" });
+    pendingApprovalCards.delete("chat-1");
+    expect(pendingApprovalCards.get("chat-1")).toBeUndefined();
   });
 });

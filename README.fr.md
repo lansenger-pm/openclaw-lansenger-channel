@@ -122,6 +122,16 @@ Ajoutez ces variables à `~/.openclaw/.env` ou à votre environnement :
 
 Les identifiants peuvent aussi être fournis via la configuration `openclaw.json` (voir Configuration optionnelle ci-dessous). Les valeurs de configuration sont prioritaires ; les variables d'environnement sont utilisées comme repli lorsque la configuration n'est pas définie.
 
+> ⚠️ **Sécurité : Migrez appSecret vers le stockage SecretRef**
+>
+> Depuis v3.12.1, le plugin de canal Lansenger supporte OpenClaw SecretRef pour `appSecret`. Si votre `appSecret` est stocké en texte brut dans `openclaw.json`, tout outil de workspace qui lit la configuration peut le voir. Migrez en exécutant :
+>
+> ```
+> openclaw secrets configure
+> ```
+>
+> Sélectionnez le champ `channels.lansenger.accounts.*.appSecret` pour le convertir en SecretRef. Après migration, la configuration contiendra `__OPENCLAW_SECRET__({ref_id})` au lieu de la valeur brute, tandis que la valeur réelle est stockée dans le magasin d'identifiants du système.
+
 ### Obtenir les identifiants
 
 **Client Lansenger (desktop)** → **Contacts** → **Bots** → **Bots personnels** → cliquer sur l'icône **ℹ️**
