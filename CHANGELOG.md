@@ -4,19 +4,35 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [3.12.2] - 2026-06-03
+## [3.13.0] - 2026-06-03
 
 > **Compatible with OpenClaw `^2026.5.28`** (tested against `2026.5.28`).
 
+### Bug Fix
+
+- **Missing `dist/src/setup-i18n.*` in npm package**: `setup-wizard.js` imports `./setup-i18n.js`, but the `files` field in `package.json` did not include `dist/src/setup-i18n.*`, causing `Cannot find module './setup-i18n.js'` at gateway startup. Added `dist/src/setup-i18n.*` to the `files` array.
+
 ### Outbound Hook Expansion
 
-- **`reply_payload_sending` hook**: Register typed plugin hook via `api.on()` for the lansenger channel. Intercepts reply payloads before delivery — enables logging, approval context injection, and payload rewrite/cancel decisions. This is the second outbound hook in the channel (after `message_sending` in v3.12.1), completing the pre-delivery interception pipeline.
+- **`reply_payload_sending` hook**: Register typed plugin hook via `api.on()` for the lansenger channel. Intercepts reply payloads before delivery — enables logging, approval context injection, and payload rewrite/cancel decisions.
+- **`message_sending` hook**: Register hook in gateway startup for early-stage reply interception.
 - **`normalizePayload` — code-block detection**: Payloads containing `\`\`\`` code fences are now marked `_lansengerFormatText: true` even when they also carry `mediaUrl` or `presentation`. Previously, code-rich agent replies with attachments fell back to plain-text `msgType`, losing Markdown formatting. Now they always render via `formatText`.
-- **`beforeDeliverPayload` — approval-resolved crash recovery**: When `hint.kind === "approval-resolved"`, the delivery pipeline now proactively updates the original appCard status via `updateDynamicCard`. Because the delivery pipeline replays on gateway restart, this provides crash-recovery safety — card status updates survive restarts even if the approval framework's `transport.update` was missed.
-- **`shouldSuppressLocalPayloadPrompt`**: Suppresses the local text prompt when the native approval route is active (`hint.kind === "approval-pending"` with `nativeRouteActive === true`). Prevents duplicate approval prompts (native appCard + local text appearing simultaneously).
+- **`beforeDeliverPayload` — approval-resolved crash recovery**: When `hint.kind === "approval-resolved"`, the delivery pipeline now proactively updates the original appCard status via `updateDynamicCard`. Because the delivery pipeline replays on gateway restart, this provides crash-recovery safety.
+- **`shouldSuppressLocalPayloadPrompt`**: Suppresses the local text prompt when the native approval route is active (`hint.kind === "approval-pending"` with `nativeRouteActive === true`). Prevents duplicate approval prompts.
 - **`pendingApprovalCards` Map**: Tracks sent approval card `messageId`s keyed by `chatId`. Enables `beforeDeliverPayload` to correlate approval-resolved payloads with the original card for status updates.
-- **Text chunking**: Add `textChunkLimit: 4000`, `chunkerMode: "markdown"`, and `chunker` (using SDK `chunkMarkdownTextWithMode`). Long agent replies are automatically split into multiple Lansenger messages, preserving Markdown structure across chunks. This is critical for Lansenger, which rejects messages exceeding its character limit.
-- **`resolveEffectiveTextChunkLimit`**: Uses SDK `resolveTextChunkLimit` to allow config-level override of the chunk limit (`messages.chunk.limit` or per-channel/per-account overrides).
+- **Text chunking**: Add `textChunkLimit: 4000`, `chunkerMode: "markdown"`, and `chunker` (using SDK `chunkMarkdownTextWithMode`). Long agent replies are automatically split into multiple Lansenger messages, preserving Markdown structure across chunks.
+- **`resolveEffectiveTextChunkLimit`**: Uses SDK `resolveTextChunkLimit` to allow config-level override of the chunk limit.
+- Add `normalizePayload` and `beforeDeliverPayload` callbacks on outbound base (structural preparation for outbound hooks).
+- Add session-scoped delivery dedup (`sessionDeliveryTracker`) to prevent duplicate sends across turns in the same session.
+
+### OpenClaw 2026.5.27–28 Compatibility
+
+- Migrate `api.runtime.channel.turn` → `api.runtime.channel.inbound` (OpenClaw removed the old `turn` runtime alias; the new `inbound` namespace provides the same `run` function with identical parameters). This is a **required** migration — the old `turn` alias no longer exists in OpenClaw 2026.5.27.
+- Thread canonical `sessionKey` into outbound hooks (`sendText`, `sendMedia`, `sendFormattedText`) for multi-session/multi-agent routing and dedup.
+- Fallback `sessionKey` now includes `accountId` for multi-bot scenarios (`agent:main:lansenger:<accountId>:<chatType>:<chatId>`).
+- Pin npm install spec to exact version (`@lansenger-pm/openclaw-lansenger-channel@3.13.0`) to prevent supply-chain attacks and accidental upgrades.
+- Bump `openclaw` devDependency from `^2026.5.20` to `^2026.5.28`.
+- Split changelog out of READMEs into standalone `CHANGELOG.md` (all 5 locale READMEs now reference this file).
 
 ### Approval Flow Enhancement
 
@@ -32,42 +48,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Security
 
+- **SecretRef support for appSecret**: `resolveAccount()` now detects SecretRef objects via `coerceSecretRef()` and resolves from env vars. No need to store appSecret as plaintext in config. After running `openclaw secrets configure`, the config contains `__OPENCLAW_SECRET__({ref_id})` instead of the raw secret value, while the actual value is stored in the system credential store.
 - **Plaintext appSecret warning in `resolveAccount()`**: Emits `log.warn` on every gateway startup when `appSecret` is stored as a plaintext string in `openclaw.json`, advising migration to SecretRef via `openclaw secrets configure`.
 - **Plaintext appSecurity warning in setup wizard `finalize`**: Console output in the user's locale when plaintext appSecret is detected after config migration.
 - **`securityNote` in setup wizard**: A conditional note that appears only when a plaintext appSecret exists, with locale-appropriate migration instructions.
 - **README security advisory**: All 5 locale READMEs now include a prominent `⚠️ Security: Migrate appSecret to SecretRef storage` block.
-
-## [3.12.1] - 2026-06-03
-
-> **Compatible with OpenClaw `^2026.5.28`** (tested against `2026.5.28`).
-
-### OpenClaw 2026.5.28 Compatibility
-
-- Pin npm install spec to exact version (`@lansenger-pm/openclaw-lansenger-channel@3.12.1`) to prevent supply-chain attacks and accidental upgrades.
-- Thread canonical `sessionKey` into outbound hooks (`sendText`, `sendMedia`, `sendFormattedText`) for multi-session/multi-agent routing and dedup.
-- Register `message_sending` hook in gateway startup for early-stage reply interception.
-- Add `normalizePayload` and `beforeDeliverPayload` callbacks on outbound base (structural preparation for `reply_payload_sending` hook added in v3.12.2).
-- Add session-scoped delivery dedup (`sessionDeliveryTracker`) to prevent duplicate sends across turns in the same session.
-- Fallback `sessionKey` now includes `accountId` for multi-bot scenarios (`agent:main:lansenger:<accountId>:<chatType>:<chatId>`).
-- Bump `openclaw` devDependency to `^2026.5.28`.
-
-### Security
-
-- **SecretRef support for appSecret**: `resolveAccount()` now detects SecretRef objects via `coerceSecretRef()` and resolves from env vars. No need to store appSecret as plaintext in config. After running `openclaw secrets configure`, the config contains `__OPENCLAW_SECRET__({ref_id})` instead of the raw secret value, while the actual value is stored in the system credential store.
-- **SSRF protection for sendImageUrl**: `assertHttpUrlTargetsPrivateNetwork()` blocks RFC1918/link-local/metadata-IP targets by default (aligned with Feishu/Discord/BlueBubbles channels in OpenClaw 2026.5.28).
+- **SSRF protection for sendImageUrl**: `assertHttpUrlTargetsPrivateNetwork()` blocks RFC1918/link-local/metadata-IP targets by default.
 - **`dangerouslyAllowPrivateNetwork` config**: Opt-in at top-level or per-account to allow private network image URLs. Audit finding (`lansenger/dangerously-allow-private-network`) warns when enabled.
-- **`mediaLocalRoots` config**: Restrict local file delivery to configured directories. If empty, all paths allowed. Prevents agents from accessing arbitrary files outside allowed roots. Available at top-level and per-account.
+- **`mediaLocalRoots` config**: Restrict local file delivery to configured directories. Prevents agents from accessing arbitrary files outside allowed roots. Available at top-level and per-account.
 - **Path validation**: `isPathAllowed()` validates local file paths against `mediaLocalRoots` before delivery; blocked paths are logged and skipped.
-
-## [3.12.0] - 2026-05-29
-
-> **Compatible with OpenClaw `^2026.5.27`** (tested against `2026.5.27`).
-
-### OpenClaw 2026.5.27 Compatibility
-
-- Migrate `api.runtime.channel.turn` → `api.runtime.channel.inbound` (OpenClaw removed the old `turn` runtime alias from `PluginRuntimeChannel`; the new `inbound` namespace provides the same `run` function with identical parameters). This is a **required** migration — the old `turn` alias no longer exists in OpenClaw 2026.5.27.
-- Bump `openclaw` devDependency from `^2026.5.20` to `^2026.5.27`.
-- Split changelog out of READMEs into standalone `CHANGELOG.md` (all 5 locale READMEs now reference this file).
 
 ## [3.11.0] - 2026-05-26
 
