@@ -6,68 +6,90 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [3.12.2] - 2026-06-03
 
+> **Compatible with OpenClaw `^2026.5.28`** (tested against `2026.5.28`).
+
 ### Outbound Hook Expansion
 
-- **`reply_payload_sending` hook**: Register typed plugin hook via `api.on()` for lansenger channel. Intercepts reply payloads before delivery for logging, approval context injection, and payload rewrite/cancel decisions.
-- **`normalizePayload` expansion**: Code block detection (`\`\`\``) now marks `_lansengerFormatText: true` even when payload has `mediaUrl` or `presentation`, ensuring Markdown rendering for code-rich replies.
-- **`beforeDeliverPayload` approval-resolved**: When `hint.kind === "approval-resolved"`, proactively updates the original appCard status via `updateDynamicCard`. Provides crash-recovery safety for card status updates since the delivery pipeline replays on gateway restart.
-- **`shouldSuppressLocalPayloadPrompt`**: Suppresses local text prompt when native approval route is active (`hint.kind === "approval-pending"` with `nativeRouteActive === true`). Prevents duplicate approval prompts (native appCard + local text).
-- **`pendingApprovalCards` Map**: Tracks sent approval card messageIds keyed by chatId, enabling `beforeDeliverPayload` to correlate approval-resolved payloads with the original card.
-- **Text chunking**: Add `textChunkLimit: 4000`, `chunkerMode: "markdown"`, and `chunker` (using SDK `chunkMarkdownTextWithMode`). Long agent replies are automatically split into multiple Lansenger messages, preserving Markdown structure across chunks.
-- **`resolveEffectiveTextChunkLimit`**: Uses SDK `resolveTextChunkLimit` to allow config-level override of the chunk limit.
+- **`reply_payload_sending` hook**: Register typed plugin hook via `api.on()` for the lansenger channel. Intercepts reply payloads before delivery — enables logging, approval context injection, and payload rewrite/cancel decisions. This is the second outbound hook in the channel (after `message_sending` in v3.12.1), completing the pre-delivery interception pipeline.
+- **`normalizePayload` — code-block detection**: Payloads containing `\`\`\`` code fences are now marked `_lansengerFormatText: true` even when they also carry `mediaUrl` or `presentation`. Previously, code-rich agent replies with attachments fell back to plain-text `msgType`, losing Markdown formatting. Now they always render via `formatText`.
+- **`beforeDeliverPayload` — approval-resolved crash recovery**: When `hint.kind === "approval-resolved"`, the delivery pipeline now proactively updates the original appCard status via `updateDynamicCard`. Because the delivery pipeline replays on gateway restart, this provides crash-recovery safety — card status updates survive restarts even if the approval framework's `transport.update` was missed.
+- **`shouldSuppressLocalPayloadPrompt`**: Suppresses the local text prompt when the native approval route is active (`hint.kind === "approval-pending"` with `nativeRouteActive === true`). Prevents duplicate approval prompts (native appCard + local text appearing simultaneously).
+- **`pendingApprovalCards` Map**: Tracks sent approval card `messageId`s keyed by `chatId`. Enables `beforeDeliverPayload` to correlate approval-resolved payloads with the original card for status updates.
+- **Text chunking**: Add `textChunkLimit: 4000`, `chunkerMode: "markdown"`, and `chunker` (using SDK `chunkMarkdownTextWithMode`). Long agent replies are automatically split into multiple Lansenger messages, preserving Markdown structure across chunks. This is critical for Lansenger, which rejects messages exceeding its character limit.
+- **`resolveEffectiveTextChunkLimit`**: Uses SDK `resolveTextChunkLimit` to allow config-level override of the chunk limit (`messages.chunk.limit` or per-channel/per-account overrides).
 
 ### Approval Flow Enhancement
 
-- `approvalCapability.transport.send` now stores card `messageId` in `pendingApprovalCards` Map for later correlation in `beforeDeliverPayload`.
-- Card status updates (pending → approved/denied) now happen both via `transport.update` (approval framework) and `beforeDeliverPayload` (delivery pipeline). The latter provides crash-recovery safety.
+- `approvalCapability.transport.send` now stores card `messageId` in `pendingApprovalCards` for later correlation in `beforeDeliverPayload`.
+- Card status updates (pending → approved/denied) now happen via both `transport.update` (approval framework) and `beforeDeliverPayload` (delivery pipeline). The latter provides crash-recovery safety.
+
+### Setup Wizard i18n
+
+- **Locale-aware setup wizard**: Replace all bilingual hard-coded strings (`"Chinese / English"`) with `createSetupTranslator()` + plugin-owned dictionary. The wizard now displays in the user's locale (resolved from `OPENCLAW_LOCALE` → `LC_ALL` → `LC_MESSAGES` → `LANG`, fallback English).
+- Supported locales: **`en`**, **`zh-CN`**, **`zh-TW`**. French and other locales fall back to English for wizard prompts (READMEs remain 5-language).
+- Common strings (status labels, "Docs:" prefix, etc.) use the built-in OpenClaw catalog keys (`wizard.channels.*`). Plugin-specific strings use a local dictionary with `lt()`.
+- New file: `src/setup-i18n.ts` — locale resolver + 40+ entry dictionary.
+
+### Security
+
+- **Plaintext appSecret warning in `resolveAccount()`**: Emits `log.warn` on every gateway startup when `appSecret` is stored as a plaintext string in `openclaw.json`, advising migration to SecretRef via `openclaw secrets configure`.
+- **Plaintext appSecurity warning in setup wizard `finalize`**: Console output in the user's locale when plaintext appSecret is detected after config migration.
+- **`securityNote` in setup wizard**: A conditional note that appears only when a plaintext appSecret exists, with locale-appropriate migration instructions.
+- **README security advisory**: All 5 locale READMEs now include a prominent `⚠️ Security: Migrate appSecret to SecretRef storage` block.
 
 ## [3.12.1] - 2026-06-03
+
+> **Compatible with OpenClaw `^2026.5.28`** (tested against `2026.5.28`).
 
 ### OpenClaw 2026.5.28 Compatibility
 
 - Pin npm install spec to exact version (`@lansenger-pm/openclaw-lansenger-channel@3.12.1`) to prevent supply-chain attacks and accidental upgrades.
 - Thread canonical `sessionKey` into outbound hooks (`sendText`, `sendMedia`, `sendFormattedText`) for multi-session/multi-agent routing and dedup.
 - Register `message_sending` hook in gateway startup for early-stage reply interception.
-- Add `normalizePayload` and `beforeDeliverPayload` callbacks on outbound base (structural preparation for `reply_payload_sending` hook).
+- Add `normalizePayload` and `beforeDeliverPayload` callbacks on outbound base (structural preparation for `reply_payload_sending` hook added in v3.12.2).
 - Add session-scoped delivery dedup (`sessionDeliveryTracker`) to prevent duplicate sends across turns in the same session.
 - Fallback `sessionKey` now includes `accountId` for multi-bot scenarios (`agent:main:lansenger:<accountId>:<chatType>:<chatId>`).
 - Bump `openclaw` devDependency to `^2026.5.28`.
 
 ### Security
 
-- **SecretRef support for appSecret**: `resolveAccount()` now detects SecretRef objects via `coerceSecretRef()` and resolves from env vars. No need to store appSecret as plaintext in config.
-- **Plaintext appSecret warning**: `resolveAccount()` now emits a `log.warn` when `appSecret` is stored as a plaintext string in `openclaw.json`, advising migration to SecretRef via `openclaw secrets configure`.
-- **README security notes**: All 5 locale READMEs now include a prominent security advisory urging users to migrate plaintext `appSecret` to SecretRef storage.
-- **SSRF protection for sendImageUrl**: `assertHttpUrlTargetsPrivateNetwork()` blocks RFC1918/link-local/metadata-IP targets by default (aligned with Feishu/Discord/BlueBubbles channels in 2026.5.28).
+- **SecretRef support for appSecret**: `resolveAccount()` now detects SecretRef objects via `coerceSecretRef()` and resolves from env vars. No need to store appSecret as plaintext in config. After running `openclaw secrets configure`, the config contains `__OPENCLAW_SECRET__({ref_id})` instead of the raw secret value, while the actual value is stored in the system credential store.
+- **SSRF protection for sendImageUrl**: `assertHttpUrlTargetsPrivateNetwork()` blocks RFC1918/link-local/metadata-IP targets by default (aligned with Feishu/Discord/BlueBubbles channels in OpenClaw 2026.5.28).
 - **`dangerouslyAllowPrivateNetwork` config**: Opt-in at top-level or per-account to allow private network image URLs. Audit finding (`lansenger/dangerously-allow-private-network`) warns when enabled.
 - **`mediaLocalRoots` config**: Restrict local file delivery to configured directories. If empty, all paths allowed. Prevents agents from accessing arbitrary files outside allowed roots. Available at top-level and per-account.
 - **Path validation**: `isPathAllowed()` validates local file paths against `mediaLocalRoots` before delivery; blocked paths are logged and skipped.
 
 ## [3.12.0] - 2026-05-29
 
+> **Compatible with OpenClaw `^2026.5.27`** (tested against `2026.5.27`).
+
 ### OpenClaw 2026.5.27 Compatibility
 
-- Migrate `api.runtime.channel.turn` → `api.runtime.channel.inbound` (OpenClaw removed the old `turn` runtime alias from `PluginRuntimeChannel`; the new `inbound` namespace provides the same `run` function with identical parameters).
+- Migrate `api.runtime.channel.turn` → `api.runtime.channel.inbound` (OpenClaw removed the old `turn` runtime alias from `PluginRuntimeChannel`; the new `inbound` namespace provides the same `run` function with identical parameters). This is a **required** migration — the old `turn` alias no longer exists in OpenClaw 2026.5.27.
 - Bump `openclaw` devDependency from `^2026.5.20` to `^2026.5.27`.
 - Split changelog out of READMEs into standalone `CHANGELOG.md` (all 5 locale READMEs now reference this file).
 
 ## [3.11.0] - 2026-05-26
 
+> **Compatible with OpenClaw `^2026.5.20`** (tested against `2026.5.20` and `2026.5.22`).
+
 ### Breaking Changes
 
-- Remove `child_process` dependency (was blocking OpenClaw install due to security scan).
-- Video messages now require manual `coverImagePath` + `videoWidth`/`videoHeight`/`videoDuration` params (use ffmpeg/ffprobe before calling send-file; auto-probing removed because it depended on child_process).
+- Remove `child_process` dependency (was blocking OpenClaw install due to security scan). OpenClaw's built-in dangerous-code scanner flagged `child_process` as a critical pattern and blocked plugin installation — users could not install without `--dangerously-force-unsafe-install`. v3.11.0 removes all `child_process` usage, so the plugin installs cleanly without override flags.
+- Video messages now require **4 manual parameters**: `coverImagePath`, `videoWidth`, `videoHeight`, `videoDuration`. Previous v3.10.0 auto-extracted these via ffmpeg/ffprobe (which depended on `child_process`). Now the agent must use ffmpeg/ffprobe before calling send-file. See the skill docs for exact commands.
 
 ### Bug Fixes
 
-- Inbound video cover downloaded as image type (previously misclassified).
+- Inbound video cover downloaded as image type (previously misclassified as video type).
 
 ## [3.10.0] - 2026-05-22
+
+> **Compatible with OpenClaw `^2026.5.20`** (tested against `2026.5.22`).
 
 ### Features
 
 - Fix video message: Lansenger API requires `mediaIds=[video, coverImage]` (2 elements). `sendFile()` auto-extracts first frame via ffmpeg and uploads as cover image.
-- `send-text` with file attachment now uses correct mediaType instead of hardcoded `3`.
+- `send-text` with file attachment now uses correct `mediaType` instead of hardcoded `3`.
 
 ### Bug Fixes
 
@@ -76,6 +98,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [3.9.0] - 2026-05-20
 
+> **Compatible with OpenClaw `^2026.5.20`** (tested against `2026.5.20`).
+
 ### Features
 
 - Switch file upload to `/v1/app/medias/create` API (supports larger files up to 10M/20M, uses string type `image`/`video`/`audio`/`file` instead of numeric media type).
@@ -83,14 +107,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [3.8.2] - 2026-05-20
 
+> **Compatible with OpenClaw `^2026.5.20`** (tested against `2026.5.20`).
+
 ### Features
 
 - Add `security.collectWarnings` and `security.collectAuditFindings` for `openclaw doctor --lint` integration. Checks: credentials missing/incomplete, dmPolicy not pairing, apiGatewayUrl not set, group config unused.
 - Add `doctor.repairConfig` to auto-fix dmPolicy to pairing.
-- Require OpenClaw >= 2026.5.20.
+- Bump `openclaw` devDependency from `^2026.5.7` to `^2026.5.20`.
 - Fix apiGatewayUrl lint check to skip when accounts have gateway set.
 
 ## [3.7.9] - 2026-05-18
+
+> **Compatible with OpenClaw `^2026.5.7`**. This is the last release compatible with OpenClaw 2026.5.7. The next version (v3.8.2) raises the minimum to `^2026.5.20`.
 
 ### Features
 
@@ -108,6 +136,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [3.6.0] - 2026-05-16
 
+> **Compatible with OpenClaw `^2026.5.7`**.
+
 ### Bug Fixes
 
 - Fix health-monitor infinite restart loop: register `gateway.startAccount`/`stopAccount` so channelManager runtime store gets `running=true` + `connected=true`.
@@ -115,6 +145,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - Fix `account.configured` in `buildAccountSnapshot` to avoid false negative from `inspectAccount` desensitized object.
 
 ## [3.5.0] - 2026-05-14
+
+> **Compatible with OpenClaw `^2026.5.7`**.
 
 ### Features
 
@@ -130,12 +162,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [3.4.5] - 2026-05-12
 
+> **Compatible with OpenClaw `^2026.5.7`**.
+
 ### Bug Fixes
 
 - Fix duplicate delivery — `deliver()` deferred to outbound adapter; text dedup + empty caption for files.
 - Fix filename: pass `originalName` in else branch too; add upload filename debug logging.
 
 ## [3.3.0] - 2026-05-10
+
+> **Compatible with OpenClaw `^2026.5.7`**.
 
 ### Features
 
@@ -145,6 +181,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - `message(action=send)` with `filePath` param sends file attachment; no MEDIA tags needed.
 
 ## [3.2.10] - 2026-05-08
+
+> **Compatible with OpenClaw `^2026.5.7`**.
 
 ### Features
 
@@ -157,6 +195,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [3.1.0] - 2026-05-06
 
+> **Compatible with OpenClaw `^2026.5.7`**.
+
 ### Features
 
 - **Multi-account setup wizard**: add multiple bots with independent App IDs; agent routing via `bindings[]` config.
@@ -166,6 +206,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - Clean multi-account config migration: top-level credentials → `accounts.<appId>` when adding second bot.
 
 ## [3.0.0] - 2026-05-04
+
+> **Compatible with OpenClaw `^2026.5.7`**.
 
 ### Features
 
@@ -181,6 +223,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [2.10.0] - 2026-04-28
 
+> **Compatible with OpenClaw `^2026.5.7`**.
+
 ### Features
 
 - **px→pt auto-conversion**: `sendAppCard` converts CSS `font-size` from px to pt (Lansenger requires pt; px renders incorrectly).
@@ -188,6 +232,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - Tool registration logging for debugging.
 
 ## [2.9.12] - 2026-04-26
+
+> **Compatible with OpenClaw `^2026.5.7`**.
 
 ### Features
 
@@ -198,6 +244,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [2.8.1] - 2026-04-24
 
+> **Compatible with OpenClaw `^2026.5.7`**.
+
 ### Features
 
 - **OpenClaw bindings multi-agent routing**: use `resolveAgentRoute` from SDK for agent routing; remove per-account `agentId` and `BindingManager`/`execSync` dependency.
@@ -207,6 +255,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [2.7.0] - 2026-04-22
 
+> **Compatible with OpenClaw `^2026.5.7`**.
+
 ### Features
 
 - Register tools as plain objects (not factory functions) — external plugin capture API only accepts non-function tool descriptors.
@@ -215,12 +265,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [2.6.0] - 2026-04-20
 
+> **Compatible with OpenClaw `^2026.5.7`**.
+
 ### Bug Fixes
 
 - Register tools unconditionally — resolve account at execute time instead of registration time (fixes `tools.allow 'no registered tools matched'`).
 - Removed phantom `delete_message` tool.
 
 ## [2.5.0] - 2026-04-18
+
+> **Compatible with OpenClaw `^2026.5.7`**.
 
 ### Features
 
@@ -232,6 +286,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [2.4.0] - 2026-04-16
 
+> **Compatible with OpenClaw `^2026.5.7`**.
+
 ### Bug Fixes
 
 - Fix message body assembly: `wrap()` excludes `msgType` from `msgData`; `appArticles` uses correct `msgType`/`summary`/flat array.
@@ -239,11 +295,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [2.3.0] - 2026-04-14
 
+> **Compatible with OpenClaw `^2026.5.7`**.
+
 ### Features
 
 - Remove legacy `sendGroupText`/`sendGroupFormatText`; all routing via `msgTarget(chatId)` helper (determines private vs group endpoint automatically).
 
 ## [2.2.0] - 2026-04-12
+
+> **Compatible with OpenClaw `^2026.5.7`**.
 
 ### Features
 
@@ -256,12 +316,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [2.1.0] - 2026-04-10
 
+> **Compatible with OpenClaw `^2026.5.7`**.
+
 ### Features
 
 - **sendAttachment → send action**: merge `sendAttachment` into `send` action — `filePath` param in `send` action sends file, no MEDIA tags needed. Align with Telegram pattern.
 - `send` action auto-resolves target from `sessionKey`/`requesterSenderId` — `to` param optional.
 
 ## [2.0.0] - 2026-04-08
+
+> **Compatible with OpenClaw `^2026.5.7`**.
 
 ### Breaking Changes
 
@@ -276,6 +340,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - Rewrite SKILL.md from agent perspective.
 
 ## [1.0.3] - 2026-04-04
+
+> **Compatible with OpenClaw `^2026.5.7`**.
 
 ### Features
 
@@ -292,12 +358,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [1.0.1] - 2026-04-02
 
+> **Compatible with OpenClaw `^2026.5.7`**.
+
 ### Bug Fixes
 
 - Fix README `dmSecurity` example: `allowlist` → `paired`.
 - Fix README install instructions format.
 
 ## [1.0.0] - 2026-04-01
+
+> **Compatible with OpenClaw `^2026.5.7`**.
 
 ### Initial Release
 
