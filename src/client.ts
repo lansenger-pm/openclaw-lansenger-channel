@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as crypto from "node:crypto";
 import WebSocket from "ws";
+import { assertHttpUrlTargetsPrivateNetwork, isPrivateNetworkOptInEnabled } from "openclaw/plugin-sdk/ssrf-policy";
 
 export type ClientLogger = {
   info: (message: string) => void;
@@ -107,12 +108,14 @@ export class LansengerClient {
   private log: ClientLogger;
   private chatTypeMap = new Map<string, "group" | "dm">();
   private userLangMap = new Map<string, "zh" | "en">();
+  private dangerouslyAllowPrivateNetwork: boolean = false;
 
-  constructor(config: { appId: string; appSecret: string; apiGatewayUrl?: string; logger?: ClientLogger }) {
+  constructor(config: { appId: string; appSecret: string; apiGatewayUrl?: string; logger?: ClientLogger; dangerouslyAllowPrivateNetwork?: boolean | null }) {
     this.appId = config.appId;
     this.appSecret = config.appSecret;
     this.apiGatewayUrl = config.apiGatewayUrl ?? DEFAULT_API_GATEWAY_URL;
     this.log = config.logger ?? silentLogger;
+    this.dangerouslyAllowPrivateNetwork = config.dangerouslyAllowPrivateNetwork ?? false;
   }
 
   setMessageHandler(handler: (event: InboundEvent) => Promise<void>): void {
@@ -277,8 +280,12 @@ export class LansengerClient {
     return this.sendTextWithMedia(chatId, caption ?? "", mt, [uploadResult.mediaId]);
   }
 
-  async sendImageUrl(chatId: string, imageUrl: string, caption?: string): Promise<ApiResult> {
+  async sendImageUrl(chatId: string, imageUrl: string, caption?: string, dangerouslyAllowPrivateNetwork?: boolean | null): Promise<ApiResult> {
     try {
+      await assertHttpUrlTargetsPrivateNetwork(imageUrl, {
+        dangerouslyAllowPrivateNetwork: dangerouslyAllowPrivateNetwork ?? false,
+        errorMessage: `Image URL targets a private/internal network, which is blocked by SSRF protection. Set dangerouslyAllowPrivateNetwork: true in lansenger config to allow private network image URLs.`,
+      });
       const resp = await fetch(imageUrl, { signal: AbortSignal.timeout(15000) });
       if (!resp.ok) {
         const ct = resp.headers.get("content-type") ?? "";

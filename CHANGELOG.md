@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.12.1] - 2026-06-03
+
+### OpenClaw 2026.5.28 Compatibility
+
+- Pin npm install spec to exact version (`@lansenger-pm/openclaw-lansenger-channel@3.13.0`) to prevent supply-chain attacks and accidental upgrades.
+- Thread canonical `sessionKey` into outbound hooks (`sendText`, `sendMedia`, `sendFormattedText`) for multi-session/multi-agent routing and dedup.
+- Register `message_sending` hook in gateway startup for early-stage reply interception.
+- Add `normalizePayload` and `beforeDeliverPayload` callbacks on outbound base (structural preparation for `reply_payload_sending` hook).
+- Add session-scoped delivery dedup (`sessionDeliveryTracker`) to prevent duplicate sends across turns in the same session.
+- Fallback `sessionKey` now includes `accountId` for multi-bot scenarios.
+- Bump `openclaw` devDependency to `^2026.5.28`.
+
+### Security
+
+- **SecretRef support for appSecret**: `resolveAccount()` now detects SecretRef objects via `coerceSecretRef()` and resolves from env vars. No need to store appSecret as plaintext in config.
+- **SSRF protection for sendImageUrl**: `assertHttpUrlTargetsPrivateNetwork()` blocks RFC1918/link-local/metadata-IP targets by default (aligned with Feishu/Discord/BlueBubbles channels).
+- **`dangerouslyAllowPrivateNetwork` config**: Opt-in at top-level or per-account to allow private network image URLs. Audit finding warns when enabled.
+- **`mediaLocalRoots` config**: Restrict local file delivery to configured directories. If empty, all paths allowed. Prevents agents from accessing arbitrary files.
+
 ## [3.12.0] - 2026-05-29
 
 - Fix compatibility with OpenClaw 2026.5.27: migrate `api.runtime.channel.turn` → `api.runtime.channel.inbound` (OpenClaw removed the old `turn` runtime alias from `PluginRuntimeChannel`; the new `inbound` namespace provides the same `run` function with identical parameters).

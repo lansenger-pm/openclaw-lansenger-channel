@@ -5,7 +5,7 @@ import { createAccountStatusSink, waitUntilAbort } from "openclaw/plugin-sdk/cha
 import { createChannelInboundDebouncer, shouldDebounceTextInbound, resolveInboundDebounceMs } from "openclaw/plugin-sdk/channel-inbound";
 import { LansengerClient } from "./client.js";
 import type { InboundEvent, ClientLogger, ApiResult, AppCardData } from "./client.js";
-import { resolveAccount, makeClient } from "./channel.js";
+import { resolveAccount, makeClient, isPathAllowed } from "./channel.js";
 import type { ResolvedAccount } from "./channel.js";
 import { errorShape } from "openclaw/plugin-sdk/gateway-runtime";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -60,6 +60,7 @@ const runningAccounts = new Map<string, RunningAccount>();
 const accountStatusSinks = new Map<string, (patch: Omit<ChannelAccountSnapshot, "accountId">) => void>();
 const lastInboundChatIds = new Map<string, string>();
 const lastInboundTimes = new Map<string, number>();
+const sessionDeliveryTracker = new Map<string, Set<string>>();
 
 let pluginApi: OpenClawPluginApi | null = null;
 
@@ -167,6 +168,13 @@ export function startLansengerGateway(api: OpenClawPluginApi): void {
     getRunningAccount,
     getLastInboundChatId,
   };
+
+  api.registerHook("message_sending", (event: any) => {
+    const sessionKey = event?.sessionKey ?? "";
+    if (sessionKey && sessionKey.includes("lansenger")) {
+      log.info(`message_sending hook: sessionKey=${sessionKey.slice(0, 32)} type=${event?.type} action=${event?.action}`);
+    }
+  });
 
   const rt = api.runtime as any;
   const rtKeys = rt ? Object.keys(rt) : [];
@@ -569,13 +577,17 @@ async function handleInbound(
   } catch (e: unknown) {
     log.error(`inbound: route resolution failed — ${e instanceof Error ? e.message : String(e)}, using defaults`);
     agentId = "main";
-    sessionKey = `agent:main:lansenger:${chatType}:${event.chatId}`;
+    const accountIdPart = account.accountId ? `:${account.accountId.slice(0, 20)}` : "";
+    sessionKey = `agent:main:lansenger${accountIdPart}:${chatType}:${event.chatId}`;
   }
   const replyTo = event.chatId;
   lastInboundChatIds.set(runningKey, event.chatId);
   lastInboundTimes.set(runningKey, Date.now());
 
-  log.info(`inbound: ${chatType} from=${event.senderId} bot=${account.appId.slice(0, 20)}... agent=${agentId}`);
+  const sessionDeliveredSet = sessionDeliveryTracker.get(sessionKey) ?? new Set<string>();
+  sessionDeliveryTracker.set(sessionKey, sessionDeliveredSet);
+
+  log.info(`inbound: ${chatType} from=${event.senderId} bot=${account.appId.slice(0, 20)}... agent=${agentId} session=${sessionKey.slice(0, 32)}`);
 
   let agentText = event.text;
   if (event.mediaPaths?.length) {
@@ -720,10 +732,12 @@ async function handleInbound(
                 const client = entry?.client ?? makeClient(account, sdkLogger());
 
                 const messageIds: string[] = [];
-                const textKey = text?.trim() ? `${text.trim().slice(0, 80)}:${text.trim().length}` : "";
+                const turnTextKey = text?.trim() ? `${text.trim().slice(0, 80)}:${text.trim().length}` : "";
+                const sessionTextKey = turnTextKey ? `t:${sessionKey}:${turnTextKey}` : "";
 
-                if (text?.trim() && !turnTextDelivered.has(textKey)) {
-                  turnTextDelivered.add(textKey);
+                if (text?.trim() && !turnTextDelivered.has(turnTextKey) && !sessionDeliveredSet.has(sessionTextKey)) {
+                  turnTextDelivered.add(turnTextKey);
+                  sessionDeliveredSet.add(sessionTextKey);
                   const result = await deliverReply(client, to, text);
                   if (result.messageId) messageIds.push(result.messageId);
                 }
@@ -740,7 +754,7 @@ async function handleInbound(
                   const originalName = stripOpenClawUuidSuffix(path.basename(mediaUrl));
                   log.info(`deliver media path: ${mediaUrl} readFile=${readFile ? "yes" : "no"} originalName=${originalName}`);
                   if (/^https?:\/\//i.test(mediaUrl)) {
-                    const r = await client.sendImageUrl(to, mediaUrl, "");
+                    const r = await client.sendImageUrl(to, mediaUrl, "", account.dangerouslyAllowPrivateNetwork);
                     if (r.messageId) messageIds.push(r.messageId);
                   } else if (readFile) {
                     const buffer = await readFile(mediaUrl);
@@ -755,6 +769,10 @@ async function handleInbound(
                     }
                   } else {
                     const resolved = path.resolve(mediaUrl);
+                    if (!isPathAllowed(resolved, account.mediaLocalRoots)) {
+                      log.warn(`deliver: path '${resolved}' outside mediaLocalRoots — blocked`);
+                      continue;
+                    }
                     const r = await client.sendFile(to, resolved, "", undefined, originalName);
                     if (r.messageId) messageIds.push(r.messageId);
                   }

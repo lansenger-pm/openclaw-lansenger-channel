@@ -10,6 +10,7 @@ function makeApi(overrides?: Record<string, any>): any {
     config: overrides?.config ?? { channels: { lansenger: { appId: "test-app", appSecret: "test-secret" } } },
     registerGatewayMethod: (name: string, handler: any) => { methods[name] = handler; },
     registerHttpRoute: (route: any) => { httpRoutes.push(route); },
+    registerHook: () => {},
     runtime: overrides?.runtime ?? {
       channel: {
         pairing: {

@@ -9,6 +9,9 @@ import { createResolvedApproverActionAuthAdapter } from "openclaw/plugin-sdk/app
 import {
   buildProbeChannelStatusSummary,
 } from "openclaw/plugin-sdk/channel-status";
+import { createSubsystemLogger } from "openclaw/plugin-sdk/logging-core";
+import { coerceSecretRef, type SecretRef } from "openclaw/plugin-sdk/secret-ref-runtime";
+import { isPrivateNetworkOptInEnabled } from "openclaw/plugin-sdk/ssrf-policy";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -17,6 +20,18 @@ import { LansengerClient, DEFAULT_API_GATEWAY_URL } from "./client.js";
 import type { AppCardData, I18nAppCardData, ClientLogger } from "./client.js";
 import { getRunningClient, getLastInboundTime, stripOpenClawUuidSuffix, gatewayStartAccount, gatewayStopAccount } from "./runtime.js";
 import { lansengerSetupWizard } from "./setup-wizard.js";
+
+const log = createSubsystemLogger("lansenger");
+
+function isPathAllowed(filePath: string, roots: string[]): boolean {
+  if (roots.length === 0) return true;
+  const resolved = path.resolve(filePath);
+  for (const root of roots) {
+    const resolvedRoot = path.resolve(root);
+    if (resolved.startsWith(resolvedRoot + path.sep) || resolved === resolvedRoot) return true;
+  }
+  return false;
+}
 
 type LansengerProbeResult = {
   ok: boolean;
@@ -37,6 +52,8 @@ type LansengerAccount = {
   revokeAckMessage?: boolean;
   ackMessageTextZh?: string;
   ackMessageTextEn?: string;
+  dangerouslyAllowPrivateNetwork?: boolean;
+  mediaLocalRoots?: string[];
 }
 
 type ResolvedAccount = {
@@ -53,7 +70,21 @@ type ResolvedAccount = {
   ackMessageTextZh: string;
   ackMessageTextEn: string;
   revokeAckMessage: boolean;
+  dangerouslyAllowPrivateNetwork: boolean;
+  mediaLocalRoots: string[];
 };
+
+function resolveSecretValue(raw: unknown): string {
+  if (typeof raw === "string" && raw.trim()) return raw;
+  const ref = coerceSecretRef(raw, { env: "LANSENGER_APP_SECRET" });
+  if (ref) {
+    const envVal = process.env[ref.id] ?? "";
+    if (envVal) return envVal;
+    log.warn(`SecretRef for appSecret: env var '${ref.id}' is empty or not set`);
+    return "";
+  }
+  return "";
+}
 
 function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): ResolvedAccount {
   const section = (cfg.channels as Record<string, any>)?.["lansenger"];
@@ -85,7 +116,8 @@ function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): Resolve
   }
   
   const appId = account?.appId ?? process.env.LANSENGER_APP_ID ?? "";
-  const appSecret = account?.appSecret ?? process.env.LANSENGER_APP_SECRET ?? "";
+  const rawSecret = account?.appSecret ?? process.env.LANSENGER_APP_SECRET ?? "";
+  const appSecret = resolveSecretValue(rawSecret);
   const apiGatewayUrl = account?.apiGatewayUrl ?? process.env.LANSENGER_API_GATEWAY_URL ?? DEFAULT_API_GATEWAY_URL;
   const allowFrom: string[] = account?.allowFrom ?? [];
   const dmPolicy = account?.dmPolicy ?? account?.dmSecurity;
@@ -95,6 +127,8 @@ function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): Resolve
   const ackMessageTextZh = account?.ackMessageTextZh ?? section?.ackMessageTextZh ?? "收到，正在处理...";
   const ackMessageTextEn = account?.ackMessageTextEn ?? section?.ackMessageTextEn ?? "Received, processing...";
   const revokeAckMessage = account?.revokeAckMessage !== undefined ? account.revokeAckMessage : (section?.revokeAckMessage ?? true);
+  const dangerouslyAllowPrivateNetwork = isPrivateNetworkOptInEnabled(account?.dangerouslyAllowPrivateNetwork ?? section?.dangerouslyAllowPrivateNetwork ?? section?.allowPrivateNetwork ?? null);
+  const mediaLocalRoots: string[] = account?.mediaLocalRoots ?? section?.mediaLocalRoots ?? [];
 
   return {
     accountId: resolvedAccountId || appId || null,
@@ -109,6 +143,8 @@ function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): Resolve
     ackMessageTextZh,
     ackMessageTextEn,
     revokeAckMessage,
+    dangerouslyAllowPrivateNetwork,
+    mediaLocalRoots,
   };
 }
 
@@ -117,6 +153,7 @@ function makeClient(account: ResolvedAccount, logger?: ClientLogger): LansengerC
     appId: account.appId,
     appSecret: account.appSecret,
     apiGatewayUrl: account.apiGatewayUrl,
+    dangerouslyAllowPrivateNetwork: account.dangerouslyAllowPrivateNetwork,
     logger,
   });
 }
@@ -366,6 +403,9 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
           }
         }
       }
+      if (isPrivateNetworkOptInEnabled(section?.dangerouslyAllowPrivateNetwork ?? section?.allowPrivateNetwork ?? null)) {
+        findings.push({ checkId: "lansenger/dangerously-allow-private-network", severity: "warn", title: "dangerouslyAllowPrivateNetwork is enabled / dangerouslyAllowPrivateNetwork 已启用", detail: "Lansenger sendImageUrl SSRF protection is disabled — image URLs targeting private/internal networks (RFC1918, link-local, metadata IPs) will be allowed. This is a security risk in production. / 蓝信图片 URL SSRF 防护已禁用——指向内网的图片 URL 将被允许，这在生产环境中存在安全风险。", remediation: "Remove dangerouslyAllowPrivateNetwork from config or set it to false. Only enable in trusted/isolated environments. / 删除 dangerouslyAllowPrivateNetwork 配置或设为 false，仅在可信/隔离环境中启用。" });
+      }
       return findings;
     },
   },
@@ -388,22 +428,28 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
     attachedResults: {
       channel: "lansenger",
       sendText: async (ctx) => {
+        const sessionKey = (ctx as any).sessionKey as string | undefined;
         const account = resolveAccount(ctx.cfg, ctx.accountId ?? undefined);
         const client = makeClient(account);
         const result = await client.sendFormatText(ctx.to, ctx.text);
-        return { messageId: result.messageId ?? "" };
+        return { messageId: result.messageId ?? "", sessionKey };
       },
       sendMedia: async (ctx) => {
+        const sessionKey = (ctx as any).sessionKey as string | undefined;
         const account = resolveAccount(ctx.cfg, ctx.accountId ?? undefined);
         const client = makeClient(account);
         const caption = ctx.text ?? "";
 
         if (ctx.mediaUrl && /^https?:\/\//i.test(ctx.mediaUrl)) {
-          const result = await client.sendImageUrl(ctx.to, ctx.mediaUrl, caption);
-          return { messageId: result.messageId ?? "" };
+          const result = await client.sendImageUrl(ctx.to, ctx.mediaUrl, caption, account.dangerouslyAllowPrivateNetwork);
+          return { messageId: result.messageId ?? "", sessionKey };
         }
 
         if (ctx.mediaUrl) {
+          if (!isPathAllowed(ctx.mediaUrl, account.mediaLocalRoots)) {
+            log.warn(`sendMedia: path '${ctx.mediaUrl}' outside mediaLocalRoots — blocked`);
+            return { messageId: "", sessionKey };
+          }
           const readFile = ctx.mediaReadFile ?? ctx.mediaAccess?.readFile;
           if (readFile) {
             const buffer = await readFile(ctx.mediaUrl);
@@ -415,25 +461,39 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
             const mt = ctx.audioAsVoice ? 4 : undefined;
             try {
               const result = await client.sendFile(ctx.to, tmpPath, caption, mt, srcExt ? originalName : undefined);
-              return { messageId: result.messageId ?? "" };
+              return { messageId: result.messageId ?? "", sessionKey };
             } finally {
               try { await fs.unlink(tmpPath); } catch {}
             }
           }
           const result = await client.sendFile(ctx.to, ctx.mediaUrl, caption);
-          return { messageId: result.messageId ?? "" };
+          return { messageId: result.messageId ?? "", sessionKey };
         }
 
-        return { messageId: "" };
+        return { messageId: "", sessionKey };
       },
     },
     base: {
       deliveryMode: "direct" as const,
+      normalizePayload: (params: any) => {
+        const payload = params.payload as any;
+        if (payload?.text && !payload?.mediaUrl && !payload?.presentation) {
+          return { ...payload, _lansengerFormatText: true };
+        }
+        return payload ?? null;
+      },
+      beforeDeliverPayload: (params: any) => {
+        const target = params.target as any;
+        const payload = params.payload as any;
+        const sessionKey = (params as any).sessionKey ?? "";
+        log.info(`beforeDeliverPayload: to=${target?.to} sessionKey=${sessionKey.slice(0, 32)} payloadKind=${payload?.text ? "text" : "other"}`);
+      },
       sendFormattedText: async (ctx) => {
+        const sessionKey = (ctx as any).sessionKey as string | undefined;
         const account = resolveAccount(ctx.cfg, ctx.accountId ?? undefined);
         const client = makeClient(account);
         const result = await client.sendFormatText(ctx.to, ctx.text);
-        return [{ channel: "lansenger", messageId: result.messageId ?? "" }];
+        return [{ channel: "lansenger", messageId: result.messageId ?? "", sessionKey }];
       },
     },
   },
@@ -865,5 +925,5 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
   },
 };
 
-export { resolveAccount, makeClient };
+export { resolveAccount, makeClient, isPathAllowed };
 export type { ResolvedAccount };
