@@ -11,11 +11,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 ### Bug Fix
 
 - **Missing `dist/src/setup-i18n.*` in npm package**: `setup-wizard.js` imports `./setup-i18n.js`, but the `files` field in `package.json` did not include `dist/src/setup-i18n.*`, causing `Cannot find module './setup-i18n.js'` at gateway startup. Added `dist/src/setup-i18n.*` to the `files` array.
+- **`message_sending` hook registration missing name**: `api.registerHook("message_sending", ...)` now fails at gateway startup with "hook registration missing name" (OpenClaw 2026.5.28 rejects `registerHook` calls for typed hooks that lack a name). Migrated `message_sending` to `api.on("message_sending", ...)` — the typed lifecycle hook API — alongside the existing `reply_payload_sending` hook.
 
 ### Outbound Hook Expansion
 
 - **`reply_payload_sending` hook**: Register typed plugin hook via `api.on()` for the lansenger channel. Intercepts reply payloads before delivery — enables logging, approval context injection, and payload rewrite/cancel decisions.
-- **`message_sending` hook**: Register hook in gateway startup for early-stage reply interception.
+- **`message_sending` hook**: Register typed plugin hook via `api.on()` for early-stage reply interception.
 - **`normalizePayload` — code-block detection**: Payloads containing `\`\`\`` code fences are now marked `_lansengerFormatText: true` even when they also carry `mediaUrl` or `presentation`. Previously, code-rich agent replies with attachments fell back to plain-text `msgType`, losing Markdown formatting. Now they always render via `formatText`.
 - **`beforeDeliverPayload` — approval-resolved crash recovery**: When `hint.kind === "approval-resolved"`, the delivery pipeline now proactively updates the original appCard status via `updateDynamicCard`. Because the delivery pipeline replays on gateway restart, this provides crash-recovery safety.
 - **`shouldSuppressLocalPayloadPrompt`**: Suppresses the local text prompt when the native approval route is active (`hint.kind === "approval-pending"` with `nativeRouteActive === true`). Prevents duplicate approval prompts.

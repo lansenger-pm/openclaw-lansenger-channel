@@ -170,14 +170,13 @@ export function startLansengerGateway(api: OpenClawPluginApi): void {
     getLastInboundChatId,
   };
 
-  api.registerHook("message_sending", (event: any) => {
-    const sessionKey = event?.sessionKey ?? "";
-    if (sessionKey && sessionKey.includes("lansenger")) {
-      log.info(`message_sending hook: sessionKey=${sessionKey.slice(0, 32)} type=${event?.type} action=${event?.action}`);
-    }
-  });
-
   if (api.on) {
+    api.on("message_sending", (event: any) => {
+      const sessionKey = event?.sessionKey ?? "";
+      if (sessionKey && sessionKey.includes("lansenger")) {
+        log.info(`message_sending hook: sessionKey=${sessionKey.slice(0, 32)} type=${event?.type} action=${event?.action}`);
+      }
+    });
     api.on("reply_payload_sending", (event: any, ctx: any) => {
       if (ctx?.channelId === "lansenger" || event?.channel === "lansenger") {
         const payload = event?.payload;
