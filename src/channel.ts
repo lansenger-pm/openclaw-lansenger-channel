@@ -19,7 +19,12 @@ import * as path from "node:path";
 import * as crypto from "node:crypto";
 import { LansengerClient, DEFAULT_API_GATEWAY_URL } from "./client.js";
 import type { AppCardData, I18nAppCardData, ClientLogger } from "./client.js";
-import { createMessageReceiptFromOutboundResults } from "openclaw/plugin-sdk/channel-outbound";
+import {
+  createMessageReceiptFromOutboundResults,
+  createChannelMessageAdapterFromOutbound,
+  type ChannelMessageOutboundBridgeAdapter,
+  type ChannelMessageOutboundBridgeResult,
+} from "openclaw/plugin-sdk/channel-outbound";
 import { getRunningClient, getLastInboundTime, stripOpenClawUuidSuffix, gatewayStartAccount, gatewayStopAccount } from "./runtime.js";
 import { lansengerSetupWizard } from "./setup-wizard.js";
 
@@ -564,6 +569,148 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
   },
 });
 
+const lansengerOutboundBridge: ChannelMessageOutboundBridgeAdapter<OpenClawConfig> = {
+  sendText: async (ctx) => {
+    const account = resolveAccount(ctx.cfg, ctx.accountId ?? undefined);
+    const client = makeClient(account);
+    const result = await client.sendFormatText(ctx.to, ctx.text);
+    const receipt = result.messageId
+      ? createMessageReceiptFromOutboundResults({ results: [{ messageId: result.messageId, chatId: ctx.to }], kind: "text", sentAt: Date.now() })
+      : undefined;
+    return { channel: "lansenger", messageId: result.messageId ?? "", chatId: ctx.to, receipt };
+  },
+  sendMedia: async (ctx) => {
+    const account = resolveAccount(ctx.cfg, ctx.accountId ?? undefined);
+    const client = makeClient(account);
+    const caption = ctx.text ?? "";
+
+    if (ctx.mediaUrl && /^https?:\/\//i.test(ctx.mediaUrl)) {
+      const result = await client.sendImageUrl(ctx.to, ctx.mediaUrl, caption, account.dangerouslyAllowPrivateNetwork);
+      const receipt = result.messageId
+        ? createMessageReceiptFromOutboundResults({ results: [{ messageId: result.messageId, chatId: ctx.to }], kind: "media", sentAt: Date.now() })
+        : undefined;
+      return { channel: "lansenger", messageId: result.messageId ?? "", chatId: ctx.to, receipt };
+    }
+
+    if (ctx.mediaUrl) {
+      if (!isPathAllowed(ctx.mediaUrl, account.mediaLocalRoots)) {
+        log.warn(`sendMedia: path '${ctx.mediaUrl}' outside mediaLocalRoots — blocked`);
+        const receipt = createMessageReceiptFromOutboundResults({ results: [], kind: "media", sentAt: Date.now() });
+        return { channel: "lansenger", messageId: "", chatId: ctx.to, receipt };
+      }
+      const readFile = ctx.mediaReadFile ?? ctx.mediaAccess?.readFile;
+      if (readFile) {
+        const buffer = await readFile(ctx.mediaUrl);
+        const srcExt = path.extname(ctx.mediaUrl).toLowerCase();
+        const ext = srcExt || (ctx.audioAsVoice ? ".amr" : ".dat");
+        const originalName = stripOpenClawUuidSuffix(path.basename(ctx.mediaUrl));
+        const tmpPath = path.join(os.tmpdir(), `lansenger_media_${crypto.randomUUID()}${ext}`);
+        await fs.writeFile(tmpPath, buffer);
+        const mt = ctx.audioAsVoice ? 4 : undefined;
+        try {
+          const result = await client.sendFile(ctx.to, tmpPath, caption, mt, srcExt ? originalName : undefined);
+          const receipt = result.messageId
+            ? createMessageReceiptFromOutboundResults({ results: [{ messageId: result.messageId, chatId: ctx.to }], kind: "media", sentAt: Date.now() })
+            : undefined;
+          return { channel: "lansenger", messageId: result.messageId ?? "", chatId: ctx.to, receipt };
+        } finally {
+          try { await fs.unlink(tmpPath); } catch {}
+        }
+      }
+      const result = await client.sendFile(ctx.to, ctx.mediaUrl, caption);
+      const receipt = result.messageId
+        ? createMessageReceiptFromOutboundResults({ results: [{ messageId: result.messageId, chatId: ctx.to }], kind: "media", sentAt: Date.now() })
+        : undefined;
+      return { channel: "lansenger", messageId: result.messageId ?? "", chatId: ctx.to, receipt };
+    }
+
+    const receipt = createMessageReceiptFromOutboundResults({ results: [], kind: "media", sentAt: Date.now() });
+    return { channel: "lansenger", messageId: "", chatId: ctx.to, receipt };
+  },
+  sendPayload: async (ctx) => {
+    const account = resolveAccount(ctx.cfg, ctx.accountId ?? undefined);
+    const client = makeClient(account);
+    const payload = ctx.payload as any;
+    const hasCodeBlock = payload?.text && /```/.test(payload.text);
+
+    if (payload?.text && !payload?.mediaUrl && !payload?.presentation) {
+      const result = await client.sendFormatText(ctx.to, payload.text);
+      const receipt = result.messageId
+        ? createMessageReceiptFromOutboundResults({ results: [{ messageId: result.messageId, chatId: ctx.to }], kind: "text", sentAt: Date.now() })
+        : undefined;
+      return { channel: "lansenger", messageId: result.messageId ?? "", chatId: ctx.to, receipt };
+    }
+
+    if (hasCodeBlock && payload?.text) {
+      const result = await client.sendFormatText(ctx.to, payload.text);
+      const receipt = result.messageId
+        ? createMessageReceiptFromOutboundResults({ results: [{ messageId: result.messageId, chatId: ctx.to }], kind: "text", sentAt: Date.now() })
+        : undefined;
+      return { channel: "lansenger", messageId: result.messageId ?? "", chatId: ctx.to, receipt };
+    }
+
+    if (payload?.text && payload?.mediaUrl) {
+      if (/^https?:\/\//i.test(payload.mediaUrl)) {
+        const mediaResult = await client.sendImageUrl(ctx.to, payload.mediaUrl, payload.text, account.dangerouslyAllowPrivateNetwork);
+        const receipt = mediaResult.messageId
+          ? createMessageReceiptFromOutboundResults({ results: [{ messageId: mediaResult.messageId, chatId: ctx.to }], kind: "media", sentAt: Date.now() })
+          : undefined;
+        return { channel: "lansenger", messageId: mediaResult.messageId ?? "", chatId: ctx.to, receipt };
+      }
+      const readFile = ctx.mediaReadFile ?? ctx.mediaAccess?.readFile;
+      if (readFile) {
+        const buffer = await readFile(payload.mediaUrl);
+        const srcExt = path.extname(payload.mediaUrl).toLowerCase();
+        const ext = srcExt || ".dat";
+        const originalName = stripOpenClawUuidSuffix(path.basename(payload.mediaUrl));
+        const tmpPath = path.join(os.tmpdir(), `lansenger_media_${crypto.randomUUID()}${ext}`);
+        await fs.writeFile(tmpPath, buffer);
+        try {
+          const result = await client.sendFile(ctx.to, tmpPath, payload.text, undefined, srcExt ? originalName : undefined);
+          const receipt = result.messageId
+            ? createMessageReceiptFromOutboundResults({ results: [{ messageId: result.messageId, chatId: ctx.to }], kind: "media", sentAt: Date.now() })
+            : undefined;
+          return { channel: "lansenger", messageId: result.messageId ?? "", chatId: ctx.to, receipt };
+        } finally {
+          try { await fs.unlink(tmpPath); } catch {}
+        }
+      }
+      const result = await client.sendFile(ctx.to, payload.mediaUrl, payload.text);
+      const receipt = result.messageId
+        ? createMessageReceiptFromOutboundResults({ results: [{ messageId: result.messageId, chatId: ctx.to }], kind: "media", sentAt: Date.now() })
+        : undefined;
+      return { channel: "lansenger", messageId: result.messageId ?? "", chatId: ctx.to, receipt };
+    }
+
+    if (payload?.text) {
+      const result = await client.sendFormatText(ctx.to, payload.text);
+      const receipt = result.messageId
+        ? createMessageReceiptFromOutboundResults({ results: [{ messageId: result.messageId, chatId: ctx.to }], kind: "text", sentAt: Date.now() })
+        : undefined;
+      return { channel: "lansenger", messageId: result.messageId ?? "", chatId: ctx.to, receipt };
+    }
+
+    const receipt = createMessageReceiptFromOutboundResults({ results: [], kind: "text", sentAt: Date.now() });
+    return { channel: "lansenger", messageId: "", chatId: ctx.to, receipt };
+  },
+};
+
+const lansengerMessageAdapter = createChannelMessageAdapterFromOutbound({
+  id: "lansenger",
+  outbound: lansengerOutboundBridge,
+  capabilities: {
+    text: true,
+    media: true,
+    payload: true,
+    messageSendingHooks: true,
+    batch: true,
+  },
+  receive: {
+    defaultAckPolicy: "after_agent_dispatch",
+    supportedAckPolicies: ["after_receive_record", "after_agent_dispatch", "after_durable_send", "manual"],
+  },
+});
+
 const lansengerOnboarding = {
   configuredCheck: (cfg: any) => {
     const section = (cfg.channels as Record<string, any>)?.["lansenger"];
@@ -736,6 +883,7 @@ const lansengerOnboarding = {
 
 export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResult> = {
   ...chatPlugin as any,
+  message: lansengerMessageAdapter,
   setupWizard: lansengerSetupWizard,
   gateway: {
     startAccount: gatewayStartAccount,

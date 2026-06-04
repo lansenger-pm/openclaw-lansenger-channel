@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { lansengerPlugin, resolveAccount, pendingApprovalCards } from "./channel.js";
 import { LansengerClient, mediaTypeFromPath, uploadMediaTypeFromPath, buildI18n } from "./client.js";
+import { verifyChannelMessageReceiveAckPolicyAdapterProofs, listDeclaredReceiveAckPolicies } from "openclaw/plugin-sdk/channel-outbound";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -806,5 +807,53 @@ describe("pendingApprovalCards", () => {
     pendingApprovalCards.set("chat-1", { messageId: "msg-123", lang: "zh" });
     pendingApprovalCards.delete("chat-1");
     expect(pendingApprovalCards.get("chat-1")).toBeUndefined();
+  });
+});
+
+describe("message adapter receive ack policy", () => {
+  const messageAdapter = (lansengerPlugin as any).message;
+
+  it("declares receive adapter with defaultAckPolicy after_agent_dispatch", () => {
+    expect(messageAdapter).toBeDefined();
+    const receive = messageAdapter.receive;
+    expect(receive).toBeDefined();
+    expect(receive.defaultAckPolicy).toBe("after_agent_dispatch");
+  });
+
+  it("declares all four supported ack policies", () => {
+    const receive = messageAdapter.receive;
+    expect(receive.supportedAckPolicies).toEqual([
+      "after_receive_record",
+      "after_agent_dispatch",
+      "after_durable_send",
+      "manual",
+    ]);
+  });
+
+  it("passes verifyChannelMessageReceiveAckPolicyAdapterProofs", async () => {
+    const proofs = {
+      after_receive_record: () => {},
+      after_agent_dispatch: () => {},
+      after_durable_send: () => {},
+      manual: () => {},
+    };
+    const results = await verifyChannelMessageReceiveAckPolicyAdapterProofs({
+      adapterName: "lansenger",
+      adapter: messageAdapter,
+      proofs,
+    });
+    for (const policy of ["after_receive_record", "after_agent_dispatch", "after_durable_send", "manual"]) {
+      const result = results.find((r) => r.policy === policy);
+      expect(result).toBeDefined();
+      expect(result?.status).toBe("verified");
+    }
+  });
+
+  it("lists declared ack policies via listDeclaredReceiveAckPolicies", () => {
+    const policies = listDeclaredReceiveAckPolicies(messageAdapter.receive);
+    expect(policies).toContain("after_agent_dispatch");
+    expect(policies).toContain("after_receive_record");
+    expect(policies).toContain("after_durable_send");
+    expect(policies).toContain("manual");
   });
 });

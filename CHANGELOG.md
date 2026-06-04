@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.14.0] - 2026-06-04
+
+> **Compatible with OpenClaw `^2026.6.1`** (tested against `2026.6.1`).
+
+### Message Adapter (New `ChannelPlugin.message`)
+
+- **`lansengerMessageAdapter`**: New `ChannelMessageAdapterShape` mounted on `lansengerPlugin.message`, built via `createChannelMessageAdapterFromOutbound` from the OpenClaw SDK. This bridges the legacy `outbound` adapter into the new message adapter contract, enabling OpenClaw core to use the standardized `send.text / send.media / send.payload` + `durableFinal` + `receive` + `live` adapter facets.
+- **`lansengerOutboundBridge`**: `ChannelMessageOutboundBridgeAdapter` implementation with `sendText`, `sendMedia`, and `sendPayload` methods. All send methods now return `ChannelMessageOutboundBridgeResult` with a normalized `MessageReceipt` (via `createMessageReceiptFromOutboundResults`) instead of the legacy `OutboundDeliveryResult`.
+- **`sendText`**: Maps to `client.sendFormatText` — sends Markdown-formatted text with standard receipt.
+- **`sendMedia`**: Full media handling — URL images (`sendImageUrl`), local files (`sendFile`), buffered uploads (`mediaReadFile`) — identical logic to the former `outbound.attachedResults.sendMedia`, now with receipt normalization.
+- **`sendPayload`**: Consolidates `normalizePayload` + `beforeDeliverPayload` logic into a single method. Handles: pure text → `formatText`, code-block text → `formatText`, text+media → media delivery with caption, mixed payloads. Replaces the two-step normalize→deliver pipeline with direct payload dispatch.
+- **Capabilities declared**: `text`, `media`, `payload`, `messageSendingHooks`, `batch`.
+- **Legacy `outbound` preserved**: The existing `chatPlugin.outbound.attachedResults` and `outbound.base` configuration remains unchanged for backward compatibility. OpenClaw core will prefer the `message` adapter when available, falling back to `outbound` for older runtime versions.
+
+### Inbound Receive Ack Policy (`message.receive`)
+
+- **`defaultAckPolicy: "after_agent_dispatch"`**: Declares that Lansenger inbound messages should be acknowledged after the agent dispatch completes. This matches the existing behavior: the "收到，正在处理..." ack message is sent on receive and revoked after agent reply, which is semantically an `after_agent_dispatch` lifecycle.
+- **`supportedAckPolicies`**: All four policies declared — `after_receive_record`, `after_agent_dispatch`, `after_durable_send`, `manual` — giving OpenClaw core flexibility to select the appropriate ack stage per scenario.
+- **Test coverage**: 4 new tests via `verifyChannelMessageReceiveAckPolicyAdapterProofs` and `listDeclaredReceiveAckPolicies`, verifying all declared policies pass SDK contract proofs.
+- This replaces the previously implicit ack timing embedded in the `runtime.ts` monitor-local state with a standardized, SDK-verifiable contract.
+
 ## [3.13.0] - 2026-06-03
 
 > **Compatible with OpenClaw `^2026.5.28`** (tested against `2026.5.28`).
