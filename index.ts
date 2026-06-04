@@ -13,6 +13,9 @@ export default defineChannelPluginEntry({
   name: "Lansenger (蓝信)",
   description: "Lansenger enterprise messaging channel plugin for OpenClaw",
   plugin: lansengerPlugin,
+  registerCliMetadata(api) {
+    registerLansengerTools(api);
+  },
   registerFull(api) {
     startLansengerGateway(api);
     registerLansengerTools(api);

@@ -19,6 +19,7 @@ import * as path from "node:path";
 import * as crypto from "node:crypto";
 import { LansengerClient, DEFAULT_API_GATEWAY_URL } from "./client.js";
 import type { AppCardData, I18nAppCardData, ClientLogger } from "./client.js";
+import { createMessageReceiptFromOutboundResults } from "openclaw/plugin-sdk/channel-outbound";
 import { getRunningClient, getLastInboundTime, stripOpenClawUuidSuffix, gatewayStartAccount, gatewayStopAccount } from "./runtime.js";
 import { lansengerSetupWizard } from "./setup-wizard.js";
 
@@ -26,6 +27,14 @@ const log = createSubsystemLogger("lansenger");
 const LANSENGER_TEXT_CHUNK_LIMIT = 4000;
 
 const pendingApprovalCards = new Map<string, { messageId: string; lang: "zh" | "en" }>();
+
+function toOutboundResult(messageId: string | undefined, sessionKey?: string, chatId?: string) {
+  const mid = messageId ?? "";
+  const receipt = mid
+    ? createMessageReceiptFromOutboundResults({ results: [{ messageId: mid, chatId: chatId ?? "" }], kind: "text", sentAt: Date.now() })
+    : undefined;
+  return { messageId: mid, sessionKey, chatId, receipt };
+}
 
 function isPathAllowed(filePath: string, roots: string[]): boolean {
   if (roots.length === 0) return true;
@@ -443,7 +452,7 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
         const account = resolveAccount(ctx.cfg, ctx.accountId ?? undefined);
         const client = makeClient(account);
         const result = await client.sendFormatText(ctx.to, ctx.text);
-        return { messageId: result.messageId ?? "", sessionKey };
+        return toOutboundResult(result.messageId, sessionKey, ctx.to);
       },
       sendMedia: async (ctx) => {
         const sessionKey = (ctx as any).sessionKey as string | undefined;
@@ -453,13 +462,13 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
 
         if (ctx.mediaUrl && /^https?:\/\//i.test(ctx.mediaUrl)) {
           const result = await client.sendImageUrl(ctx.to, ctx.mediaUrl, caption, account.dangerouslyAllowPrivateNetwork);
-          return { messageId: result.messageId ?? "", sessionKey };
+          return toOutboundResult(result.messageId, sessionKey, ctx.to);
         }
 
         if (ctx.mediaUrl) {
           if (!isPathAllowed(ctx.mediaUrl, account.mediaLocalRoots)) {
             log.warn(`sendMedia: path '${ctx.mediaUrl}' outside mediaLocalRoots — blocked`);
-            return { messageId: "", sessionKey };
+            return toOutboundResult(undefined, sessionKey, ctx.to);
           }
           const readFile = ctx.mediaReadFile ?? ctx.mediaAccess?.readFile;
           if (readFile) {
@@ -472,16 +481,16 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
             const mt = ctx.audioAsVoice ? 4 : undefined;
             try {
               const result = await client.sendFile(ctx.to, tmpPath, caption, mt, srcExt ? originalName : undefined);
-              return { messageId: result.messageId ?? "", sessionKey };
+              return toOutboundResult(result.messageId, sessionKey, ctx.to);
             } finally {
               try { await fs.unlink(tmpPath); } catch {}
             }
           }
           const result = await client.sendFile(ctx.to, ctx.mediaUrl, caption);
-          return { messageId: result.messageId ?? "", sessionKey };
+          return toOutboundResult(result.messageId, sessionKey, ctx.to);
         }
 
-        return { messageId: "", sessionKey };
+        return toOutboundResult(undefined, sessionKey, ctx.to);
       },
     },
     base: {

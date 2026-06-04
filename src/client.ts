@@ -942,6 +942,8 @@ export type InboundEvent = {
   rawMessage: Record<string, any>;
   msgType: string;
   mediaPaths?: string[];
+  isAtMe?: boolean;
+  isAtAll?: boolean;
 };
 
 export type LansengerApiResponse = {

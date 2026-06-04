@@ -9,6 +9,8 @@ import { resolveAccount, makeClient, isPathAllowed } from "./channel.js";
 import type { ResolvedAccount } from "./channel.js";
 import { errorShape } from "openclaw/plugin-sdk/gateway-runtime";
 import { pendingApprovalCards } from "./channel.js";
+import { defineStableChannelIngressIdentity, createChannelIngressResolver, resolveChannelMessageIngress } from "openclaw/plugin-sdk/channel-ingress-runtime";
+import { DEFAULT_ACCOUNT_ID } from "openclaw/plugin-sdk/account-id";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -16,6 +18,13 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 
 const log = createSubsystemLogger("lansenger");
+
+const lansengerIngressIdentity = defineStableChannelIngressIdentity({
+  key: "senderId",
+  normalize: (v: string) => v.replace(/^lansenger:/, ""),
+  sensitivity: "normal",
+  entryIdPrefix: "lx",
+});
 
 function sdkLogger(): ClientLogger {
   return {
@@ -52,6 +61,8 @@ export function mergeInboundEvents(events: InboundEvent[]): InboundEvent {
     rawMessage: mergedRawMessage,
     msgType: last.msgType,
     mediaPaths: mergedMediaPaths.length > 0 ? mergedMediaPaths : undefined,
+    isAtMe: last.isAtMe,
+    isAtAll: last.isAtAll,
   };
 }
 
@@ -505,22 +516,43 @@ async function handleInbound(
   const turnMediaDelivered = new Set<string>();
 
   if (chatType === "dm") {
-    const dmPolicy = account.dmPolicy ?? "pairing";
+    const dmPolicy = (account.dmPolicy ?? "pairing") as "pairing" | "allowlist" | "open" | "disabled";
     const configAllowFrom = account.allowFrom ?? [];
     const pairing = (api.runtime as any)?.channel?.pairing;
-    let storeAllowFrom: string[] = [];
+
+    let ingress: any;
     try {
-      if (pairing?.readAllowFromStore) {
-        storeAllowFrom = await pairing.readAllowFromStore({ channel: "lansenger", accountId: account.accountId ?? undefined });
-      }
+      ingress = await resolveChannelMessageIngress({
+        channelId: "lansenger",
+        accountId: account.accountId ?? DEFAULT_ACCOUNT_ID,
+        identity: lansengerIngressIdentity,
+        subject: { stableId: event.senderId },
+        conversation: { kind: "direct", id: event.chatId },
+        event: { kind: "message", authMode: "inbound", mayPair: true, originSubject: { identifiers: [{ opaqueId: event.senderId, kind: "platform-id" as any, sensitivity: "normal", value: event.senderId }] } },
+        policy: { dmPolicy, groupPolicy: "allowlist" },
+        allowFrom: configAllowFrom,
+        useDefaultPairingStore: true,
+      });
     } catch (e: unknown) {
-      log.error(`inbound: readAllowFromStore failed — ${e instanceof Error ? e.message : String(e)}`);
+      log.error(`inbound: ingress resolution failed — ${e instanceof Error ? e.message : String(e)}, falling back to manual DM check`);
     }
-    const effectiveAllowFrom = [...new Set([...configAllowFrom, ...storeAllowFrom])];
-    const senderAllowed = effectiveAllowFrom.some((id: string) => {
-      const bare = id.replace(/^lansenger:/, "");
-      return bare === event.senderId || id === event.senderId;
-    });
+
+let senderAllowed = ingress?.senderAccess?.allowed ?? false;
+    if (!senderAllowed && !ingress) {
+      let storeAllowFrom: string[] = [];
+      try {
+        if (pairing?.readAllowFromStore) {
+          storeAllowFrom = await pairing.readAllowFromStore({ channel: "lansenger", accountId: account.accountId ?? undefined });
+        }
+      } catch (e: unknown) {
+        log.error(`inbound: readAllowFromStore failed — ${e instanceof Error ? e.message : String(e)}`);
+      }
+      const effectiveAllowFrom = [...new Set([...configAllowFrom, ...storeAllowFrom])];
+      senderAllowed = effectiveAllowFrom.some((id: string) => {
+        const bare = id.replace(/^lansenger:/, "");
+        return bare === event.senderId || id === event.senderId;
+      });
+    }
 
     if (!senderAllowed) {
       if (dmPolicy === "pairing" && pairing?.upsertPairingRequest) {
@@ -546,38 +578,57 @@ async function handleInbound(
         }
         return;
       }
-      if (dmPolicy === "disabled") {
-        log.info(`inbound: dm dropped — dmPolicy=disabled sender=${event.senderId}`);
-        return;
-      }
-      if (dmPolicy === "allowlist") {
-        log.info(`inbound: dm dropped — sender=${event.senderId} not in allowFrom (dmPolicy=allowlist)`);
-        return;
-      }
+      log.info(`inbound: dm dropped — sender=${event.senderId} not allowed (dmPolicy=${dmPolicy})`);
+      return;
     }
   }
 
   if (event.isGroup) {
+    let ingress: any;
+    let requireMention = false;
     try {
-      const groupPolicy = api.runtime.channel.groups.resolveGroupPolicy({
+      requireMention = api.runtime.channel.groups.resolveRequireMention({
         cfg: api.config,
         channel: "lansenger",
         groupId: event.chatId,
         accountId: account.accountId,
       });
-      if (!groupPolicy.allowed) {
-        log.info(`inbound: group dropped — groupPolicy not allowed for chatId=${event.chatId}`);
+      ingress = await resolveChannelMessageIngress({
+        channelId: "lansenger",
+        accountId: account.accountId ?? DEFAULT_ACCOUNT_ID,
+        identity: lansengerIngressIdentity,
+        subject: { stableId: event.senderId },
+        conversation: { kind: "group", id: event.chatId },
+        event: { kind: "message", authMode: "inbound", mayPair: false, originSubject: { identifiers: [{ opaqueId: event.senderId, kind: "platform-id" as any, sensitivity: "normal", value: event.senderId }] } },
+        policy: { dmPolicy: "pairing", groupPolicy: "allowlist", activation: { requireMention, allowTextCommands: false } },
+        mentionFacts: { canDetectMention: true, wasMentioned: event.isAtMe ?? false, hasAnyMention: event.isAtAll ?? false },
+        route: [{ id: event.chatId, kind: "membership", configured: true }],
+      });
+      if (!ingress?.senderAccess?.allowed) {
+        log.info(`inbound: group dropped — sender not allowed for chatId=${event.chatId}`);
         return;
       }
-      const requireMention = api.runtime.channel.groups.resolveRequireMention({
-        cfg: api.config,
-        channel: "lansenger",
-        groupId: event.chatId,
-        accountId: account.accountId,
-      });
-      log.info(`inbound: group allowed — chatId=${event.chatId} requireMention=${requireMention}`);
+      if (ingress?.activationAccess?.shouldSkip) {
+        log.info(`inbound: group dropped — requireMention=${requireMention} but bot not @mentioned`);
+        return;
+      }
+      log.info(`inbound: group allowed — chatId=${event.chatId} requireMention=${requireMention} senderAllowed=${ingress?.senderAccess?.allowed}`);
     } catch (e: unknown) {
-      log.error(`inbound: group policy check failed — ${e instanceof Error ? e.message : String(e)}`);
+      log.error(`inbound: group ingress resolution failed — ${e instanceof Error ? e.message : String(e)}, falling back to manual check`);
+      try {
+        const groupPolicy = api.runtime.channel.groups.resolveGroupPolicy({
+          cfg: api.config,
+          channel: "lansenger",
+          groupId: event.chatId,
+          accountId: account.accountId,
+        });
+        if (!groupPolicy.allowed) {
+          log.info(`inbound: group dropped — groupPolicy not allowed for chatId=${event.chatId}`);
+          return;
+        }
+      } catch (e2: unknown) {
+        log.error(`inbound: group policy check also failed — ${e2 instanceof Error ? e2.message : String(e2)}`);
+      }
     }
   }
 
@@ -614,67 +665,41 @@ async function handleInbound(
 
   const rawText = event.text;
   let allowTextCommands = false;
-  let shouldComputeAuth = false;
   let hasCommand = false;
   try {
     allowTextCommands = api.runtime.channel.commands.shouldHandleTextCommands({
       cfg: api.config,
       surface: "lansenger",
     });
-    shouldComputeAuth = api.runtime.channel.commands.shouldComputeCommandAuthorized(rawText, api.config);
     hasCommand = api.runtime.channel.commands.isControlCommandMessage(rawText, api.config);
   } catch (e: unknown) {
     log.error(`inbound: command detection failed — ${e instanceof Error ? e.message : String(e)}, skipping command checks`);
   }
 
-  let commandAuthorized: boolean | undefined = undefined;
-
-  if (shouldComputeAuth) {
-    const commandsCfg = (api.config as any).commands ?? {};
-    const useAccessGroups = commandsCfg.useAccessGroups !== false;
-
-    const explicitAllowFrom: string[] | undefined = (() => {
-      const af = commandsCfg.allowFrom;
-      if (!af || typeof af !== "object") return undefined;
-      return af["lansenger"] ?? af["*"] ?? undefined;
-    })();
-
-    const ownerAllowFrom: string[] = commandsCfg.ownerAllowFrom ?? [];
-    const senderId = event.senderId;
-
-    const senderMatches = (id: string) => {
-      const bare = id.replace(/^lansenger:/, "");
-      return bare === senderId || id === senderId;
-    };
-
-    if (explicitAllowFrom) {
-      commandAuthorized = explicitAllowFrom.some(senderMatches);
-    } else {
-      const channelAllowFrom = account.allowFrom;
-      const noAuthorizersConfigured = ownerAllowFrom.length === 0 && channelAllowFrom.length === 0;
-      const dmPolicyIsPairing = (account.dmPolicy ?? "pairing") === "pairing";
-      if (noAuthorizersConfigured && dmPolicyIsPairing) {
-        commandAuthorized = undefined;
-      } else {
-        try {
-          commandAuthorized = api.runtime.channel.commands.resolveCommandAuthorizedFromAuthorizers({
-            useAccessGroups,
-            authorizers: [
-              { configured: ownerAllowFrom.length > 0, allowed: ownerAllowFrom.some(senderMatches) },
-              { configured: channelAllowFrom.length > 0, allowed: channelAllowFrom.some(senderMatches) },
-            ],
-          });
-        } catch (e: unknown) {
-          log.error(`inbound: resolveCommandAuthorizedFromAuthorizers failed — ${e instanceof Error ? e.message : String(e)}`);
-          commandAuthorized = undefined;
-        }
+  if (allowTextCommands && hasCommand) {
+    try {
+      const cmdIngress = await resolveChannelMessageIngress({
+        channelId: "lansenger",
+        accountId: account.accountId ?? DEFAULT_ACCOUNT_ID,
+        identity: lansengerIngressIdentity,
+        subject: { stableId: event.senderId },
+        conversation: { kind: chatType as "direct" | "group", id: event.chatId },
+        event: { kind: "slash-command", authMode: "command", mayPair: false },
+        policy: {
+          dmPolicy: (account.dmPolicy ?? "pairing") as "pairing" | "allowlist" | "open" | "disabled",
+          groupPolicy: "allowlist" as "allowlist" | "open" | "disabled",
+          command: { useAccessGroups: true, allowTextCommands, hasControlCommand: true },
+        },
+        allowFrom: account.allowFrom ?? [],
+        useDefaultPairingStore: true,
+      });
+      if (!cmdIngress?.commandAccess?.authorized) {
+        log.info(`inbound: command blocked — sender=${event.senderId} not authorized: ${rawText.slice(0, 60)}`);
+        return;
       }
+    } catch (e: unknown) {
+      log.error(`inbound: command ingress resolution failed — ${e instanceof Error ? e.message : String(e)}, allowing by default`);
     }
-  }
-
-  if (allowTextCommands && hasCommand && commandAuthorized !== true) {
-    log.info(`inbound: command blocked — sender=${event.senderId} not authorized: ${rawText.slice(0, 60)}`);
-    return;
   }
 
   let ackMessageId: string | undefined = undefined;
@@ -728,7 +753,7 @@ async function handleInbound(
               Body: event.text,
               BodyForAgent: agentText,
               CommandBody: rawText,
-              CommandAuthorized: commandAuthorized,
+              CommandAuthorized: undefined,
               CommandSource: "text",
               From: event.senderId,
               FromName: event.userName,
