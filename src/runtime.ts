@@ -117,7 +117,6 @@ async function startAccount(api: OpenClawPluginApi, accountId?: string | null): 
         await handleInbound(api, merged, account, key);
       },
     });
-    debounceMs;
     debouncer = { debounceMs: resolvedMs, enqueue: created.enqueue, flushKey: created.flushKey };
     log.info(`debounce enabled: debounceMs=${resolvedMs} key=${key}`);
   }
@@ -616,6 +615,15 @@ let senderAllowed = ingress?.senderAccess?.allowed ?? false;
     } catch (e: unknown) {
       log.error(`inbound: group ingress resolution failed — ${e instanceof Error ? e.message : String(e)}, falling back to manual check`);
       try {
+        let fallbackRequireMention = requireMention;
+        try {
+          fallbackRequireMention = api.runtime.channel.groups.resolveRequireMention({
+            cfg: api.config,
+            channel: "lansenger",
+            groupId: event.chatId,
+            accountId: account.accountId,
+          });
+        } catch {}
         const groupPolicy = api.runtime.channel.groups.resolveGroupPolicy({
           cfg: api.config,
           channel: "lansenger",
@@ -624,6 +632,10 @@ let senderAllowed = ingress?.senderAccess?.allowed ?? false;
         });
         if (!groupPolicy.allowed) {
           log.info(`inbound: group dropped — groupPolicy not allowed for chatId=${event.chatId}`);
+          return;
+        }
+        if (fallbackRequireMention && !(event.isAtMe ?? false)) {
+          log.info(`inbound: group dropped — fallback requireMention=${fallbackRequireMention} but bot not @mentioned for chatId=${event.chatId}`);
           return;
         }
       } catch (e2: unknown) {

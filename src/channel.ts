@@ -14,6 +14,7 @@ import { coerceSecretRef, type SecretRef } from "openclaw/plugin-sdk/secret-ref-
 import { isPrivateNetworkOptInEnabled } from "openclaw/plugin-sdk/ssrf-policy";
 import { chunkMarkdownTextWithMode, resolveTextChunkLimit } from "openclaw/plugin-sdk/reply-chunking";
 import * as fs from "node:fs/promises";
+import * as fsSync from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as crypto from "node:crypto";
@@ -31,7 +32,58 @@ import { lansengerSetupWizard } from "./setup-wizard.js";
 const log = createSubsystemLogger("lansenger");
 const LANSENGER_TEXT_CHUNK_LIMIT = 4000;
 
-const pendingApprovalCards = new Map<string, { messageId: string; lang: "zh" | "en" }>();
+const APPROVAL_CARD_FILE = path.join(os.homedir(), ".openclaw", "lansenger-approval-cards.json");
+
+class PersistentApprovalCardStore {
+  private data = new Map<string, { messageId: string; lang: "zh" | "en" }>();
+
+  constructor() {
+    this.load();
+  }
+
+  private load() {
+    try {
+      const raw = fsSync.readFileSync(APPROVAL_CARD_FILE, "utf-8");
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        for (const [k, v] of Object.entries(parsed)) {
+          this.data.set(k, v as { messageId: string; lang: "zh" | "en" });
+        }
+      }
+    } catch {}
+  }
+
+  private save() {
+    try {
+      const dir = path.dirname(APPROVAL_CARD_FILE);
+      fsSync.mkdirSync(dir, { recursive: true });
+      const obj: Record<string, { messageId: string; lang: "zh" | "en" }> = {};
+      for (const [k, v] of this.data) obj[k] = v;
+      fsSync.writeFileSync(APPROVAL_CARD_FILE, JSON.stringify(obj), "utf-8");
+    } catch (e) {
+      log.warn(`failed to persist approval cards: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  get(chatId: string) { return this.data.get(chatId); }
+
+  set(chatId: string, info: { messageId: string; lang: "zh" | "en" }) {
+    this.data.set(chatId, info);
+    this.save();
+  }
+
+  delete(chatId: string) {
+    this.data.delete(chatId);
+    this.save();
+  }
+
+  clear() {
+    this.data.clear();
+    this.save();
+  }
+}
+
+const pendingApprovalCards = new PersistentApprovalCardStore();
 
 function toOutboundResult(messageId: string | undefined, sessionKey?: string, chatId?: string) {
   const mid = messageId ?? "";
@@ -41,10 +93,12 @@ function toOutboundResult(messageId: string | undefined, sessionKey?: string, ch
   return { messageId: mid, sessionKey, chatId, receipt };
 }
 
+const DEFAULT_MEDIA_LOCAL_ROOTS = [process.cwd(), path.join(os.tmpdir())];
+
 function isPathAllowed(filePath: string, roots: string[]): boolean {
-  if (roots.length === 0) return true;
+  const effectiveRoots = roots.length === 0 ? DEFAULT_MEDIA_LOCAL_ROOTS : roots;
   const resolved = path.resolve(filePath);
-  for (const root of roots) {
+  for (const root of effectiveRoots) {
     const resolvedRoot = path.resolve(root);
     if (resolved.startsWith(resolvedRoot + path.sep) || resolved === resolvedRoot) return true;
   }
@@ -148,10 +202,10 @@ function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): Resolve
   const dmPolicy = account?.dmPolicy ?? account?.dmSecurity;
   const homeChannel = account?.homeChannel;
   const enabled = Boolean(appId && appSecret);
-  const ackMessage = account?.ackMessage !== undefined ? account.ackMessage : (section?.ackMessage ?? false);
+  const ackMessage = account?.ackMessage !== undefined ? account.ackMessage : (section?.ackMessage ?? true);
   const ackMessageTextZh = account?.ackMessageTextZh ?? section?.ackMessageTextZh ?? "收到，正在处理...";
   const ackMessageTextEn = account?.ackMessageTextEn ?? section?.ackMessageTextEn ?? "Received, processing...";
-  const revokeAckMessage = account?.revokeAckMessage !== undefined ? account.revokeAckMessage : (section?.revokeAckMessage ?? true);
+  const revokeAckMessage = account?.revokeAckMessage !== undefined ? account.revokeAckMessage : (section?.revokeAckMessage ?? false);
   const dangerouslyAllowPrivateNetwork = isPrivateNetworkOptInEnabled(account?.dangerouslyAllowPrivateNetwork ?? section?.dangerouslyAllowPrivateNetwork ?? section?.allowPrivateNetwork ?? null);
   const mediaLocalRoots: string[] = account?.mediaLocalRoots ?? section?.mediaLocalRoots ?? [];
 

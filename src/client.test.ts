@@ -613,12 +613,16 @@ describe("processRawMessage additional msgTypes", () => {
   });
 });
 
-describe("convertPxToPtDeep", () => {
-  it("converts px in nested object", () => {
-    const client = makeClient();
-    const input = { bodyTitle: "Title", bodyContent: "font-size:16px text" };
-    const card: any = { bodyTitle: input.bodyTitle, bodyContent: "font-size:16px text" };
+describe("convertPxToPtCard", () => {
+  it("converts px only in style fields, not in url fields", () => {
+    const card = {
+      bodyTitle: "Title",
+      bodyContent: "font-size:16px text",
+      cardLink: "https://example.com/page?style=font-size:16px",
+      links: [{ title: "Link", url: "https://example.com?font-size:20px" }],
+    } as any;
     expect(card.bodyContent).toContain("16px");
+    expect(card.cardLink).toContain("font-size:16px");
   });
 
   it("convertPxToPt in string", () => {

@@ -170,8 +170,9 @@ Credentials can also be provided via `openclaw.json` config (see Optional Config
 | `groupPolicy` | Group policy: `open`, `allowlist`, `disabled` | `allowlist` |
 | `groupAllowFrom` | Group IDs allowed to trigger the bot | `[]` |
 | `groups` | Per-group configuration (requireMention, enabled, allowFrom) | — |
-| `ackMessage` | Send a brief acknowledgment message before agent processing | `false` |
-| `revokeAckMessage` | Auto-revoke ack message after agent reply is delivered. Set `false` to keep ack visible (some users prefer it over a "message revoked" system notice) | `true` |
+| `ackMessage` | Send a brief acknowledgment message before agent processing | `true` |
+| `revokeAckMessage` | Auto-revoke ack message after agent reply is delivered. Set `false` to keep ack visible (some users prefer it over a "message revoked" system notice) | `false` |
+| `mediaLocalRoots` | Allowed root directories for sending local files via media; empty array defaults to workspace + `/tmp` | `[cwd, /tmp]` |
 | `ackMessageTextZh` | Chinese ack message text | `收到，正在处理...` |
 | `ackMessageTextEn` | English ack message text | `Received, processing...` |
 

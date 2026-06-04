@@ -178,8 +178,9 @@ openclaw pairing approve lansenger <配對碼>
 | `groupPolicy` | 羣聊策略：`open`（所有羣）、`allowlist`（僅允許列表羣）、`disabled`（禁止羣訊息） | `allowlist` |
 | `groupAllowFrom` | 允許觸發機械人的羣 ID | `[]` |
 | `groups` | 羣級設定（requireMention、enabled、allowFrom） | — |
-| `ackMessage` | 在代理處理前發送確認訊息 | `false` |
-| `revokeAckMessage` | 代理回覆遞送後自動撤回確認訊息。設為 `false` 則保留確認訊息可見（有些使用者偏好看到確認訊息而非撤回的系統通知） | `true` |
+| `ackMessage` | 在代理處理前發送確認訊息 | `true` |
+| `revokeAckMessage` | 代理回覆遞送後自動撤回確認訊息。設為 `false` 則保留確認訊息可見（有些使用者偏好看到確認訊息而非撤回的系統通知） | `false` |
+| `mediaLocalRoots` | 透過媒體傳送本地檔案時允許的根目錄列表；空陣列預設為工作區 + `/tmp` | `[cwd, /tmp]` |
 | `ackMessageTextZh` | 中文確認訊息文案 | `收到，正在處理...` |
 | `ackMessageTextEn` | 英文確認訊息文案 | `Received, processing...` |
 

@@ -178,8 +178,9 @@ Les identifiants peuvent aussi être fournis via la configuration `openclaw.json
 | `groupPolicy` | Politique de groupe : `open` (tous les groupes), `allowlist` (groupes autorisés uniquement), `disabled` (messages de groupe désactivés) | `allowlist` |
 | `groupAllowFrom` | IDs de groupes autorisés à déclencher le bot | `[]` |
 | `groups` | Configuration par groupe (requireMention, enabled, allowFrom) | — |
-| `ackMessage` | Envoyer un message de confirmation avant le traitement de l'agent | `false` |
-| `revokeAckMessage` | Révoquer automatiquement le message ack après la réponse de l'agent. Mettre `false` pour garder le message visible (certains utilisateurs préfèrent voir le message plutôt qu'une notification « message révoqué ») | `true` |
+| `ackMessage` | Envoyer un message de confirmation avant le traitement de l'agent | `true` |
+| `revokeAckMessage` | Révoquer automatiquement le message ack après la réponse de l'agent. Mettre `false` pour garder le message visible (certains utilisateurs préfèrent voir le message plutôt qu'une notification « message révoqué ») | `false` |
+| `mediaLocalRoots` | Répertoires racine autorisés pour l'envoi de fichiers locaux via média ; tableau vide par défaut = workspace + `/tmp` | `[cwd, /tmp]` |
 | `ackMessageTextZh` | Texte du message ack en chinois | `收到，正在处理...` |
 | `ackMessageTextEn` | Texte du message ack en anglais | `Received, processing...` |
 

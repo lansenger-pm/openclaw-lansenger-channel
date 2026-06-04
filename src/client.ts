@@ -22,15 +22,28 @@ function convertPxToPt(str: string): string {
   });
 }
 
-function convertPxToPtDeep(obj: unknown): unknown {
-  if (typeof obj === "string") return convertPxToPt(obj);
-  if (Array.isArray(obj)) return obj.map(convertPxToPtDeep);
-  if (obj && typeof obj === "object") {
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(obj)) out[k] = convertPxToPtDeep(v);
-    return out;
+const PX_TO_PT_FIELDS = new Set([
+  "bodyTitle", "bodyContent", "bodySubTitle", "headTitle", "signature",
+  "description", "value", "title",
+]);
+
+function convertPxToPtCard(card: AppCardData): AppCardData {
+  const result = { ...card };
+  for (const key of PX_TO_PT_FIELDS) {
+    if (typeof result[key as keyof AppCardData] === "string") {
+      (result as any)[key] = convertPxToPt(result[key as keyof AppCardData] as string);
+    }
   }
-  return obj;
+  if (result.headStatusInfo?.description) {
+    result.headStatusInfo = { ...result.headStatusInfo, description: convertPxToPt(result.headStatusInfo.description) };
+  }
+  if (result.fields?.length) {
+    result.fields = result.fields.map((f) => ({ ...f, value: convertPxToPt(f.value) }));
+  }
+  if (result.buttons?.length) {
+    result.buttons = result.buttons.map((b) => ({ ...b, title: convertPxToPt(b.title) }));
+  }
+  return result;
 }
 const RECONNECT_BACKOFF = [2, 5, 10, 30, 60];
 const HEARTBEAT_INTERVAL_MS = 30_000;
@@ -375,7 +388,7 @@ export class LansengerClient {
     const token = await this.getAppToken();
     if (!token) return { success: false, error: "No access token" };
     try {
-      const resolvedCard: AppCardData = convertPxToPtDeep(cardData) as AppCardData;
+      const resolvedCard: AppCardData = convertPxToPtCard(cardData);
       if (resolvedCard.isDynamic && !resolvedCard.headStatusInfo) {
         resolvedCard.headStatusInfo = {
           description: '<div style="color:rgba(0,0,0,.47);text-align:left">Active</div>',
