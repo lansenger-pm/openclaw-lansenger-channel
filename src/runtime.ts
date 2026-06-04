@@ -16,6 +16,7 @@ import * as path from "node:path";
 import * as os from "node:os";
 import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
+import * as fsSync from "node:fs";
 
 const log = createSubsystemLogger("lansenger");
 
@@ -74,6 +75,68 @@ const lastInboundChatIds = new Map<string, string>();
 const lastInboundTimes = new Map<string, number>();
 const sessionDeliveryTracker = new Map<string, Set<string>>();
 const activeDeliverySessions = new Set<string>();
+
+const INBOUND_CONTEXT_FILE = path.join(os.homedir(), ".openclaw", "lansenger-inbound-contexts.json");
+
+interface InboundDeliveryContext {
+  chatId: string;
+  sessionKey: string;
+  agentId: string;
+  accountId: string | null;
+  runningKey: string;
+  ackMessageId?: string;
+  timestamp: number;
+}
+
+class PersistentInboundContextStore {
+  private data = new Map<string, InboundDeliveryContext>();
+
+  constructor() {
+    this.load();
+  }
+
+  private load() {
+    try {
+      const raw = fsSync.readFileSync(INBOUND_CONTEXT_FILE, "utf-8");
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        for (const [k, v] of Object.entries(parsed)) {
+          this.data.set(k, v as InboundDeliveryContext);
+        }
+      }
+    } catch {}
+  }
+
+  private save() {
+    try {
+      const dir = path.dirname(INBOUND_CONTEXT_FILE);
+      fsSync.mkdirSync(dir, { recursive: true });
+      const obj: Record<string, InboundDeliveryContext> = {};
+      for (const [k, v] of this.data) obj[k] = v;
+      fsSync.writeFileSync(INBOUND_CONTEXT_FILE, JSON.stringify(obj), "utf-8");
+    } catch (e) {
+      log.warn(`failed to persist inbound contexts: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  set(sessionKey: string, ctx: InboundDeliveryContext) {
+    this.data.set(sessionKey, ctx);
+    this.save();
+  }
+
+  get(sessionKey: string) { return this.data.get(sessionKey); }
+
+  delete(sessionKey: string) {
+    this.data.delete(sessionKey);
+    this.save();
+  }
+
+  entries() { return this.data.entries(); }
+
+  size() { return this.data.size; }
+}
+
+const inboundContextStore = new PersistentInboundContextStore();
 
 let pluginApi: OpenClawPluginApi | null = null;
 
@@ -181,6 +244,57 @@ export function getRunningAccount(): ResolvedAccount | null {
   return null;
 }
 
+async function recoverPendingInboundContexts(api: OpenClawPluginApi): Promise<void> {
+  const pendingCount = inboundContextStore.size();
+  if (pendingCount === 0) return;
+
+  log.info(`recovery: found ${pendingCount} pending inbound context(s) — checking for interrupted sessions`);
+
+  const RECOVERY_NOTICE_ZH = "系统重启，正在重新处理您的请求，请稍候...";
+  const RECOVERY_NOTICE_EN = "System restarted. Your request is being reprocessed, please wait...";
+  const MAX_CONTEXT_AGE_MS = 5 * 60 * 1000;
+
+  const toDelete: string[] = [];
+
+  for (const [sessionKey, ctx] of inboundContextStore.entries()) {
+    const age = Date.now() - ctx.timestamp;
+    if (age > MAX_CONTEXT_AGE_MS) {
+      log.info(`recovery: context expired (age=${age}ms) for session=${sessionKey.slice(0, 32)} — discarding`);
+      toDelete.push(sessionKey);
+      continue;
+    }
+
+    log.info(`recovery: pending context session=${sessionKey.slice(0, 32)} chatId=${ctx.chatId} age=${age}ms ackMessageId=${ctx.ackMessageId ?? "none"}`);
+
+    try {
+      const account = resolveAccount(api.config, ctx.accountId ?? undefined);
+      const client = makeClient(account, sdkLogger());
+      const lang = client.getUserLang(ctx.chatId);
+      const noticeText = lang === "en" ? RECOVERY_NOTICE_EN : RECOVERY_NOTICE_ZH;
+
+      if (ctx.ackMessageId) {
+        try {
+          await client.revokeMessage([ctx.ackMessageId], "bot");
+          log.info(`recovery: revoked stale ack messageId=${ctx.ackMessageId}`);
+        } catch (e: unknown) {
+          log.warn(`recovery: failed to revoke ack messageId=${ctx.ackMessageId} — ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
+
+      await client.sendFormatText(ctx.chatId, noticeText);
+      log.info(`recovery: sent restart notice to chatId=${ctx.chatId}`);
+    } catch (e: unknown) {
+      log.error(`recovery: failed to send notice for session=${sessionKey.slice(0, 32)} — ${e instanceof Error ? e.message : String(e)}`);
+    }
+
+    toDelete.push(sessionKey);
+  }
+
+  for (const key of toDelete) {
+    inboundContextStore.delete(key);
+  }
+}
+
 export function startLansengerGateway(api: OpenClawPluginApi): void {
   pluginApi = api;
   (globalThis as any).__lansenger_channel = {
@@ -231,6 +345,8 @@ export function startLansengerGateway(api: OpenClawPluginApi): void {
       }
     });
   }
+
+  recoverPendingInboundContexts(api);
 
   const rt = api.runtime as any;
   const rtKeys = rt ? Object.keys(rt) : [];
@@ -760,6 +876,16 @@ let senderAllowed = ingress?.senderAccess?.allowed ?? false;
     }
   }
 
+  inboundContextStore.set(sessionKey, {
+    chatId: event.chatId,
+    sessionKey,
+    agentId,
+    accountId: account.accountId,
+    runningKey,
+    ackMessageId,
+    timestamp: Date.now(),
+  });
+
   try {
     log.info(`inbound.run starting: sessionKey=${sessionKey} agentId=${agentId} accountId=${account.accountId}`);
     await api.runtime.channel.inbound.run({
@@ -876,6 +1002,7 @@ let senderAllowed = ingress?.senderAccess?.allowed ?? false;
     } as any);
     log.info(`inbound.run completed: sessionKey=${sessionKey}`);
     activeDeliverySessions.delete(sessionKey);
+    inboundContextStore.delete(sessionKey);
     if (ackMessageId && account.revokeAckMessage) {
       try {
         const entry = runningAccounts.get(runningKey);
@@ -889,6 +1016,7 @@ let senderAllowed = ingress?.senderAccess?.allowed ?? false;
   } catch (e: unknown) {
     log.error(`inbound.run failed: ${e instanceof Error ? e.message : String(e)}`);
     activeDeliverySessions.delete(sessionKey);
+    inboundContextStore.delete(sessionKey);
     if (ackMessageId && account.revokeAckMessage) {
       try {
         const entry = runningAccounts.get(runningKey);
