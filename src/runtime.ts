@@ -73,8 +73,17 @@ const accountStatusSinks = new Map<string, (patch: Omit<ChannelAccountSnapshot, 
 const lastInboundChatIds = new Map<string, string>();
 const lastInboundTimes = new Map<string, number>();
 const sessionDeliveryTracker = new Map<string, Set<string>>();
+const activeDeliverySessions = new Set<string>();
 
 let pluginApi: OpenClawPluginApi | null = null;
+
+function extractChatIdFromSessionKey(sessionKey: string): string | undefined {
+  if (!sessionKey || !sessionKey.includes("lansenger")) return undefined;
+  const parts = sessionKey.split(":");
+  const last = parts[parts.length - 1];
+  if (last && last !== "main" && last !== "lansenger" && last.length > 1) return last;
+  return undefined;
+}
 
 export function stripOpenClawUuidSuffix(name: string): string {
   return name.replace(/---[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i, "");
@@ -197,6 +206,25 @@ export function startLansengerGateway(api: OpenClawPluginApi): void {
         if (payload?.channelData?.execApproval) {
           const chatId = payload?.channelData?.__lansenger_target ?? "";
           log.info(`reply_payload_sending: approval payload detected — execApproval=${payload.channelData.execApproval}`);
+        }
+
+        if (sessionKey && !activeDeliverySessions.has(sessionKey) && payload?.text?.trim()) {
+          const client = getRunningClient();
+          if (client) {
+            const to = payload.to ?? payload.chatId ?? extractChatIdFromSessionKey(sessionKey) ?? "";
+            if (to) {
+              log.info(`reply_payload_sending: fallback delivery for session=${sessionKey.slice(0, 32)} (no active inbound.run) — sending directly to=${to}`);
+              try {
+                deliverReply(client, to, payload.text);
+              } catch (e: unknown) {
+                log.error(`reply_payload_sending fallback delivery failed — ${e instanceof Error ? e.message : String(e)}`);
+              }
+            } else {
+              log.warn(`reply_payload_sending: fallback delivery skipped — cannot resolve target for session=${sessionKey.slice(0, 32)}`);
+            }
+          } else {
+            log.warn(`reply_payload_sending: fallback delivery skipped — no running client available`);
+          }
         }
 
         return void 0;
@@ -667,6 +695,7 @@ let senderAllowed = ingress?.senderAccess?.allowed ?? false;
 
   const sessionDeliveredSet = sessionDeliveryTracker.get(sessionKey) ?? new Set<string>();
   sessionDeliveryTracker.set(sessionKey, sessionDeliveredSet);
+  activeDeliverySessions.add(sessionKey);
 
   log.info(`inbound: ${chatType} from=${event.senderId} bot=${account.appId.slice(0, 20)}... agent=${agentId} session=${sessionKey.slice(0, 32)}`);
 
@@ -846,6 +875,7 @@ let senderAllowed = ingress?.senderAccess?.allowed ?? false;
       },
     } as any);
     log.info(`inbound.run completed: sessionKey=${sessionKey}`);
+    activeDeliverySessions.delete(sessionKey);
     if (ackMessageId && account.revokeAckMessage) {
       try {
         const entry = runningAccounts.get(runningKey);
@@ -858,6 +888,7 @@ let senderAllowed = ingress?.senderAccess?.allowed ?? false;
     }
   } catch (e: unknown) {
     log.error(`inbound.run failed: ${e instanceof Error ? e.message : String(e)}`);
+    activeDeliverySessions.delete(sessionKey);
     if (ackMessageId && account.revokeAckMessage) {
       try {
         const entry = runningAccounts.get(runningKey);
