@@ -83,6 +83,14 @@ export function uploadMediaTypeFromPath(filePath: string): string {
   return "file";
 }
 
+export type WsCloseInfo = {
+  code?: number;
+  reason?: string;
+  wasClean?: boolean;
+  source: "close" | "error" | "heartbeat" | "disconnect";
+  error?: string;
+};
+
 function detectImageExt(bytes: Buffer): string {
   if (bytes.length < 2) return ".jpg";
   if (bytes[0] === 0xff && bytes[1] === 0xd8) return ".jpg";
@@ -115,9 +123,10 @@ export class LansengerClient {
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private pongTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
   private lastPongAt = 0;
+  private wsCloseHint: WsCloseInfo | null = null;
   private messageHandler: ((event: InboundEvent) => Promise<void>) | null = null;
   private onWsOpen: (() => void) | null = null;
-  private onWsClose: (() => void) | null = null;
+  private onWsClose: ((info: WsCloseInfo) => void) | null = null;
   private log: ClientLogger;
   private chatTypeMap = new Map<string, "group" | "dm">();
   private userLangMap = new Map<string, "zh" | "en">();
@@ -135,7 +144,7 @@ export class LansengerClient {
     this.messageHandler = handler;
   }
 
-  setWsLifecycleCallbacks(callbacks: { onOpen?: () => void; onClose?: () => void }): void {
+  setWsLifecycleCallbacks(callbacks: { onOpen?: () => void; onClose?: (info: WsCloseInfo) => void }): void {
     this.onWsOpen = callbacks.onOpen ?? null;
     this.onWsClose = callbacks.onClose ?? null;
   }
@@ -641,6 +650,7 @@ export class LansengerClient {
   async disconnect(): Promise<void> {
     this.log.info("disconnect: stopping");
     this.running = false;
+    this.wsCloseHint = { source: "disconnect", error: "disconnect requested" };
     this.stopHeartbeat();
     if (this.ws) this.ws.close();
     this.ws = null;
@@ -680,6 +690,7 @@ export class LansengerClient {
       try {
         const ws = new WebSocket(currentUrl);
         this.ws = ws;
+        this.wsCloseHint = null;
         this.backoffIdx = 0;
 
         ws.onopen = () => {
@@ -690,10 +701,12 @@ export class LansengerClient {
 
         ws.onmessage = async (ev) => {
           if (typeof ev.data !== "string" || !this.messageHandler) return;
+          this.log.info(`WS message received (bytes=${Buffer.byteLength(ev.data, "utf8")})`);
           const events = await this.processRawMessage(ev.data);
+          this.log.info(`WS message parsed (events=${events.length})`);
           for (const event of events) {
             try { await this.messageHandler(event); } catch (e: any) {
-              this.log.error(`messageHandler: ${e.message}`);
+              this.log.error(`messageHandler: ${e.message} messageId=${event.messageId} chatId=${event.chatId} senderId=${event.senderId}`);
             }
           }
         };
@@ -704,20 +717,37 @@ export class LansengerClient {
         });
 
         let resolveClose: (() => void) | null = null;
+        let closeNotified = false;
+        let lastWsError = "";
         const closePromise = new Promise<void>((r) => { resolveClose = r; });
+        const notifyClose = (info: WsCloseInfo, replace = false) => {
+          if (closeNotified && !replace) return;
+          closeNotified = true;
+          this.onWsClose?.(info);
+        };
 
         ws.onclose = (ev) => {
-          this.log.info(`WS closed (code=${ev.code} reason=${ev.reason || "none"} wasClean=${ev.wasClean})`);
+          const reason = ev.reason || "none";
+          const errorSuffix = lastWsError ? ` lastError=${lastWsError}` : "";
+          this.log.info(`WS closed (code=${ev.code} reason=${reason} wasClean=${ev.wasClean}${errorSuffix})`);
           this.stopHeartbeat();
           this.clearPongTimeout();
-          this.onWsClose?.();
+          notifyClose({
+            source: this.wsCloseHint?.source ?? "close",
+            code: ev.code,
+            reason,
+            wasClean: ev.wasClean,
+            error: lastWsError || this.wsCloseHint?.error || undefined,
+          }, true);
           resolveClose?.();
         };
         ws.onerror = (ev) => {
           const errMsg = (ev as any)?.message ?? (ev as any)?.error?.message ?? "unknown";
+          lastWsError = errMsg;
           this.log.error(`WS error: ${errMsg}`);
           this.stopHeartbeat();
           this.clearPongTimeout();
+          notifyClose({ source: "error", error: errMsg });
           resolveClose?.();
         };
 
@@ -748,6 +778,7 @@ export class LansengerClient {
           ws.ping();
           this.pongTimeoutTimer = setTimeout(() => {
             if (Date.now() - this.lastPongAt > PONG_TIMEOUT_MS && ws.readyState === WebSocket.OPEN) {
+              this.wsCloseHint = { source: "heartbeat", error: `pong timeout after ${PONG_TIMEOUT_MS}ms` };
               this.log.error("pong timeout — terminating zombie connection");
               ws.terminate();
             }
@@ -756,6 +787,7 @@ export class LansengerClient {
           this.log.error("heartbeat ping failed");
         }
       } else if (ws.readyState === WebSocket.CLOSING || ws.readyState === WebSocket.CLOSED) {
+        this.wsCloseHint = { source: "heartbeat", error: `heartbeat found WS state=${this.wsState()}` };
         this.log.error(`heartbeat: WS no longer open (state=${this.wsState()}) — forcing close to trigger reconnect`);
         this.stopHeartbeat();
         this.clearPongTimeout();

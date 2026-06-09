@@ -4,7 +4,7 @@ import { createSubsystemLogger } from "openclaw/plugin-sdk/logging-core";
 import { createAccountStatusSink, waitUntilAbort } from "openclaw/plugin-sdk/channel-runtime";
 import { createChannelInboundDebouncer, shouldDebounceTextInbound, resolveInboundDebounceMs } from "openclaw/plugin-sdk/channel-inbound";
 import { LansengerClient } from "./client.js";
-import type { InboundEvent, ClientLogger, ApiResult, AppCardData } from "./client.js";
+import type { InboundEvent, ClientLogger, ApiResult, AppCardData, WsCloseInfo } from "./client.js";
 import { resolveAccount, makeClient, isPathAllowed } from "./channel.js";
 import type { ResolvedAccount } from "./channel.js";
 import { errorShape } from "openclaw/plugin-sdk/gateway-runtime";
@@ -148,6 +148,16 @@ function extractChatIdFromSessionKey(sessionKey: string): string | undefined {
   return undefined;
 }
 
+function formatWsCloseInfo(info: WsCloseInfo): string {
+  const clean = (value: string) => value.replace(/\s+/g, " ").slice(0, 300);
+  const parts = [`source=${info.source}`];
+  if (info.code !== undefined) parts.push(`code=${info.code}`);
+  if (info.reason) parts.push(`reason=${clean(info.reason)}`);
+  if (info.wasClean !== undefined) parts.push(`wasClean=${info.wasClean}`);
+  if (info.error) parts.push(`error=${clean(info.error)}`);
+  return parts.join(" ");
+}
+
 export function stripOpenClawUuidSuffix(name: string): string {
   return name.replace(/---[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i, "");
 }
@@ -207,8 +217,14 @@ async function startAccount(api: OpenClawPluginApi, accountId?: string | null): 
       onOpen: () => {
         existingSink({ connected: true, lastConnectedAt: Date.now(), lastError: null });
       },
-      onClose: () => {
-        existingSink({ connected: false });
+      onClose: (info) => {
+        const detail = formatWsCloseInfo(info);
+        if (info.source === "disconnect") {
+          existingSink({ connected: false });
+        } else {
+          existingSink({ connected: false, lastError: `Lansenger WebSocket disconnected: ${detail}` });
+        }
+        log.info(`gateway: WS disconnected (key=${key}) ${detail}`);
       },
     });
   }
@@ -590,9 +606,14 @@ export async function gatewayStartAccount(ctx: ChannelGatewayContext<ResolvedAcc
       statusSink({ connected: true, lastConnectedAt: Date.now(), lastError: null });
       log.info(`gateway: WS connected (key=${key})`);
     },
-    onClose: () => {
-      statusSink({ connected: false });
-      log.info(`gateway: WS disconnected (key=${key})`);
+    onClose: (info) => {
+      const detail = formatWsCloseInfo(info);
+      if (info.source === "disconnect") {
+        statusSink({ connected: false });
+      } else {
+        statusSink({ connected: false, lastError: `Lansenger WebSocket disconnected: ${detail}` });
+      }
+      log.info(`gateway: WS disconnected (key=${key}) ${detail}`);
     },
   });
 
