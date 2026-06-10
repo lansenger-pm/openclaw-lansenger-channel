@@ -12,7 +12,7 @@ Connecte OpenClaw à Lansenger — une plateforme de messagerie d'entreprise —
 ## Fonctionnalités
 
 - **Messagerie en temps réel** via connexion longue WebSocket
-- **Support multi-bot** — lier plusieurs bots Lansenger à différents agents OpenClaw
+- **Support multi-robot** — lier plusieurs robots Lansenger à différents agents OpenClaw
 - **Support Markdown** utilisant le msgType `formatText` (par défaut)
 - **Fichiers/Images/Vocaux** via le msgType `text` avec upload de médias
 - **Cartes d'approbation** — workflow d'approbation interactif avec mises à jour de statut en place (en attente → approuvé/refusé)
@@ -20,8 +20,8 @@ Connecte OpenClaw à Lansenger — une plateforme de messagerie d'entreprise —
 - **Auto-routage via msgTarget** — toutes les méthodes d'envoi routent automatiquement vers les API groupe ou DM (privé) ; pas de méthodes groupe/privé séparées
 - **@Mentions** — support @tout et @utilisateurs spécifiques dans les chats de groupe
 - **Traitement des médias entrants** — téléchargement d'images/fichiers/vocaux, détection d'extension, chemins de fichiers pour l'agent
-- **Révocation de messages** — révoquer les messages précédemment envoyés (chatType : bot ou groupe uniquement)
-- **Démarrage automatique** — la passerelle connecte automatiquement tous les comptes de bots configurés au démarrage
+- **Révocation de messages** — révoquer les messages précédemment envoyés (chatType : robot ou groupe uniquement)
+- **Démarrage automatique** — la passerelle connecte automatiquement tous les comptes de robots configurés au démarrage
 - **Debounce entrant** — fusionner les messages consécutifs rapides du même émetteur via la config OpenClaw `messages.inbound.debounceMs`
 - **Message ack** — envoyer un message « reçu, en cours de traitement... » avant le traitement de l'agent ; auto-révoqué après la réponse ; langue auto-détectée
 - **Zéro modification du core** — mode plugin pur, `git diff HEAD` reste INTACT
@@ -102,7 +102,7 @@ openclaw gateway restart
 
 ### Premier message
 
-Après le redémarrage, le bot se connecte automatiquement via WebSocket. Envoyez un DM au bot — vous recevrez un code de pairage. Approuvez-le :
+Après le redémarrage, le robot se connecte automatiquement via WebSocket. Envoyez un DM au robot — vous recevrez un code de pairage. Approuvez-le :
 
 ```bash
 openclaw pairing approve lansenger <code>
@@ -116,8 +116,8 @@ Ajoutez ces variables à `~/.openclaw/.env` ou à votre environnement :
 
 | Variable | Description | Exemple |
 |----------|-------------|---------|
-| `LANSENGER_APP_ID` | App ID du bot personnel | `your-appid` |
-| `LANSENGER_APP_SECRET` | App Secret du bot personnel | `ABCDEF123456...` |
+| `LANSENGER_APP_ID` | App ID du robot personnel | `your-appid` |
+| `LANSENGER_APP_SECRET` | App Secret du robot personnel | `ABCDEF123456...` |
 | `LANSENGER_API_GATEWAY_URL` | URL de la passerelle API Lansenger (remplacement) | `https://open.e.lanxin.cn/open/apigw` |
 
 Les identifiants peuvent aussi être fournis via la configuration `openclaw.json` (voir Configuration optionnelle ci-dessous). Les valeurs de configuration sont prioritaires ; les variables d'environnement sont utilisées comme repli lorsque la configuration n'est pas définie.
@@ -165,8 +165,8 @@ Les identifiants peuvent aussi être fournis via la configuration `openclaw.json
 
 | Champ | Description | Valeur par défaut |
 |-------|-------------|-------------------|
-| `appId` | App ID du bot personnel | — |
-| `appSecret` | App Secret du bot personnel | — |
+| `appId` | App ID du robot personnel | — |
+| `appSecret` | App Secret du robot personnel | — |
 | `apiGatewayUrl` | URL de la passerelle API | `https://open.e.lanxin.cn/open/apigw` |
 | `homeChannel` | Chat ID par défaut pour la livraison cron/notification | — |
 | `enabled` | Activer/désactiver le canal (défaut runtime : false sans identifiants) | `true` |
@@ -174,9 +174,9 @@ Les identifiants peuvent aussi être fournis via la configuration `openclaw.json
 | `dmPolicy` | Politique DM : `pairing`, `allowlist`, `open`, `disabled` | `pairing` |
 | `configWrites` | Autoriser Lansenger à écrire la config en réponse aux événements du canal | `true` |
 | `name` | Nom d'affichage pour ce compte | — |
-| `accounts` | Configuration multi-bot | — |
+| `accounts` | Configuration multi-robot | — |
 | `groupPolicy` | Politique de groupe : `open` (tous les groupes), `allowlist` (groupes autorisés uniquement), `disabled` (messages de groupe désactivés) | `allowlist` |
-| `groupAllowFrom` | IDs de groupes autorisés à déclencher le bot | `[]` |
+| `groupAllowFrom` | IDs de groupes autorisés à déclencher le robot | `[]` |
 | `groups` | Configuration par groupe (requireMention, enabled, allowFrom) | — |
 | `ackMessage` | Envoyer un message de confirmation avant le traitement de l'agent | `true` |
 | `revokeAckMessage` | Révoquer automatiquement le message ack après la réponse de l'agent. Mettre `false` pour garder le message visible (certains utilisateurs préfèrent voir le message plutôt qu'une notification « message révoqué ») | `false` |
@@ -208,12 +208,12 @@ Lorsqu'un utilisateur envoie plusieurs messages rapides consécutifs, le mécani
 - Les messages média et commandes de contrôle ne sont PAS debounceés — ils sont traités immédiatement
 - Quand le debounce est actif, les textes fusionnés sont joints par `\n` ; les chemins média sont concaténés ; les métadonnées du dernier message sont utilisées
 
-### Configuration multi-bot
+### Configuration multi-robot
 
-Pour ajouter plusieurs bots, utilisez `openclaw config set` avec la structure `accounts` :
+Pour ajouter plusieurs robots, utilisez `openclaw config set` avec la structure `accounts` :
 
 ```bash
-# Ajouter un deuxième bot (remplacez appid/appsecret/gateway par vos valeurs)
+# Ajouter un deuxième robot (remplacez appid/appsecret/gateway par vos valeurs)
 openclaw config set channels.lansenger.accounts.your-appid-2.appId "your-appid-2"
 openclaw config set channels.lansenger.accounts.your-appid-2.appSecret "your-appsecret"
 openclaw config set channels.lansenger.accounts.your-appid-2.apiGatewayUrl "https://apigw.lx.qianxin.com"
@@ -348,7 +348,7 @@ Le plugin supporte les cartes d'approbation :
 ## Notes importantes
 
 - **Pas de chat staff** — Lansenger n'a que les chats de groupe et DM (privé) ; il n'existe pas de concept de « chat staff ».
-- **Révocation chatType** — uniquement `bot` ou `group` ; pas de chatType `staff`.
+- **Révocation chatType** — uniquement `robot` ou `group` ; pas de chatType `staff`.
 - **Pas de sysMsg sur révocation** — l'API accepte `sysMsg` mais ne l'affiche pas.
 - **Pas de deleteMessage** — l'API retourne l'erreur 10000 ; la suppression n'est pas disponible.
 - **appArticles** — utilise le champ `summary` (pas `description`).
@@ -432,7 +432,7 @@ Voir [Documentation des appareils OpenClaw](https://docs.openclaw.ai/cli/devices
 
 ### "Le client mobile ne permet pas de voir les identifiants"
 
-Utilisez uniquement le **client Lansenger (desktop)**. L'application mobile n'affiche pas les identifiants du bot.
+Utilisez uniquement le **client Lansenger (desktop)**. L'application mobile n'affiche pas les identifiants du robot.
 
 ### "No binding for botId"
 

@@ -14,7 +14,7 @@
 - **即時訊息** — 透過 WebSocket 長連線實現
 - **多機械人支援** — 將多個藍信機械人綁定至不同的 OpenClaw 代理
 - **Markdown 支援** — 使用 `formatText` msgType（預設）
-- **檔案/圖片/語音附件** — 透過 `text` msgType 上傳媒體
+- **檔案/圖片/語音附件** — 透過 `text` msgType 上載媒體
 - **審批卡片**——互動式審批流程，支援原地狀態更新（待審批 → 已通過/已拒絕）
 - **語言偵測** — 自動偵測使用者語言，提供本地化回應
 - **msgTarget 自動路由** — 所有發送方法自動路由至群組聊天或私聊（DM）API；無需分別的群組/私聊方法
@@ -83,7 +83,7 @@ openclaw gateway restart
 
 > **可選**：安裝 `lansenger-cli` 作為 CLI 替代方案：`pipx install lansenger-cli`。
 
-> **自訂閘道**：企業私有化部署（如奇安信）需在設定後透過 `openclaw.json` 或環境變數設定 `apiGatewayUrl` — 見[可選設定](#可選設定)。
+> **自訂網關**：企業私有化部署（如奇安信）需在設定後透過 `openclaw.json` 或環境變數設定 `apiGatewayUrl` — 見[可選設定](#可選設定)。
 
 ### 開發安裝（本地連結）
 
@@ -180,7 +180,7 @@ openclaw pairing approve lansenger <配對碼>
 | `groups` | 羣級設定（requireMention、enabled、allowFrom） | — |
 | `ackMessage` | 在代理處理前發送確認訊息 | `true` |
 | `revokeAckMessage` | 代理回覆遞送後自動撤回確認訊息。設為 `false` 則保留確認訊息可見（有些使用者偏好看到確認訊息而非撤回的系統通知） | `false` |
-| `mediaLocalRoots` | 透過媒體傳送本地檔案時允許的根目錄列表；空陣列預設為工作區 + `/tmp` | `[cwd, /tmp]` |
+| `mediaLocalRoots` | 透過媒體發送本地檔案時允許的根目錄列表；空陣列預設為工作區 + `/tmp` | `[cwd, /tmp]` |
 | `ackMessageTextZh` | 中文確認訊息文案 | `收到，正在處理...` |
 | `ackMessageTextEn` | 英文確認訊息文案 | `Received, processing...` |
 

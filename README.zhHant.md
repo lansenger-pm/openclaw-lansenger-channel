@@ -22,7 +22,7 @@
 - **入站媒體處理**——下載圖片/檔案/語音，偵測副檔名，向代理提供檔案路徑
 - **訊息撤回**——撤回已傳送的訊息（chatType 僅支援 bot 與 group）
 - **自動啟動**——閘道啟動時自動連接所有已設定的機器人帳戶
-- **入站防抖合併**——利用 OpenClaw 的 `messages.inbound.debounceMs` 配置，合併同一發送者的連續快速訊息
+- **入站防抖合併**——利用 OpenClaw 的 `messages.inbound.debounceMs` 配置，合併同一傳送者的連續快速訊息
 - **確認訊息**——在代理處理前傳送「收到，正在處理...」確認訊息，代理回覆後自動撤回，語言自動偵測
 - **零核心修改**——純插件模式，`git diff HEAD` 保持 PRISTINE
 
@@ -50,13 +50,13 @@
 
 | 工具 | 說明 |
 |------|------|
-| `lansenger_send_text` | 發送純文字訊息，不支援 Markdown |
-| `lansenger_send_format_text` | 發送 Markdown 格式文字，支援 @提及 |
-| `lansenger_send_file` | 發送檔案/圖片/影片/語音（工作區或外部路徑） |
-| `lansenger_send_image_url` | 透過 URL 發送圖片 |
-| `lansenger_send_link_card` | 發送富連結預覽卡片 |
-| `lansenger_send_app_card` | 發送互動/審批卡片 |
-| `lansenger_send_app_articles` | 發送多文章卡片 |
+| `lansenger_send_text` | 傳送純文字訊息，不支援 Markdown |
+| `lansenger_send_format_text` | 傳送 Markdown 格式文字，支援 @提及 |
+| `lansenger_send_file` | 傳送檔案/圖片/影片/語音（工作區或外部路徑） |
+| `lansenger_send_image_url` | 透過 URL 傳送圖片 |
+| `lansenger_send_link_card` | 傳送富連結預覽卡片 |
+| `lansenger_send_app_card` | 傳送互動/審批卡片 |
+| `lansenger_send_app_articles` | 傳送多文章卡片 |
 | `lansenger_update_dynamic_card` | 原地更新動態卡片狀態 |
 | `lansenger_revoke_message` | 撤回已傳送的訊息 |
 | `lansenger_query_groups` | 查詢可用群組 |
@@ -201,7 +201,7 @@ openclaw pairing approve lansenger <配對碼>
 
 | 欄位 | 說明 | 預設值 |
 |------|------|--------|
-| `messages.inbound.debounceMs` | 全域防抖視窗（毫秒）；同一發送者在視窗內的連續訊息會被合併 | `0`（停用） |
+| `messages.inbound.debounceMs` | 全域防抖視窗（毫秒）；同一傳送者在視窗內的連續訊息會被合併 | `0`（停用） |
 | `messages.inbound.byChannel.lansenger` | 藍信頻道專屬覆蓋（優先於全域） | — |
 | `messages.queue.mode` | 代理處理中的佇列模式：`steer`、`followup`、`collect`、`queue`、`interrupt` | `steer`（推薦） |
 
