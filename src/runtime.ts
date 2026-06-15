@@ -138,6 +138,8 @@ class PersistentInboundContextStore {
 
 const inboundContextStore = new PersistentInboundContextStore();
 
+let recoveryGuard = false;
+
 let pluginApi: OpenClawPluginApi | null = null;
 
 function extractChatIdFromSessionKey(sessionKey: string): string | undefined {
@@ -245,6 +247,12 @@ export function getRunningAccount(): ResolvedAccount | null {
 }
 
 async function recoverPendingInboundContexts(api: OpenClawPluginApi): Promise<void> {
+  if (recoveryGuard) {
+    log.info("recovery: already performed in this process lifetime — skipping");
+    return;
+  }
+  recoveryGuard = true;
+
   const pendingCount = inboundContextStore.size();
   if (pendingCount === 0) return;
 
@@ -255,6 +263,7 @@ async function recoverPendingInboundContexts(api: OpenClawPluginApi): Promise<vo
   const MAX_CONTEXT_AGE_MS = 5 * 60 * 1000;
 
   const toDelete: string[] = [];
+  const notifiedChats = new Set<string>();
 
   for (const [sessionKey, ctx] of inboundContextStore.entries()) {
     const age = Date.now() - ctx.timestamp;
@@ -266,25 +275,31 @@ async function recoverPendingInboundContexts(api: OpenClawPluginApi): Promise<vo
 
     log.info(`recovery: pending context session=${sessionKey.slice(0, 32)} chatId=${ctx.chatId} age=${age}ms ackMessageId=${ctx.ackMessageId ?? "none"}`);
 
-    try {
-      const account = resolveAccount(api.config, ctx.accountId ?? undefined);
-      const client = makeClient(account, sdkLogger());
-      const lang = client.getUserLang(ctx.chatId);
-      const noticeText = lang === "en" ? RECOVERY_NOTICE_EN : RECOVERY_NOTICE_ZH;
+    // Send only one restart notice per chat to avoid duplicate messages
+    if (!notifiedChats.has(ctx.chatId)) {
+      notifiedChats.add(ctx.chatId);
+      try {
+        const account = resolveAccount(api.config, ctx.accountId ?? undefined);
+        const client = makeClient(account, sdkLogger());
+        const lang = client.getUserLang(ctx.chatId);
+        const noticeText = lang === "en" ? RECOVERY_NOTICE_EN : RECOVERY_NOTICE_ZH;
 
-      if (ctx.ackMessageId) {
-        try {
-          await client.revokeMessage([ctx.ackMessageId], "bot");
-          log.info(`recovery: revoked stale ack messageId=${ctx.ackMessageId}`);
-        } catch (e: unknown) {
-          log.warn(`recovery: failed to revoke ack messageId=${ctx.ackMessageId} — ${e instanceof Error ? e.message : String(e)}`);
+        if (ctx.ackMessageId) {
+          try {
+            await client.revokeMessage([ctx.ackMessageId], "bot");
+            log.info(`recovery: revoked stale ack messageId=${ctx.ackMessageId}`);
+          } catch (e: unknown) {
+            log.warn(`recovery: failed to revoke ack messageId=${ctx.ackMessageId} — ${e instanceof Error ? e.message : String(e)}`);
+          }
         }
-      }
 
-      await client.sendFormatText(ctx.chatId, noticeText);
-      log.info(`recovery: sent restart notice to chatId=${ctx.chatId}`);
-    } catch (e: unknown) {
-      log.error(`recovery: failed to send notice for session=${sessionKey.slice(0, 32)} — ${e instanceof Error ? e.message : String(e)}`);
+        await client.sendFormatText(ctx.chatId, noticeText);
+        log.info(`recovery: sent restart notice to chatId=${ctx.chatId}`);
+      } catch (e: unknown) {
+        log.error(`recovery: failed to send notice for session=${sessionKey.slice(0, 32)} — ${e instanceof Error ? e.message : String(e)}`);
+      }
+    } else {
+      log.info(`recovery: already notified chatId=${ctx.chatId}, skipping duplicate notice for session=${sessionKey.slice(0, 32)}`);
     }
 
     toDelete.push(sessionKey);

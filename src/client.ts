@@ -680,9 +680,9 @@ export class LansengerClient {
       try {
         const ws = new WebSocket(currentUrl);
         this.ws = ws;
-        this.backoffIdx = 0;
 
         ws.onopen = () => {
+          this.backoffIdx = 0;
           this.log.info(`WS connected (url=${currentUrl.slice(0, 60)}...)`);
           this.startHeartbeat(ws);
           this.onWsOpen?.();
