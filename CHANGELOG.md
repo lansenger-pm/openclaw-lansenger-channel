@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.14.5] - 2026-06-17
+
+> **Compatible with OpenClaw `^2026.6.1`** (tested against `2026.6.1`).
+
+### Bug Fixes
+
+- **Group chat reply routing**: Outbound adapters (`sendText`, `sendMedia`, `sendFormattedText`, `sendPayload`, `beforeDeliverPayload`) created fresh `LansengerClient` instances via `makeClient()`, which had an empty `chatTypeMap` cache. `isGroupChat()` then fell back to `chatId.startsWith("group:")` — which never matches Lansenger group IDs — causing all group replies to be sent via private-message API instead of group-message API. Fixed by using `getRunningClient() ?? makeClient()` so the cached client (with populated `chatTypeMap`) handles routing.
+
 ## [3.14.4] - 2026-06-15
 
 > **Compatible with OpenClaw `^2026.6.1`** (tested against `2026.6.1`).

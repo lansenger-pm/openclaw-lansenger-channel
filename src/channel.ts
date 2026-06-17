@@ -14,7 +14,6 @@ import { coerceSecretRef, type SecretRef } from "openclaw/plugin-sdk/secret-ref-
 import { isPrivateNetworkOptInEnabled } from "openclaw/plugin-sdk/ssrf-policy";
 import { chunkMarkdownTextWithMode, resolveTextChunkLimit } from "openclaw/plugin-sdk/reply-chunking";
 import * as fs from "node:fs/promises";
-import * as fsSync from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as crypto from "node:crypto";
@@ -28,58 +27,16 @@ import {
 } from "openclaw/plugin-sdk/channel-outbound";
 import { getRunningClient, getLastInboundTime, stripOpenClawUuidSuffix, gatewayStartAccount, gatewayStopAccount } from "./runtime.js";
 import { lansengerSetupWizard } from "./setup-wizard.js";
+import { PersistentStore } from "./persistent-store.js";
 
 const log = createSubsystemLogger("lansenger");
 const LANSENGER_TEXT_CHUNK_LIMIT = 4000;
 
 const APPROVAL_CARD_FILE = path.join(os.homedir(), ".openclaw", "lansenger-approval-cards.json");
 
-class PersistentApprovalCardStore {
-  private data = new Map<string, { messageId: string; lang: "zh" | "en" }>();
-
+class PersistentApprovalCardStore extends PersistentStore<{ messageId: string; lang: "zh" | "en" }> {
   constructor() {
-    this.load();
-  }
-
-  private load() {
-    try {
-      const raw = fsSync.readFileSync(APPROVAL_CARD_FILE, "utf-8");
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === "object") {
-        for (const [k, v] of Object.entries(parsed)) {
-          this.data.set(k, v as { messageId: string; lang: "zh" | "en" });
-        }
-      }
-    } catch {}
-  }
-
-  private save() {
-    try {
-      const dir = path.dirname(APPROVAL_CARD_FILE);
-      fsSync.mkdirSync(dir, { recursive: true });
-      const obj: Record<string, { messageId: string; lang: "zh" | "en" }> = {};
-      for (const [k, v] of this.data) obj[k] = v;
-      fsSync.writeFileSync(APPROVAL_CARD_FILE, JSON.stringify(obj), "utf-8");
-    } catch (e) {
-      log.warn(`failed to persist approval cards: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  }
-
-  get(chatId: string) { return this.data.get(chatId); }
-
-  set(chatId: string, info: { messageId: string; lang: "zh" | "en" }) {
-    this.data.set(chatId, info);
-    this.save();
-  }
-
-  delete(chatId: string) {
-    this.data.delete(chatId);
-    this.save();
-  }
-
-  clear() {
-    this.data.clear();
-    this.save();
+    super(APPROVAL_CARD_FILE, "approval cards");
   }
 }
 
@@ -509,14 +466,14 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
       sendText: async (ctx) => {
         const sessionKey = (ctx as any).sessionKey as string | undefined;
         const account = resolveAccount(ctx.cfg, ctx.accountId ?? undefined);
-        const client = makeClient(account);
+        const client = getRunningClient() ?? makeClient(account);
         const result = await client.sendFormatText(ctx.to, ctx.text);
         return toOutboundResult(result.messageId, sessionKey, ctx.to);
       },
       sendMedia: async (ctx) => {
         const sessionKey = (ctx as any).sessionKey as string | undefined;
         const account = resolveAccount(ctx.cfg, ctx.accountId ?? undefined);
-        const client = makeClient(account);
+        const client = getRunningClient() ?? makeClient(account);
         const caption = ctx.text ?? "";
 
         if (ctx.mediaUrl && /^https?:\/\//i.test(ctx.mediaUrl)) {
@@ -576,7 +533,7 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
           const cardInfo = pendingApprovalCards.get(chatId);
           if (cardInfo?.messageId) {
             const account = resolveAccount(params.cfg, target?.accountId ?? undefined);
-            const client = makeClient(account);
+            const client = getRunningClient() ?? makeClient(account);
             const status: "approved" | "denied" = payload?.text?.includes("✅") ? "approved" : "denied";
             try {
               await client.updateCardStatus(cardInfo.messageId, status, cardInfo.lang);
@@ -599,7 +556,7 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
       sendFormattedText: async (ctx) => {
         const sessionKey = (ctx as any).sessionKey as string | undefined;
         const account = resolveAccount(ctx.cfg, ctx.accountId ?? undefined);
-        const client = makeClient(account);
+        const client = getRunningClient() ?? makeClient(account);
         const result = await client.sendFormatText(ctx.to, ctx.text);
         return [{ channel: "lansenger", messageId: result.messageId ?? "", sessionKey }];
       },
@@ -626,7 +583,7 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
 const lansengerOutboundBridge: ChannelMessageOutboundBridgeAdapter<OpenClawConfig> = {
   sendText: async (ctx) => {
     const account = resolveAccount(ctx.cfg, ctx.accountId ?? undefined);
-    const client = makeClient(account);
+    const client = getRunningClient() ?? makeClient(account);
     const result = await client.sendFormatText(ctx.to, ctx.text);
     const receipt = result.messageId
       ? createMessageReceiptFromOutboundResults({ results: [{ messageId: result.messageId, chatId: ctx.to }], kind: "text", sentAt: Date.now() })
@@ -635,7 +592,7 @@ const lansengerOutboundBridge: ChannelMessageOutboundBridgeAdapter<OpenClawConfi
   },
   sendMedia: async (ctx) => {
     const account = resolveAccount(ctx.cfg, ctx.accountId ?? undefined);
-    const client = makeClient(account);
+    const client = getRunningClient() ?? makeClient(account);
     const caption = ctx.text ?? "";
 
     if (ctx.mediaUrl && /^https?:\/\//i.test(ctx.mediaUrl)) {
@@ -683,7 +640,7 @@ const lansengerOutboundBridge: ChannelMessageOutboundBridgeAdapter<OpenClawConfi
   },
   sendPayload: async (ctx) => {
     const account = resolveAccount(ctx.cfg, ctx.accountId ?? undefined);
-    const client = makeClient(account);
+    const client = getRunningClient() ?? makeClient(account);
     const payload = ctx.payload as any;
     const hasCodeBlock = payload?.text && /```/.test(payload.text);
 
