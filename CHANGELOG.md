@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.15.2] - 2026-06-18
+
+> **Compatible with OpenClaw `^2026.6.1`** (tested against `2026.6.1`).
+
+### Bug Fixes
+
+- **Slash commands produce no reply**: `ctxPayload.CommandAuthorized` was hardcoded to `undefined`, causing the agent core to skip command execution and treat `/reset`/`/new` as plain agent text. Now set to the actual `resolveChannelMessageIngress` authorization result.
+
 ## [3.15.1] - 2026-06-18
 
 > **Compatible with OpenClaw `^2026.6.1`** (tested against `2026.6.1`).

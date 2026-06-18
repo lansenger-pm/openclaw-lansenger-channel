@@ -10,7 +10,7 @@ import { PersistentStore } from "./persistent-store.js";
 import type { ResolvedAccount } from "./channel.js";
 import { errorShape } from "openclaw/plugin-sdk/gateway-runtime";
 import { pendingApprovalCards } from "./channel.js";
-import { defineStableChannelIngressIdentity, createChannelIngressResolver, resolveChannelMessageIngress } from "openclaw/plugin-sdk/channel-ingress-runtime";
+import { defineStableChannelIngressIdentity, createChannelIngressResolver, resolveChannelMessageIngress, type ResolvedChannelMessageIngress } from "openclaw/plugin-sdk/channel-ingress-runtime";
 import { DEFAULT_ACCOUNT_ID } from "openclaw/plugin-sdk/account-id";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import * as path from "node:path";
@@ -829,6 +829,7 @@ let senderAllowed = ingress?.senderAccess?.allowed ?? false;
   const rawText = event.text;
   let allowTextCommands = false;
   let hasCommand = false;
+  let cmdIngress: ResolvedChannelMessageIngress | undefined;
   try {
     allowTextCommands = api.runtime.channel.commands.shouldHandleTextCommands({
       cfg: api.config,
@@ -859,7 +860,7 @@ let senderAllowed = ingress?.senderAccess?.allowed ?? false;
         }
         if (entries.length > 0) commandOwnerAllowFrom = entries;
       }
-      const cmdIngress = await resolveChannelMessageIngress({
+      cmdIngress = await resolveChannelMessageIngress({
         channelId: "lansenger",
         accountId: account.accountId ?? DEFAULT_ACCOUNT_ID,
         identity: lansengerIngressIdentity,
@@ -945,7 +946,7 @@ let senderAllowed = ingress?.senderAccess?.allowed ?? false;
               Body: event.text,
               BodyForAgent: agentText,
               CommandBody: rawText,
-              CommandAuthorized: undefined,
+              CommandAuthorized: cmdIngress?.commandAccess?.authorized,
               CommandSource: "text",
               From: event.senderId,
               FromName: event.userName,
