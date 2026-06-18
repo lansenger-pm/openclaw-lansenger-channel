@@ -25,7 +25,7 @@ import {
   type ChannelMessageOutboundBridgeAdapter,
   type ChannelMessageOutboundBridgeResult,
 } from "openclaw/plugin-sdk/channel-outbound";
-import { getRunningClient, getRunningEntryByAccount, getLastInboundTime, getLastInboundTimeByAccount, stripOpenClawUuidSuffix, gatewayStartAccount, gatewayStopAccount } from "./runtime.js";
+import { getRunningEntryByAccount, getLastInboundTimeByAccount, stripOpenClawUuidSuffix, gatewayStartAccount, gatewayStopAccount } from "./runtime.js";
 import { lansengerSetupWizard } from "./setup-wizard.js";
 import { PersistentStore } from "./persistent-store.js";
 

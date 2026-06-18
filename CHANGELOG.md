@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.15.1] - 2026-06-18
+
+> **Compatible with OpenClaw `^2026.6.1`** (tested against `2026.6.1`).
+>
+> Supersedes the deprecated `3.15.0` (published by mistake on 2026-06-04). Includes all fixes from `3.14.5` through `3.14.8`.
+
+### Bug Fixes (v3.14.5 → v3.14.8)
+
+- **Group chat reply routing**: Outbound adapters created fresh client instances with empty `chatTypeMap`, causing group replies to route via private-message API.
+- **`lansenger_send_*` tools multi-account routing**: Tools used `getRunningClient()` which always returned the first account's client. Changed to factory pattern with `ctx.agentAccountId`.
+- **Command authorization ignores global `commands.ownerAllowFrom`**: Slash commands blocked when owner configured globally rather than per-account.
+- **Multi-account audit**: Outbound adapters, status snapshot, reply fallback delivery, and approval card store all now use per-account lookup via `getRunningEntryByAccount()`.
+
+### Chore
+
+- Removed dead imports (`getRunningClient`, `getLastInboundTime`) from channel.ts after multi-account refactor.
+
 ## [3.14.8] - 2026-06-18
 
 > **Compatible with OpenClaw `^2026.6.1`** (tested against `2026.6.1`).
