@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.14.6] - 2026-06-17
+
+> **Hotfix**: v3.14.5 was published with a broken `dist/src/runtime.js` that imports `./persistent-store.js` but the file was missing.
+
+### Bug Fixes
+
+- **Missing `persistent-store.js` in npm bundle**: `src/persistent-store.ts` was uncommitted but referenced by modified `src/runtime.ts`. `prepublishOnly` ran `tsc` against the working directory, producing `dist/src/runtime.js` with the import, but the compiled `dist/src/persistent-store.js` was excluded from the npm tarball. Now committed and included.
+
 ## [3.14.5] - 2026-06-17
 
 > **Compatible with OpenClaw `^2026.6.1`** (tested against `2026.6.1`).

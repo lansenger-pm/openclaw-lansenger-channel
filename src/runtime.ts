@@ -6,6 +6,7 @@ import { createChannelInboundDebouncer, shouldDebounceTextInbound, resolveInboun
 import { LansengerClient } from "./client.js";
 import type { InboundEvent, ClientLogger, ApiResult, AppCardData } from "./client.js";
 import { resolveAccount, makeClient, isPathAllowed } from "./channel.js";
+import { PersistentStore } from "./persistent-store.js";
 import type { ResolvedAccount } from "./channel.js";
 import { errorShape } from "openclaw/plugin-sdk/gateway-runtime";
 import { pendingApprovalCards } from "./channel.js";
@@ -16,7 +17,6 @@ import * as path from "node:path";
 import * as os from "node:os";
 import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
-import * as fsSync from "node:fs";
 
 const log = createSubsystemLogger("lansenger");
 
@@ -88,47 +88,9 @@ interface InboundDeliveryContext {
   timestamp: number;
 }
 
-class PersistentInboundContextStore {
-  private data = new Map<string, InboundDeliveryContext>();
-
+class PersistentInboundContextStore extends PersistentStore<InboundDeliveryContext> {
   constructor() {
-    this.load();
-  }
-
-  private load() {
-    try {
-      const raw = fsSync.readFileSync(INBOUND_CONTEXT_FILE, "utf-8");
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === "object") {
-        for (const [k, v] of Object.entries(parsed)) {
-          this.data.set(k, v as InboundDeliveryContext);
-        }
-      }
-    } catch {}
-  }
-
-  private save() {
-    try {
-      const dir = path.dirname(INBOUND_CONTEXT_FILE);
-      fsSync.mkdirSync(dir, { recursive: true });
-      const obj: Record<string, InboundDeliveryContext> = {};
-      for (const [k, v] of this.data) obj[k] = v;
-      fsSync.writeFileSync(INBOUND_CONTEXT_FILE, JSON.stringify(obj), "utf-8");
-    } catch (e) {
-      log.warn(`failed to persist inbound contexts: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  }
-
-  set(sessionKey: string, ctx: InboundDeliveryContext) {
-    this.data.set(sessionKey, ctx);
-    this.save();
-  }
-
-  get(sessionKey: string) { return this.data.get(sessionKey); }
-
-  delete(sessionKey: string) {
-    this.data.delete(sessionKey);
-    this.save();
+    super(INBOUND_CONTEXT_FILE, "inbound contexts");
   }
 
   entries() { return this.data.entries(); }

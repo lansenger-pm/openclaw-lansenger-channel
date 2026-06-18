@@ -1,6 +1,6 @@
 {
   "name": "@lansenger-pm/openclaw-lansenger-channel",
-  "version": "3.14.5",
+  "version": "3.14.6",
   "type": "module",
   "main": "dist/index.js",
   "exports": {
@@ -15,6 +15,7 @@
     "dist/src/client.js",
     "dist/src/client.d.ts",
     "dist/src/client.js.map",
+    "dist/src/persistent-store.*",
     "dist/src/runtime.js",
     "dist/src/runtime.d.ts",
     "dist/src/runtime.js.map",
@@ -86,7 +87,7 @@
       "quickstartAllowFrom": true
     },
     "install": {
-      "npmSpec": "@lansenger-pm/openclaw-lansenger-channel@3.14.5",
+      "npmSpec": "@lansenger-pm/openclaw-lansenger-channel@3.14.6",
       "localPath": ".",
       "defaultChoice": "npm"
     },
