@@ -208,6 +208,20 @@ export function getRunningAccount(): ResolvedAccount | null {
   return null;
 }
 
+export function getRunningEntryByAccount(accountId: string): { client: LansengerClient; account: ResolvedAccount } | null {
+  for (const [key, entry] of runningAccounts) {
+    if (key === accountId || entry.accountId === accountId || entry.account.accountId === accountId || entry.account.appId === accountId) {
+      return { client: entry.client, account: entry.account };
+    }
+  }
+  // single-account fallback: if only one account is running, use it
+  const entries = Array.from(runningAccounts.values());
+  if (entries.length === 1 && entries[0]) {
+    return { client: entries[0].client, account: entries[0].account };
+  }
+  return null;
+}
+
 async function recoverPendingInboundContexts(api: OpenClawPluginApi): Promise<void> {
   if (recoveryGuard) {
     log.info("recovery: already performed in this process lifetime — skipping");

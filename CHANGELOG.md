@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.14.7] - 2026-06-18
+
+> **Compatible with OpenClaw `^2026.6.1`** (tested against `2026.6.1`).
+
+### Bug Fixes
+
+- **`lansenger_send_*` tools multi-account routing**: All `lansenger_send_*` tools used `getRunningClient()` which always returned the first entry from `runningAccounts` Map, causing cross-account message sending in multi-bot setups. Fixed by:
+  - Added `getRunningEntryByAccount(accountId)` in runtime.ts that matches by account key/ID, with single-account fallback.
+  - Changed tool registration to use OpenClaw's tool factory pattern (`api.registerTool((ctx) => {...})`), resolving the correct client via `ctx.agentAccountId` from the OpenAI-compatible tool context.
+
 ## [3.14.6] - 2026-06-17
 
 > **Hotfix**: v3.14.5 was published with a broken `dist/src/runtime.js` that imports `./persistent-store.js` but the file was missing.
