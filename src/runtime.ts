@@ -744,14 +744,8 @@ let senderAllowed = ingress?.senderAccess?.allowed ?? false;
 
   if (event.isGroup) {
     let ingress: any;
-    let requireMention = false;
+    let requireMention = account.requireMention ?? true;
     try {
-      requireMention = api.runtime.channel.groups.resolveRequireMention({
-        cfg: api.config,
-        channel: "lansenger",
-        groupId: event.chatId,
-        accountId: account.accountId,
-      });
       ingress = await resolveChannelMessageIngress({
         channelId: "lansenger",
         accountId: account.accountId ?? DEFAULT_ACCOUNT_ID,
