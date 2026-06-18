@@ -6,7 +6,9 @@ metadata: {"openclaw":{"requires":{"config":["channels.lansenger"],"cli":["lanse
 
 # Lansenger (蓝信) Messaging — Agent Quick Reference
 
-In a Lansenger session, **just write your reply normally** — Markdown renders automatically as formatText. No tool needed for formatted text unless you also need @mentions.
+> **CRITICAL**: To send a visible reply in Lansenger, you MUST call `message({ action: "send", text: "..." })`. Plain text replies are kept private and NOT delivered to Lansenger. Do NOT rely on auto-delivery.
+
+In a Lansenger session, call the `message` tool with `action: "send"` and your text. Markdown renders automatically as formatText.
 
 You can send messages via **CLI commands** (alternative) or **agent tools** (built-in):
 

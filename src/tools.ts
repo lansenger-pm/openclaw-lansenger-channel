@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
-import { getRunningEntryByAccount, getRunningClient, getRunningAccount, getLastInboundChatId } from "./runtime.js";
+import { getRunningEntryByAccount, getRunningClient, getRunningAccount, getLastInboundChatId, getRunningEntryBySessionKey } from "./runtime.js";
 import type { LansengerClient } from "./client.js";
 import { mediaTypeFromPath, uploadMediaTypeFromPath } from "./client.js";
 import type { ResolvedAccount } from "./channel.js";
@@ -14,15 +14,21 @@ function jsonResult(data: unknown) {
   return { content: [{ type: "text", text: JSON.stringify(data) }] };
 }
 
-function makeToolClient(agentAccountId?: string): { client: LansengerClient; account: ResolvedAccount } | null {
+function makeToolClient(agentAccountId?: string, sessionKey?: string): { client: LansengerClient; account: ResolvedAccount } | null {
+  // first try exact account match
   if (agentAccountId) {
     const entry = getRunningEntryByAccount(agentAccountId);
     if (entry) return { client: entry.client, account: entry.account };
   }
-  // fallback: try default lookup, then any running account
+  // try by session key (from inbound context)
+  if (sessionKey) {
+    const entry = getRunningEntryBySessionKey(sessionKey);
+    if (entry) return { client: entry.client, account: entry.account };
+  }
+  // fallback: try default lookup
   const fallback = getRunningEntryByAccount(agentAccountId ?? "");
   if (fallback) return { client: fallback.client, account: fallback.account };
-  // multi-account fallback: agent's accountId didn't match, use first running account
+  // last resort: first running account
   const client = getRunningClient();
   const account = getRunningAccount();
   if (client && account) return { client, account };
@@ -192,7 +198,8 @@ const QueryGroupsSchema = {
 export function registerLansengerTools(api: any) {
   api.registerTool((ctx: any) => {
     const agentAccountId: string = ctx.agentAccountId ?? "";
-    const tc = makeToolClient(agentAccountId);
+    const sessionKey: string = ctx.sessionKey ?? "";
+    const tc = makeToolClient(agentAccountId, sessionKey);
     if (!tc) return null;
 
     return [

@@ -73,6 +73,7 @@ const runningAccounts = new Map<string, RunningAccount>();
 const accountStatusSinks = new Map<string, (patch: Omit<ChannelAccountSnapshot, "accountId">) => void>();
 const lastInboundChatIds = new Map<string, string>();
 const lastInboundTimes = new Map<string, number>();
+const sessionAccountMap = new Map<string, string>(); // sessionKey -> runningKey
 const sessionDeliveryTracker = new Map<string, Set<string>>();
 const activeDeliverySessions = new Set<string>();
 
@@ -219,6 +220,15 @@ export function getRunningClient(): LansengerClient | null {
 
 export function getRunningAccount(): ResolvedAccount | null {
   for (const [, entry] of runningAccounts) return entry.account;
+  return null;
+}
+
+export function getRunningEntryBySessionKey(sessionKey: string): { client: LansengerClient; account: ResolvedAccount } | null {
+  const runningKey = sessionAccountMap.get(sessionKey);
+  if (runningKey) {
+    const entry = runningAccounts.get(runningKey);
+    if (entry) return { client: entry.client, account: entry.account };
+  }
   return null;
 }
 
@@ -814,6 +824,7 @@ let senderAllowed = ingress?.senderAccess?.allowed ?? false;
   const replyTo = event.chatId;
   lastInboundChatIds.set(runningKey, event.chatId);
   lastInboundTimes.set(runningKey, Date.now());
+  if (sessionKey) sessionAccountMap.set(sessionKey, runningKey);
 
   const sessionDeliveredSet = sessionDeliveryTracker.get(sessionKey) ?? new Set<string>();
   sessionDeliveryTracker.set(sessionKey, sessionDeliveredSet);

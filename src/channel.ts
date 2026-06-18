@@ -910,6 +910,14 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
   ...chatPlugin as any,
   message: lansengerMessageAdapter,
   messaging: {
+    targetResolver: {
+      looksLikeId: (_raw: string, normalized: string) => /^[a-z0-9]+-/i.test(normalized),
+      resolveTarget: async ({ input, normalized, preferredKind }: { input: string; normalized: string; preferredKind?: string }) => ({
+        to: normalized || input,
+        kind: preferredKind ?? "direct",
+        source: "normalized" as const,
+      }),
+    },
     resolveSessionConversation: ({ kind, rawId }: { kind: string; rawId: string }) => {
       if (!rawId) return null;
       return { id: rawId, baseConversationId: rawId };
