@@ -1118,16 +1118,18 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
       const sessionTarget = (() => {
         if (ctx.sessionKey) {
           const parts = String(ctx.sessionKey).split(":");
-          if (parts.length >= 3) return parts[2];
+          // sessionKey format: agent:<agentId>:<channel>:<kind>:<rawId>
+          if (parts.length >= 5) return parts[parts.length - 1];
         }
         return ctx.requesterSenderId ?? "";
       })();
-      const to = ctx.args?.to ?? sessionTarget;
+      const params = ctx.params ?? ctx.args ?? {};
+      const to = params.to ?? sessionTarget;
 
       if (ctx.action === "send") {
-        const filePath = ctx.args?.filePath ?? ctx.args?.mediaUrl ?? ctx.args?.media ?? "";
-        const caption = ctx.args?.caption ?? ctx.args?.text ?? "";
-        const text = ctx.args?.text ?? ctx.args?.content ?? ctx.args?.message ?? "";
+        const filePath = params.filePath ?? params.mediaUrl ?? params.media ?? "";
+        const caption = params.caption ?? params.text ?? "";
+        const text = params.text ?? params.content ?? params.message ?? "";
         if (filePath) {
           const resolved = path.resolve(filePath);
           try {
