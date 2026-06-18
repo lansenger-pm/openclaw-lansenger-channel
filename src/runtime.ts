@@ -749,9 +749,9 @@ let senderAllowed = ingress?.senderAccess?.allowed ?? false;
         subject: { stableId: event.senderId },
         conversation: { kind: "group", id: event.chatId },
         event: { kind: "message", authMode: "inbound", mayPair: false, originSubject: { identifiers: [{ opaqueId: event.senderId, kind: "platform-id" as any, sensitivity: "normal", value: event.senderId }] } },
-        policy: { dmPolicy: "pairing", groupPolicy: "allowlist", activation: { requireMention, allowTextCommands: false } },
+        policy: { dmPolicy: "pairing", groupPolicy: (account.groupPolicy as "open" | "allowlist" | "disabled") ?? "open", activation: { requireMention, allowTextCommands: false } },
+        groupAllowFrom: [],
         mentionFacts: { canDetectMention: true, wasMentioned: event.isAtMe ?? false, hasAnyMention: event.isAtAll ?? false },
-        route: [{ id: event.chatId, kind: "membership", configured: true }],
       });
       if (!ingress?.senderAccess?.allowed) {
         log.info(`inbound: group dropped — sender not allowed for chatId=${event.chatId}`);
@@ -869,7 +869,7 @@ let senderAllowed = ingress?.senderAccess?.allowed ?? false;
         event: { kind: "slash-command", authMode: "command", mayPair: false },
         policy: {
           dmPolicy: (account.dmPolicy ?? "pairing") as "pairing" | "allowlist" | "open" | "disabled",
-          groupPolicy: "allowlist" as "allowlist" | "open" | "disabled",
+          groupPolicy: (account.groupPolicy ?? "open") as "allowlist" | "open" | "disabled",
           command: { useAccessGroups: true, allowTextCommands, hasControlCommand: true },
         },
         command: commandOwnerAllowFrom ? { allowTextCommands, hasControlCommand: true, commandOwnerAllowFrom } : undefined,

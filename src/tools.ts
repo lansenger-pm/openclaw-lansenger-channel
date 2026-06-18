@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
-import { getRunningEntryByAccount, getLastInboundChatId } from "./runtime.js";
+import { getRunningEntryByAccount, getRunningClient, getRunningAccount, getLastInboundChatId } from "./runtime.js";
 import type { LansengerClient } from "./client.js";
 import { mediaTypeFromPath, uploadMediaTypeFromPath } from "./client.js";
 import type { ResolvedAccount } from "./channel.js";
@@ -15,12 +15,18 @@ function jsonResult(data: unknown) {
 }
 
 function makeToolClient(agentAccountId?: string): { client: LansengerClient; account: ResolvedAccount } | null {
-  if (!agentAccountId) {
-    const fallback = getRunningEntryByAccount("");
-    return fallback ? { client: fallback.client, account: fallback.account } : null;
+  if (agentAccountId) {
+    const entry = getRunningEntryByAccount(agentAccountId);
+    if (entry) return { client: entry.client, account: entry.account };
   }
-  const entry = getRunningEntryByAccount(agentAccountId);
-  return entry ? { client: entry.client, account: entry.account } : null;
+  // fallback: try default lookup, then any running account
+  const fallback = getRunningEntryByAccount(agentAccountId ?? "");
+  if (fallback) return { client: fallback.client, account: fallback.account };
+  // multi-account fallback: agent's accountId didn't match, use first running account
+  const client = getRunningClient();
+  const account = getRunningAccount();
+  if (client && account) return { client, account };
+  return null;
 }
 
 const SendFileSchema = {

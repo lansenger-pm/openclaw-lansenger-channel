@@ -122,6 +122,8 @@ export class LansengerClient {
   private chatTypeMap = new Map<string, "group" | "dm">();
   private userLangMap = new Map<string, "zh" | "en">();
   private dangerouslyAllowPrivateNetwork: boolean = false;
+  /** Our bot's openId, captured from group @mention events */
+  private selfBotId: string | null = null;
 
   constructor(config: { appId: string; appSecret: string; apiGatewayUrl?: string; logger?: ClientLogger; dangerouslyAllowPrivateNetwork?: boolean | null }) {
     this.appId = config.appId;
@@ -585,32 +587,56 @@ export class LansengerClient {
     const events = wsMsg.events ?? [];
     const results: InboundEvent[] = [];
     for (const ev of events) {
-      const msgData = ev.data ?? {};
-      const extracted = await this.extractText(msgData);
+      const eventData = ev.data ?? {};
+      const eventType = ev.type ?? "";
+      const isGroup = eventType === "bot_group_message";
+
+      // learn our bot's openId from group @mention events (botId = target bot = us)
+      if (isGroup && !this.selfBotId && eventData.botId) {
+        this.selfBotId = eventData.botId as string;
+      }
+
+      // skip messages sent by our own bot to avoid self-echo
+      if (this.selfBotId && eventData.from === this.selfBotId) continue;
+
+      const senderId = (eventData.from ?? "") as string;
+      const chatId = isGroup ? ((eventData.groupId ?? eventData.from ?? "") as string) : senderId;
+
+      // extract inner message body: eventData.msgData.{msgType}.{content}
+      const extracted = await this.extractText(eventData);
       if (!extracted.text) continue;
       if (extracted.mediaPaths?.length) {
-        this.log.info(`inbound media: msgType=${msgData.msgType ?? "n/a"} count=${extracted.mediaPaths.length} saved=${extracted.mediaPaths.join(",")}`);
+        this.log.info(`inbound media: msgType=${eventData.msgType ?? "n/a"} count=${extracted.mediaPaths.length} saved=${extracted.mediaPaths.join(",")}`);
       }
-      const messageId = msgData.messageId ?? crypto.randomUUID();
-      const chatType = msgData.chatType ?? "p2p";
-      const isGroup = chatType === "group";
-      const senderId = msgData.from ?? "";
-      const chatId = msgData.conversationId ?? senderId;
-      
+
+      // messageId: group messages carry `msgId`; private messages don't, so UUID
+      const messageId = ((isGroup ? eventData.msgId : undefined) as string) ?? crypto.randomUUID();
+
+      // @mention info from eventData.reminder (top-level, not nested in msgData)
+      const reminder = (eventData.reminder ?? {}) as Record<string, any>;
+      const isAtMe = isGroup ? Boolean(reminder.isAtMe ?? false) : undefined;
+      const isAtAll = isGroup ? Boolean(reminder.isAtAll ?? false) : undefined;
+      const mentionedStaffs: Array<{ staffId?: string; staffName?: string }> = Array.isArray(reminder.staffs) ? reminder.staffs : [];
+      const mentionedBots: Array<{ botId: string; botName: string }> = Array.isArray(reminder.bots) ? reminder.bots : [];
+
       this.cacheChatType(chatId, isGroup ? "group" : "dm");
       if (extracted.text) this.cacheUserLang(senderId, extracted.text);
-      
+
       results.push({
         messageId,
         text: extracted.text,
         chatId,
-        chatName: msgData.conversationTitle ?? undefined,
+        chatName: isGroup ? ((eventData.groupName ?? undefined) as string | undefined) : undefined,
         isGroup,
         senderId,
-        userName: msgData.senderName ?? senderId,
-        rawMessage: msgData,
-        msgType: msgData.msgType ?? "text",
+        userName: senderId,
+        rawMessage: eventData,
+        msgType: (eventData.msgType ?? "text") as string,
         mediaPaths: extracted.mediaPaths,
+        isAtMe,
+        isAtAll,
+        mentionedStaffs: mentionedStaffs.length > 0 ? mentionedStaffs : undefined,
+        mentionedBots: mentionedBots.length > 0 ? mentionedBots : undefined,
       });
     }
     return results;
@@ -799,9 +825,9 @@ export class LansengerClient {
     } };
   }
 
-  private async extractText(msgData: Record<string, any>): Promise<{ text: string | null; mediaPaths?: string[] }> {
-    const msgType = msgData.msgType ?? "text";
-    const payload = msgData.msgData ?? {};
+  private async extractText(eventData: Record<string, any>): Promise<{ text: string | null; mediaPaths?: string[] }> {
+    const msgType = eventData.msgType ?? "text";
+    const payload = eventData.msgData ?? {};
 
     if (msgType === "text") return { text: payload.text?.content?.trim() ?? null };
 
@@ -957,6 +983,10 @@ export type InboundEvent = {
   mediaPaths?: string[];
   isAtMe?: boolean;
   isAtAll?: boolean;
+  /** Staffs @mentioned (from eventData.reminder.staffs) */
+  mentionedStaffs?: Array<{ staffId?: string; staffName?: string }>;
+  /** Bots @mentioned (from eventData.reminder.bots) */
+  mentionedBots?: Array<{ botId: string; botName: string }>;
 };
 
 export type LansengerApiResponse = {
@@ -972,7 +1002,7 @@ export type LansengerApiResponse = {
 };
 
 export type LansengerWsMessage = {
-  events?: Array<{ data: Record<string, any> }>;
+  events?: Array<{ type?: string; data: Record<string, any> }>;
 };
 
 export type I18nObj = { zhHans: string; zhHant: string; zhHantHK: string; en: string; fr: string };

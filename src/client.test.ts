@@ -438,7 +438,7 @@ describe("LansengerClient processRawMessage", () => {
   it("parses text message from raw JSON", async () => {
     const client = makeClient();
     const raw = JSON.stringify({
-      events: [{ data: { msgType: "text", messageId: "msg-123", chatType: "p2p", from: "user-1", conversationId: "conv-1", senderName: "Alice", msgData: { text: { content: "Hello!" } } } }],
+      events: [{ type: "bot_private_message", data: { msgType: "text", from: "user-1", msgData: { text: { content: "Hello!" } } } }],
     });
     const events = await client.processRawMessage(raw);
     expect(events.length).toBe(1);
@@ -450,7 +450,7 @@ describe("LansengerClient processRawMessage", () => {
   it("handles group messages", async () => {
     const client = makeClient();
     const raw = JSON.stringify({
-      events: [{ data: { msgType: "text", messageId: "msg-456", chatType: "group", from: "user-2", conversationId: "group-1", conversationTitle: "Team Chat", senderName: "Bob", msgData: { text: { content: "Hi team!" } } } }],
+      events: [{ type: "bot_group_message", data: { msgType: "text", msgId: "msg-456", groupId: "group-1", botId: "bot-1", from: "user-2", groupName: "Team Chat", reminder: { isAtMe: false, isAtAll: false, staffs: [], bots: [{ botId: "bot-1", botName: "Bot0456" }] }, msgData: { text: { content: "Hi team!" } } } }],
     });
     const events = await client.processRawMessage(raw);
     expect(events.length).toBe(1);

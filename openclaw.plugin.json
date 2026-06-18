@@ -123,13 +123,18 @@
           "groupPolicy": {
             "type": "string",
             "enum": ["open", "allowlist", "disabled"],
-            "default": "allowlist",
+            "default": "open",
             "description": "Group chat policy / 群聊策略：open (所有群), allowlist (仅允许列表群), disabled (禁止群消息)"
           },
           "groupAllowFrom": {
             "type": "array",
             "items": { "type": "string" },
             "description": "Group IDs allowed to trigger the bot / 允许触发机器人的群聊 ID 列表"
+          },
+          "requireMention": {
+            "type": "boolean",
+            "default": true,
+            "description": "Require @mention to trigger in groups (can be overridden per-group) / 群聊中是否需要 @提及才触发（可在单群配置中覆盖）"
           },
           "groups": {
             "type": "object",
@@ -182,8 +187,9 @@
                 "mediaLocalRoots": { "type": "array", "items": { "type": "string" }, "description": "Directories allowed for local file delivery (inherits top-level if unset) / 允许发送本地文件的目录列表（未设置时继承顶层配置）" },
                 "allowFrom": { "type": "array", "items": { "type": "string" }, "description": "Allowed user IDs / 允许的用户 ID 列表" },
                 "dmPolicy": { "type": "string", "enum": ["pairing", "allowlist", "open", "disabled"], "default": "pairing", "description": "DM security policy / 私聊安全策略" },
-                "groupPolicy": { "type": "string", "enum": ["open", "allowlist", "disabled"], "default": "allowlist", "description": "Group chat policy / 群聊策略" },
+                "groupPolicy": { "type": "string", "enum": ["open", "allowlist", "disabled"], "default": "open", "description": "Group chat policy / 群聊策略" },
                 "groupAllowFrom": { "type": "array", "items": { "type": "string" }, "description": "Group IDs allowed to trigger the bot / 允许触发机器人的群聊 ID 列表" },
+                "requireMention": { "type": "boolean", "description": "Require @mention to trigger in groups (inherits from top-level if unset) / 群聊中是否需要 @提及才触发（未设置时继承顶层配置）" },
                 "ackMessage": { "type": "boolean", "description": "Send ack message before agent processing (inherits from top-level if unset) / 代理处理前发送确认消息（未设置时继承顶层配置）" },
                 "revokeAckMessage": { "type": "boolean", "description": "Auto-revoke ack message after agent reply (inherits from top-level if unset, default true) / 代理回复后自动撤回确认消息（未设置时继承顶层配置，默认 true）" },
                 "ackMessageTextZh": { "type": "string", "default": "收到，正在处理...", "description": "Chinese ack message text / 中文确认消息文案" },

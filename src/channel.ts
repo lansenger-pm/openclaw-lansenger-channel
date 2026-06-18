@@ -75,6 +75,9 @@ type LansengerAccount = {
   allowFrom?: string[];
   dmPolicy?: string;
   dmSecurity?: string;
+  groupPolicy?: string;
+  groupAllowFrom?: string[];
+  requireMention?: boolean;
   homeChannel?: string;
   enabled?: boolean;
   ackMessage?: boolean;
@@ -92,6 +95,9 @@ type ResolvedAccount = {
   apiGatewayUrl: string;
   allowFrom: string[];
   dmPolicy: string | undefined;
+  groupPolicy: string | undefined;
+  groupAllowFrom: string[];
+  requireMention: boolean;
   homeChannel: string | undefined;
   enabled: boolean;
   configured?: boolean;
@@ -157,6 +163,9 @@ function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): Resolve
   const apiGatewayUrl = account?.apiGatewayUrl ?? process.env.LANSENGER_API_GATEWAY_URL ?? DEFAULT_API_GATEWAY_URL;
   const allowFrom: string[] = account?.allowFrom ?? [];
   const dmPolicy = account?.dmPolicy ?? account?.dmSecurity;
+  const groupPolicy = account?.groupPolicy ?? section?.groupPolicy ?? "open";
+  const groupAllowFrom: string[] = (account?.groupAllowFrom ?? section?.groupAllowFrom ?? []).map(String);
+  const requireMention = account?.requireMention ?? section?.requireMention ?? true;
   const homeChannel = account?.homeChannel;
   const enabled = Boolean(appId && appSecret);
   const ackMessage = account?.ackMessage !== undefined ? account.ackMessage : (section?.ackMessage ?? true);
@@ -173,6 +182,9 @@ function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): Resolve
     apiGatewayUrl,
     allowFrom,
     dmPolicy,
+    groupPolicy,
+    groupAllowFrom,
+    requireMention,
     homeChannel,
     enabled,
     ackMessage,
@@ -422,7 +434,7 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
         }
       }
       if (section.groupPolicy || section.groupAllowFrom) {
-        findings.push({ checkId: "lansenger/group-config-unused", severity: "info", title: "Group config is set but personal bots cannot join groups / 群聊配置已设置但个人机器人暂不支持进群", detail: "Personal bots currently cannot join Lansenger groups. groupPolicy and groupAllowFrom settings have no effect. / 个人机器人暂不支持加入蓝信群聊，groupPolicy 和 groupAllowFrom 设置暂不生效。", remediation: "These settings are reserved for future group support. You can leave them as-is. / 这些设置为群聊功能预留，可保持不变。" });
+        findings.push({ checkId: "lansenger/group-config", severity: "info", title: "Group config is active / 群聊配置已生效", detail: "Lansenger supports group chat. groupPolicy and groupAllowFrom settings control group behavior. / 蓝信支持群聊功能。", remediation: "Group settings are active. / 群聊设置已启用。" });
       }
       const topLevelGatewayUrl = section.apiGatewayUrl;
       const envHasGatewayUrl = Boolean(process.env.LANSENGER_API_GATEWAY_URL);
@@ -897,6 +909,16 @@ const lansengerOnboarding = {
 export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResult> = {
   ...chatPlugin as any,
   message: lansengerMessageAdapter,
+  messaging: {
+    resolveSessionConversation: ({ kind, rawId }: { kind: string; rawId: string }) => {
+      if (!rawId) return null;
+      return { id: rawId, baseConversationId: rawId };
+    },
+    resolveDeliveryTarget: ({ conversationId }: { conversationId: string }) => {
+      if (!conversationId) return undefined;
+      return { to: conversationId.trim() };
+    },
+  },
   setupWizard: lansengerSetupWizard,
   gateway: {
     startAccount: gatewayStartAccount,

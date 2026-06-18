@@ -169,13 +169,10 @@ describe("processRawMessage", () => {
     const raw = JSON.stringify({
       events: [
         {
+          type: "bot_private_message",
           data: {
             msgType: "text",
-            messageId: "msg-123",
-            chatType: "p2p",
             from: "user-1",
-            conversationId: "conv-1",
-            senderName: "Alice",
             msgData: { text: { content: "Hello!" } },
           },
         },
@@ -193,14 +190,15 @@ describe("processRawMessage", () => {
     const raw = JSON.stringify({
       events: [
         {
+          type: "bot_group_message",
           data: {
             msgType: "text",
-            messageId: "msg-456",
-            chatType: "group",
+            msgId: "msg-456",
+            groupId: "group-1",
+            botId: "bot-1",
             from: "user-2",
-            conversationId: "group-1",
-            conversationTitle: "Team Chat",
-            senderName: "Bob",
+            groupName: "Team Chat",
+            reminder: { isAtMe: true, isAtAll: false, staffs: [], bots: [{ botId: "bot-1", botName: "Bot0456" }] },
             msgData: { text: { content: "Hi team!" } },
           },
         },
