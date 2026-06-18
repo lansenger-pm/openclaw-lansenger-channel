@@ -25,7 +25,7 @@ import {
   type ChannelMessageOutboundBridgeAdapter,
   type ChannelMessageOutboundBridgeResult,
 } from "openclaw/plugin-sdk/channel-outbound";
-import { getRunningClient, getLastInboundTime, stripOpenClawUuidSuffix, gatewayStartAccount, gatewayStopAccount } from "./runtime.js";
+import { getRunningClient, getRunningEntryByAccount, getLastInboundTime, getLastInboundTimeByAccount, stripOpenClawUuidSuffix, gatewayStartAccount, gatewayStopAccount } from "./runtime.js";
 import { lansengerSetupWizard } from "./setup-wizard.js";
 import { PersistentStore } from "./persistent-store.js";
 
@@ -466,14 +466,14 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
       sendText: async (ctx) => {
         const sessionKey = (ctx as any).sessionKey as string | undefined;
         const account = resolveAccount(ctx.cfg, ctx.accountId ?? undefined);
-        const client = getRunningClient() ?? makeClient(account);
+        const client = getRunningEntryByAccount(account.accountId ?? "")?.client ?? makeClient(account);
         const result = await client.sendFormatText(ctx.to, ctx.text);
         return toOutboundResult(result.messageId, sessionKey, ctx.to);
       },
       sendMedia: async (ctx) => {
         const sessionKey = (ctx as any).sessionKey as string | undefined;
         const account = resolveAccount(ctx.cfg, ctx.accountId ?? undefined);
-        const client = getRunningClient() ?? makeClient(account);
+        const client = getRunningEntryByAccount(account.accountId ?? "")?.client ?? makeClient(account);
         const caption = ctx.text ?? "";
 
         if (ctx.mediaUrl && /^https?:\/\//i.test(ctx.mediaUrl)) {
@@ -530,15 +530,17 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
 
         if (hint?.kind === "approval-resolved") {
           const chatId = target?.to;
-          const cardInfo = pendingApprovalCards.get(chatId);
+          const acctId = target?.accountId ?? "";
+          const cardKey = acctId ? `${acctId}:${chatId}` : chatId;
+          const cardInfo = pendingApprovalCards.get(cardKey);
           if (cardInfo?.messageId) {
             const account = resolveAccount(params.cfg, target?.accountId ?? undefined);
-            const client = getRunningClient() ?? makeClient(account);
+            const client = getRunningEntryByAccount(account.accountId ?? "")?.client ?? makeClient(account);
             const status: "approved" | "denied" = payload?.text?.includes("✅") ? "approved" : "denied";
             try {
               await client.updateCardStatus(cardInfo.messageId, status, cardInfo.lang);
               log.info(`beforeDeliverPayload: approval card updated — messageId=${cardInfo.messageId} status=${status}`);
-              pendingApprovalCards.delete(chatId);
+              pendingApprovalCards.delete(cardKey);
             } catch (e: unknown) {
               log.error(`beforeDeliverPayload: card update failed — ${e instanceof Error ? e.message : String(e)}`);
             }
@@ -556,7 +558,7 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
       sendFormattedText: async (ctx) => {
         const sessionKey = (ctx as any).sessionKey as string | undefined;
         const account = resolveAccount(ctx.cfg, ctx.accountId ?? undefined);
-        const client = getRunningClient() ?? makeClient(account);
+        const client = getRunningEntryByAccount(account.accountId ?? "")?.client ?? makeClient(account);
         const result = await client.sendFormatText(ctx.to, ctx.text);
         return [{ channel: "lansenger", messageId: result.messageId ?? "", sessionKey }];
       },
@@ -583,7 +585,7 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
 const lansengerOutboundBridge: ChannelMessageOutboundBridgeAdapter<OpenClawConfig> = {
   sendText: async (ctx) => {
     const account = resolveAccount(ctx.cfg, ctx.accountId ?? undefined);
-    const client = getRunningClient() ?? makeClient(account);
+    const client = getRunningEntryByAccount(account.accountId ?? "")?.client ?? makeClient(account);
     const result = await client.sendFormatText(ctx.to, ctx.text);
     const receipt = result.messageId
       ? createMessageReceiptFromOutboundResults({ results: [{ messageId: result.messageId, chatId: ctx.to }], kind: "text", sentAt: Date.now() })
@@ -592,7 +594,7 @@ const lansengerOutboundBridge: ChannelMessageOutboundBridgeAdapter<OpenClawConfi
   },
   sendMedia: async (ctx) => {
     const account = resolveAccount(ctx.cfg, ctx.accountId ?? undefined);
-    const client = getRunningClient() ?? makeClient(account);
+    const client = getRunningEntryByAccount(account.accountId ?? "")?.client ?? makeClient(account);
     const caption = ctx.text ?? "";
 
     if (ctx.mediaUrl && /^https?:\/\//i.test(ctx.mediaUrl)) {
@@ -640,7 +642,7 @@ const lansengerOutboundBridge: ChannelMessageOutboundBridgeAdapter<OpenClawConfi
   },
   sendPayload: async (ctx) => {
     const account = resolveAccount(ctx.cfg, ctx.accountId ?? undefined);
-    const client = getRunningClient() ?? makeClient(account);
+    const client = getRunningEntryByAccount(account.accountId ?? "")?.client ?? makeClient(account);
     const payload = ctx.payload as any;
     const hasCodeBlock = payload?.text && /```/.test(payload.text);
 
@@ -919,9 +921,9 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
       return await probeLansengerAccount(account);
     },
     buildAccountSnapshot: ({ account, runtime, probe }) => {
-      const liveClient = getRunningClient();
-      const connected = liveClient?.isWsAlive() ?? false;
-      const lastInboundAt = getLastInboundTime();
+      const entry = getRunningEntryByAccount(account.accountId ?? "");
+      const connected = entry?.client.isWsAlive() ?? false;
+      const lastInboundAt = getLastInboundTimeByAccount(account.accountId ?? "");
       return {
         accountId: account.accountId ?? account.appId ?? DEFAULT_ACCOUNT_ID,
         enabled: account.enabled,
@@ -1031,7 +1033,7 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
             const appCard = (lang === "zh" ? payload.zh : payload.en) ?? payload.en;
             const result = await client.sendAppCard(target.to, appCard as AppCardData);
             if (result.messageId) {
-              pendingApprovalCards.set(target.to, { messageId: result.messageId, lang: lang as "zh" | "en" });
+              pendingApprovalCards.set(`${accountId}:${target.to}`, { messageId: result.messageId, lang: lang as "zh" | "en" });
             }
             return { delivered: result.success, messageId: result.messageId ?? null };
           }

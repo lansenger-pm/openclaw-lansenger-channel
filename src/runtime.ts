@@ -198,6 +198,20 @@ export function getLastInboundTime(): number | null {
   return null;
 }
 
+export function getLastInboundTimeByAccount(accountId: string): number | null {
+  for (const [key, ts] of lastInboundTimes) {
+    if (key === accountId) return ts;
+  }
+  // check by matching accountId within the entry key
+  for (const [key, ts] of lastInboundTimes) {
+    const entry = runningAccounts.get(key);
+    if (entry && (entry.accountId === accountId || entry.account.accountId === accountId || entry.account.appId === accountId)) return ts;
+  }
+  // single-account fallback
+  for (const [, ts] of lastInboundTimes) return ts;
+  return null;
+}
+
 export function getRunningClient(): LansengerClient | null {
   for (const [, entry] of runningAccounts) return entry.client;
   return null;
@@ -314,7 +328,8 @@ export function startLansengerGateway(api: OpenClawPluginApi): void {
         }
 
         if (sessionKey && !activeDeliverySessions.has(sessionKey) && payload?.text?.trim()) {
-          const client = getRunningClient();
+          const runningEntry = getRunningEntryByAccount("");
+          const client = runningEntry?.client ?? getRunningClient();
           if (client) {
             const to = payload.to ?? payload.chatId ?? extractChatIdFromSessionKey(sessionKey) ?? "";
             if (to) {
@@ -826,6 +841,24 @@ let senderAllowed = ingress?.senderAccess?.allowed ?? false;
 
   if (allowTextCommands && hasCommand) {
     try {
+      // merge global commands.ownerAllowFrom for "lansenger:"-prefixed entries
+      const globalAllowFrom = (api.config as any)?.commands?.ownerAllowFrom as Array<string | number> | undefined;
+      let commandOwnerAllowFrom: string[] | undefined;
+      if (Array.isArray(globalAllowFrom) && globalAllowFrom.length > 0) {
+        const entries: string[] = [];
+        for (const entry of globalAllowFrom) {
+          const trimmed = String(entry ?? "").trim();
+          if (!trimmed) continue;
+          const idx = trimmed.indexOf(":");
+          if (idx > 0 && trimmed.slice(0, idx).toLowerCase() === "lansenger") {
+            const remainder = trimmed.slice(idx + 1).trim();
+            if (remainder) entries.push(remainder);
+            continue;
+          }
+          entries.push(trimmed);
+        }
+        if (entries.length > 0) commandOwnerAllowFrom = entries;
+      }
       const cmdIngress = await resolveChannelMessageIngress({
         channelId: "lansenger",
         accountId: account.accountId ?? DEFAULT_ACCOUNT_ID,
@@ -838,6 +871,7 @@ let senderAllowed = ingress?.senderAccess?.allowed ?? false;
           groupPolicy: "allowlist" as "allowlist" | "open" | "disabled",
           command: { useAccessGroups: true, allowTextCommands, hasControlCommand: true },
         },
+        command: commandOwnerAllowFrom ? { allowTextCommands, hasControlCommand: true, commandOwnerAllowFrom } : undefined,
         allowFrom: account.allowFrom ?? [],
         useDefaultPairingStore: true,
       });

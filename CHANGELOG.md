@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.14.8] - 2026-06-18
+
+> **Compatible with OpenClaw `^2026.6.1`** (tested against `2026.6.1`).
+
+### Bug Fixes
+
+- **Command authorization ignores global `commands.ownerAllowFrom`**: Slash commands (`/reset`, etc.) were blocked when `allowFrom` was only configured at the global `commands.ownerAllowFrom` level rather than per-account. Fixed by extracting `lansenger:`-prefixed entries from the global config and passing them as `commandOwnerAllowFrom` to `resolveChannelMessageIngress`.
+- **Multi-account audit — outbound adapters**: 7 outbound adapter methods (`sendText`, `sendMedia`, `sendFormattedText`, etc.) used `getRunningClient()` which returns the first running account's client. In multi-bot setups, this could deliver messages using the wrong account's credentials. Changed to `getRunningEntryByAccount(account.accountId)` to match the correct running entry.
+- **Multi-account audit — status snapshot**: `buildAccountSnapshot` used `getRunningClient()` for connected state and `getLastInboundTime()` for last activity, both returning data from the first running account instead of the account being probed. Added `getLastInboundTimeByAccount()` and switched to per-account lookup.
+- **Multi-account audit — reply fallback delivery**: The `reply_payload_sending` fallback hook used `getRunningClient()` with no account resolution, potentially delivering replies via the wrong bot. Now prefers per-account resolution via `getRunningEntryByAccount()`.
+- **Multi-account audit — approval card store collision**: `pendingApprovalCards` was keyed by chatId only, risking cross-account overwrites when different Lansenger instances shared chatIds. Now keyed by `accountId:chatId`.
+
 ## [3.14.7] - 2026-06-18
 
 > **Compatible with OpenClaw `^2026.6.1`** (tested against `2026.6.1`).
