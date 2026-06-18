@@ -15,13 +15,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - **`messaging.targetResolver`**: OpenClaw's `message` tool can now resolve Lansenger conversation IDs via `looksLikeId` and `resolveTarget`.
 - **Session-account mapping**: `sessionAccountMap` tracks which account received an inbound message, so `lansenger_send_*` tools use the correct account in multi-account setups.
 
-### Fixed
-
-- **`handleAction` parameter reading**: Plugin's `describeMessageTool` handler now reads from `ctx.params` (where the framework places them) instead of `ctx.args` (undefined).
-- **Session target parsing**: `sessionTarget` extraction from session key now uses the last segment instead of `parts[2]`, correctly handling group chat IDs.
-- **`requireMention` resolution**: Uses `account.requireMention` directly instead of the framework's `resolveRequireMention`, so account-level config changes take effect.
-- **Group config warning**: Changed from "group config is set but personal bots cannot join groups" to "group config is active".
-
 ## [3.15.2] - 2026-06-18
 
 > **Compatible with OpenClaw `^2026.6.1`** (tested against `2026.6.1`).
