@@ -359,6 +359,7 @@ openclaw channels status --probe
 - **reminder** — formatText 中可选字段；群聊中建议使用。提及用户时在文本中包含"@姓名"。
 - **媒体标签** — `<media>` 标签适用于工作区文件；外部路径请使用 `lansenger_send_file`。
 - **openclaw skill/message lansenger** — 这些 CLI 命令不存在；请使用代理工具。
+- **lansenger-setup 技能自动复制** — 插件在启动时将 `lansenger-setup` 技能复制到 `~/.openclaw/skills/`，以便在频道完全激活之前就能帮助配置蓝信。这是有意设计，请勿手动删除。
 - **代理工具** — 代理工具（`lansenger_send_*`）需要工具插件且网关注入成功 — 若工具不可用，请使用 CLI 作为备选。CLI 命令（`lansenger message send-*`）需要 `pipx install lansenger-cli`。
 - **alsoAllow** — 本插件注册了 agent 工具（`lansenger_send_*`），但在严格工具策略下可能**不可见**。需在 `openclaw.json` 中添加 `"tools": { "alsoAllow": ["group:plugins"] }` 以确保 agent 能看到并使用这些工具。否则工具可能静默不出现在 agent 工具列表中。
 
@@ -388,23 +389,26 @@ npx tsc --noEmit
 ```
 openclaw-lansenger-channel/
 ├── src/
-│   ├── client.ts       # 蓝信 API 客户端（WS、HTTP、媒体）
-│   ├── channel.ts      # OpenClaw 频道插件
-│   ├── runtime.ts      # 网关运行时（方法、入站处理器）
-│   ├── tools.ts        # 代理工具定义（10 个内置工具）
-│   ├── setup-wizard.ts # 设置向导（多账号配置迁移）
-│   ├── channel.test.ts # 频道插件测试
-│   ├── client.test.ts  # API 客户端测试
-│   ├── runtime.test.ts # 运行时测试
-│   ├── tools.test.ts   # 工具测试
-│   └── setup-wizard.test.ts # 设置向导测试
+│   ├── client.ts          # 蓝信 API 客户端（WS、HTTP、媒体）
+│   ├── channel.ts         # OpenClaw 频道插件
+│   ├── runtime.ts         # 网关运行时（入站处理、投递）
+│   ├── tools.ts           # 代理工具定义（lansenger_send_*）
+│   ├── persistent-store.ts # 磁盘状态持久化
+│   ├── setup-wizard.ts    # 设置向导（多账号配置迁移）
+│   ├── setup-i18n.ts      # 设置向导多语言
+│   ├── *.test.ts          # 单元测试
 ├── skills/
-│   └── lansenger-messaging/
-│       └── SKILL.md    # 代理消息策略（工具 + CLI）
-├── dist/               # 编译后的 JavaScript
-├── index.ts            # 插件入口
-├── setup-entry.ts      # 设置向导入口
-├── openclaw.plugin.json # 插件元数据与 GUI 配置
+│   ├── lansenger-messaging/
+│   │   └── SKILL.md       # 代理消息策略（工具 + CLI）
+│   └── lansenger-setup/
+│       └── SKILL.md       # 安装助手（自动复制至 ~/.openclaw/skills）
+├── dist/                  # 编译后的 JavaScript
+├── index.ts               # 插件入口（registerFull、ensureSetupSkill）
+├── setup-entry.ts         # 设置向导入口
+├── openclaw.plugin.json   # 插件元数据与 GUI 配置
+├── CHANGELOG.md
+├── VERSION
+├── vitest.config.ts
 ├── package.json
 └── tsconfig.json
 ```

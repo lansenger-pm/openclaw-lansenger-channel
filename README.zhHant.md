@@ -359,6 +359,7 @@ openclaw channels status --probe
 - **reminder**——formatText 中可選欄位；群組聊天中建議使用。提及使用者時在文字中包含「@姓名」。
 - **媒體標籤**——`<media>` 標籤適用於工作區檔案；外部路徑請使用 `lansenger_send_file`。
 - **openclaw skill/message lansenger**——這些 CLI 命令不存在；請使用代理工具。
+- **lansenger-setup 技能自動複製**——插件在啟動時將 `lansenger-setup` 技能複製到 `~/.openclaw/skills/`，以便在頻道完全啟用前就能幫助設定藍信。此為設計行為，請勿手動刪除。
 - **代理工具**——代理工具（`lansenger_send_*`）需要工具插件且閘道注入成功——若工具不可用，請使用 CLI 作為備選。CLI 命令（`lansenger message send-*`）需要 `pipx install lansenger-cli`。
 - **alsoAllow**——本插件註冊了 agent 工具（`lansenger_send_*`），但在嚴格工具策略下可能**不可見**。需在 `openclaw.json` 中新增 `"tools": { "alsoAllow": ["group:plugins"] }` 以確保 agent 能看到並使用這些工具。否則工具可能靜默不出現在 agent 工具列表中。
 
@@ -388,23 +389,26 @@ npx tsc --noEmit
 ```
 openclaw-lansenger-channel/
 ├── src/
-│   ├── client.ts       # 藍信 API 客戶端（WS、HTTP、媒體）
-│   ├── channel.ts      # OpenClaw 频道插件
-│   ├── runtime.ts      # 閘道運行時（方法、入站處理器）
-│   ├── tools.ts        # 代理工具定義（10 個內建工具）
-│   ├── setup-wizard.ts # 設定精靈（多帳號配置遷移）
-│   ├── channel.test.ts # 频道插件測試
-│   ├── client.test.ts  # API 客戶端測試
-│   ├── runtime.test.ts # 運行時測試
-│   ├── tools.test.ts   # 工具測試
-│   └── setup-wizard.test.ts # 設定精靈測試
+│   ├── client.ts          # 藍信 API 客戶端（WS、HTTP、媒體）
+│   ├── channel.ts         # OpenClaw 頻道插件
+│   ├── runtime.ts         # 閘道運行時（入站處理、投遞）
+│   ├── tools.ts           # 代理工具定義（lansenger_send_*）
+│   ├── persistent-store.ts # 磁碟狀態持久化
+│   ├── setup-wizard.ts    # 設定精靈（多帳號配置遷移）
+│   ├── setup-i18n.ts      # 設定精靈多語言
+│   ├── *.test.ts          # 單元測試
 ├── skills/
-│   └── lansenger-messaging/
-│       └── SKILL.md    # 代理訊息策略（工具 + CLI）
-├── dist/               # 編譯後的 JavaScript
-├── index.ts            # 插件入口
-├── setup-entry.ts      # 設定精靈入口
-├── openclaw.plugin.json # 插件元資料與 GUI 設定
+│   ├── lansenger-messaging/
+│   │   └── SKILL.md       # 代理訊息策略（工具 + CLI）
+│   └── lansenger-setup/
+│       └── SKILL.md       # 安裝助手（自動複製至 ~/.openclaw/skills）
+├── dist/                  # 編譯後的 JavaScript
+├── index.ts               # 插件入口（registerFull、ensureSetupSkill）
+├── setup-entry.ts         # 設定精靈入口
+├── openclaw.plugin.json   # 插件元資料與 GUI 設定
+├── CHANGELOG.md
+├── VERSION
+├── vitest.config.ts
 ├── package.json
 └── tsconfig.json
 ```

@@ -359,6 +359,7 @@ Le plugin supporte les cartes d'approbation :
 - **reminder** — champ optionnel dans formatText ; recommandé dans les chats de groupe. Inclure « @姓名 » dans le texte pour les mentions.
 - **Média** — les balises `<media>` fonctionnent pour les fichiers du workspace ; pour les chemins externes, utilisez `lansenger_send_file`.
 - **openclaw skill/message lansenger** — ces commandes CLI n'existent PAS ; utilisez les outils de l'agent.
+- **Copie automatique de la compétence lansenger-setup** — le plugin copie la compétence `lansenger-setup` dans `~/.openclaw/skills/` au démarrage pour que l'agent puisse aider à configurer Lansenger avant l'activation complète du canal. Ce comportement est intentionnel — ne le supprimez pas manuellement.
 - **Outils agent** — les outils agent (`lansenger_send_*`) nécessitent le plugin outils ET une injection réussie de la passerelle — si les outils ne sont pas disponibles, utilisez la CLI comme repli. Les commandes CLI (`lansenger message send-*`) nécessitent `pipx install lansenger-cli`.
 - **alsoAllow** — les outils agent sont enregistrés par ce plugin de canal mais peuvent être **invisibles** sous un profil d'outils restrictif. Ajoutez `"tools": { "alsoAllow": ["group:plugins"] }` dans `openclaw.json` pour que l'agent puisse voir et utiliser les outils `lansenger_send_*`. Sans cela, les outils peuvent ne pas apparaître silencieusement dans la liste d'outils de l'agent.
 
@@ -388,23 +389,26 @@ npx tsc --noEmit
 ```
 openclaw-lansenger-channel/
 ├── src/
-│   ├── client.ts       # Client API Lansenger (WS, HTTP, médias)
-│   ├── channel.ts      # Plugin de canal OpenClaw
-│   ├── runtime.ts      # Runtime passerelle (méthodes, handler entrant)
-│   ├── tools.ts        # Définitions des outils agent (10 outils intégrés)
-│   ├── setup-wizard.ts # Assistant de configuration (migration config multi-compte)
-│   ├── channel.test.ts # Tests du plugin de canal
-│   ├── client.test.ts  # Tests du client API
-│   ├── runtime.test.ts # Tests du runtime
-│   ├── tools.test.ts   # Tests des outils
-│   └── setup-wizard.test.ts # Tests de l'assistant de configuration
+│   ├── client.ts          # Client API Lansenger (WS, HTTP, médias)
+│   ├── channel.ts         # Plugin de canal OpenClaw
+│   ├── runtime.ts         # Runtime passerelle (handler entrant, livraison)
+│   ├── tools.ts           # Définitions des outils agent (lansenger_send_*)
+│   ├── persistent-store.ts # Persistance d'état sur disque
+│   ├── setup-wizard.ts    # Assistant de configuration (migration config multi-compte)
+│   ├── setup-i18n.ts      # i18n de l'assistant de configuration
+│   ├── *.test.ts          # Tests unitaires
 ├── skills/
-│   └── lansenger-messaging/
-│       └── SKILL.md    # Stratégie de messagerie (outils + CLI)
-├── dist/               # JavaScript compilé
-├── index.ts            # Point d'entrée du plugin
-├── setup-entry.ts      # Point d'entrée de l'assistant de configuration
-├── openclaw.plugin.json # Métadonnées du plugin & configuration GUI
+│   ├── lansenger-messaging/
+│   │   └── SKILL.md       # Stratégie de messagerie (outils + CLI)
+│   └── lansenger-setup/
+│       └── SKILL.md       # Assistant d'installation (copié auto vers ~/.openclaw/skills)
+├── dist/                  # JavaScript compilé
+├── index.ts               # Point d'entrée du plugin (registerFull, ensureSetupSkill)
+├── setup-entry.ts         # Point d'entrée de l'assistant de configuration
+├── openclaw.plugin.json   # Métadonnées du plugin & configuration GUI
+├── CHANGELOG.md
+├── VERSION
+├── vitest.config.ts
 ├── package.json
 └── tsconfig.json
 ```

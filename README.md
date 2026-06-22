@@ -351,6 +351,7 @@ The plugin supports approval workflow cards:
 - **reminder** — optional in formatText; recommended in group chat. Include "@姓名" in text when mentioning.
 - **Media** — `<media>` tags work for workspace files; for external paths use `lansenger_send_file`.
 - **openclaw skill/message lansenger** — these CLI commands do NOT exist; use agent tools instead.
+- **lansenger-setup skill auto-copy** — the plugin copies `lansenger-setup` skill to `~/.openclaw/skills/` on startup so the agent can help configure Lansenger even before the channel is fully activated. This is intentional — do not remove it manually.
 - **Agent tools** — agent tools (`lansenger_send_*`) are built into the channel plugin — always available when the channel is configured and running. CLI commands (`lansenger message send-*`) require `pipx install lansenger-cli` and are an optional alternative.
 - **alsoAllow** — agent tools are registered by this channel plugin but may be **invisible** under restrictive tool profiles. Add `"tools": { "alsoAllow": ["group:plugins"] }` to `openclaw.json` to ensure the agent can see and use `lansenger_send_*` tools. Without this, tools may silently not appear in the agent's tool list.
 
@@ -380,23 +381,26 @@ npx tsc --noEmit
 ```
 openclaw-lansenger-channel/
 ├── src/
-│   ├── client.ts       # Lansenger API client (WS, HTTP, media)
-│   ├── channel.ts      # OpenClaw channel plugin
-│   ├── runtime.ts      # Gateway runtime (methods, inbound handler)
-│   ├── tools.ts        # Agent tool definitions (10 built-in tools)
-│   ├── setup-wizard.ts # Setup wizard (multi-account config migration)
-│   ├── channel.test.ts # Channel plugin tests
-│   ├── client.test.ts  # API client tests
-│   ├── runtime.test.ts # Runtime tests
-│   ├── tools.test.ts   # Tool tests
-│   └── setup-wizard.test.ts # Setup wizard tests
+│   ├── client.ts          # Lansenger API client (WS, HTTP, media)
+│   ├── channel.ts         # OpenClaw channel plugin
+│   ├── runtime.ts         # Gateway runtime (inbound handler, delivery)
+│   ├── tools.ts           # Agent tool definitions (lansenger_send_*)
+│   ├── persistent-store.ts # Disk-backed state persistence
+│   ├── setup-wizard.ts    # Setup wizard (multi-account config migration)
+│   ├── setup-i18n.ts      # Setup wizard i18n strings
+│   ├── *.test.ts          # Unit tests
 ├── skills/
-│   └── lansenger-messaging/
-│       └── SKILL.md    # Agent messaging strategy (tools + CLI)
-├── dist/               # Compiled JavaScript
-├── index.ts            # Plugin entry point
-├── setup-entry.ts      # Setup wizard entry
-├── openclaw.plugin.json # Plugin metadata & GUI config
+│   ├── lansenger-messaging/
+│   │   └── SKILL.md       # Agent messaging strategy (tools + CLI)
+│   └── lansenger-setup/
+│       └── SKILL.md       # Setup assistant (auto-copied to ~/.openclaw/skills)
+├── dist/                  # Compiled JavaScript
+├── index.ts               # Plugin entry point (registerFull, ensureSetupSkill)
+├── setup-entry.ts         # Setup wizard entry
+├── openclaw.plugin.json   # Plugin metadata & GUI config
+├── CHANGELOG.md
+├── VERSION
+├── vitest.config.ts
 ├── package.json
 └── tsconfig.json
 ```
