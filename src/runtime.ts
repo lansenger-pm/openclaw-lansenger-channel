@@ -869,7 +869,11 @@ let senderAllowed = ingress?.senderAccess?.allowed ?? false;
   // Prepend referenced/quoted message as context
   if (event.referenceMsg) {
     const refLabel = event.referenceMsg.fromType === 1 ? `用户(${event.referenceMsg.from.slice(0, 20)})` : `机器人(${event.referenceMsg.from.slice(0, 20)})`;
-    agentText = `[引用消息 — ${refLabel}]: "${event.referenceMsg.content}"\n---\n${agentText}`;
+    if (!agentText.trim()) {
+      agentText = `[引用消息 — ${refLabel}]: "${event.referenceMsg.content}"`;
+    } else {
+      agentText = `[引用消息 — ${refLabel}]: "${event.referenceMsg.content}"\n---\n${agentText}`;
+    }
   }
 
   if (event.mediaPaths?.length) {
