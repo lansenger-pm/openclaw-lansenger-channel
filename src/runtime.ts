@@ -132,6 +132,8 @@ async function startAccount(api: OpenClawPluginApi, accountId?: string | null): 
   }
 
   const key = account.appId || account.accountId || "__default__";
+  log.info(`gateway: startAccount called — key=${key} pendingConnections.has=${pendingConnections.has(key)} runningAccounts.has=${runningAccounts.has(key)} pendingSize=${pendingConnections.size} runningSize=${runningAccounts.size}`);
+
   if (pendingConnections.has(key)) {
     log.info(`skip auto-start: connection already in progress (key=${key})`);
     return true;
@@ -580,6 +582,8 @@ export async function gatewayStartAccount(ctx: ChannelGatewayContext<ResolvedAcc
   const key = account.appId || ctx.accountId || "__default__";
 
   accountStatusSinks.set(key, statusSink);
+
+  log.info(`gateway: gatewayStartAccount called — key=${key} pendingConnections.has=${pendingConnections.has(key)} runningAccounts.has=${runningAccounts.has(key)} pendingSize=${pendingConnections.size} runningSize=${runningAccounts.size}`);
 
   if (pendingConnections.has(key)) {
     log.info(`gateway: skipping start — connection already in progress (key=${key})`);
