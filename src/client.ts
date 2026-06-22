@@ -144,7 +144,7 @@ export class LansengerClient {
 
   isWsAlive(): boolean {
     if (!this.ws) return false;
-    return this.ws.readyState === WebSocket.OPEN;
+    return this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING;
   }
 
   wsState(): string {
