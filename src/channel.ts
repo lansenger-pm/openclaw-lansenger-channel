@@ -307,8 +307,16 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
             }
           }
         }
+        const resolvedAppId = account?.appId ?? (Object.keys(accounts ?? {}).find(k => k === accountId) ?? "");
+        const resolvedAccountId = accountId && accountId !== "default" && accountId !== DEFAULT_ACCOUNT_ID
+          ? accountId
+          : resolvedAppId;
+        const resolvedName = account?.name || resolvedAppId || resolvedAccountId;
         const hasCreds = Boolean(account?.appId && account?.appSecret) || Boolean(process.env.LANSENGER_APP_ID && process.env.LANSENGER_APP_SECRET);
         return {
+          name: resolvedName,
+          appId: resolvedAppId,
+          accountId: resolvedAccountId,
           enabled: Boolean((account?.enabled ?? false) || hasCreds),
           configured: hasCreds,
           appIdStatus: account?.appId ? "available" : (process.env.LANSENGER_APP_ID ? "env" : "missing"),

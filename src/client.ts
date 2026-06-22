@@ -747,7 +747,11 @@ export class LansengerClient {
           resolveClose?.();
         };
 
-        await closePromise;
+        // Safety valve: if terminate() doesn't fire close/error on a dead TCP connection,
+        // the heartbeat will never resolve closePromise. Force-resolve after 45s.
+        const CLOSE_TIMEOUT_MS = 45_000;
+        const closeTimeout = new Promise<void>((r) => setTimeout(r, CLOSE_TIMEOUT_MS));
+        await Promise.race([closePromise, closeTimeout]);
 
         if (!this.running) return;
       } catch (e: any) {
@@ -775,11 +779,16 @@ export class LansengerClient {
           this.pongTimeoutTimer = setTimeout(() => {
             if (Date.now() - this.lastPongAt > PONG_TIMEOUT_MS && ws.readyState === WebSocket.OPEN) {
               this.log.error("pong timeout — terminating zombie connection");
+              this.stopHeartbeat();
+              this.clearPongTimeout();
               ws.terminate();
             }
           }, PONG_TIMEOUT_MS);
         } catch {
-          this.log.error("heartbeat ping failed");
+          this.log.error("heartbeat ping failed — terminating zombie connection");
+          this.stopHeartbeat();
+          this.clearPongTimeout();
+          try { ws.terminate(); } catch {}
         }
       } else if (ws.readyState === WebSocket.CLOSING || ws.readyState === WebSocket.CLOSED) {
         this.log.error(`heartbeat: WS no longer open (state=${this.wsState()}) — forcing close to trigger reconnect`);

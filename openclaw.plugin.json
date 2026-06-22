@@ -289,7 +289,7 @@
             "allowlist": "Allowlist (Selected Groups) / 仅允许列表中的群",
             "disabled": "Disabled / 禁止群消息"
           },
-          "help": "Controls which groups can trigger the bot. Recommended: allowlist — only groups in groupAllowFrom will trigger the bot. / 控制哪些群可以触发机器人。推荐：allowlist — 仅 groupAllowFrom 中的群会触发机器人。"
+          "help": "Controls which groups can trigger the bot. Recommended: open — for personal bots, the owner already controls who can add the bot to groups. / 控制哪些群可以触发机器人。推荐：open — 个人机器人由主人控制谁能把它拉到群里。"
         },
         "groupAllowFrom": {
           "label": "Group Allow From / 允许的群聊",

@@ -14,25 +14,59 @@ function jsonResult(data: unknown) {
   return { content: [{ type: "text", text: JSON.stringify(data) }] };
 }
 
-function makeToolClient(agentAccountId?: string, sessionKey?: string): { client: LansengerClient; account: ResolvedAccount } | null {
-  // first try exact account match
-  if (agentAccountId) {
-    const entry = getRunningEntryByAccount(agentAccountId);
-    if (entry) return { client: entry.client, account: entry.account };
+type ClientResolutionStrategy = (
+  agentAccountId: string | undefined,
+  sessionKey: string | undefined,
+) => { client: LansengerClient; account: ResolvedAccount } | null;
+
+class ClientResolverChain {
+  private strategies: ClientResolutionStrategy[] = [];
+
+  addStrategy(strategy: ClientResolutionStrategy): this {
+    this.strategies.push(strategy);
+    return this;
   }
-  // try by session key (from inbound context)
-  if (sessionKey) {
-    const entry = getRunningEntryBySessionKey(sessionKey);
-    if (entry) return { client: entry.client, account: entry.account };
+
+  resolve(agentAccountId?: string, sessionKey?: string): { client: LansengerClient; account: ResolvedAccount } | null {
+    for (const strategy of this.strategies) {
+      const result = strategy(agentAccountId, sessionKey);
+      if (result) return result;
+    }
+    return null;
   }
-  // fallback: try default lookup
+}
+
+const exactAccountMatchStrategy: ClientResolutionStrategy = (agentAccountId) => {
+  if (!agentAccountId) return null;
+  const entry = getRunningEntryByAccount(agentAccountId);
+  return entry ? { client: entry.client, account: entry.account } : null;
+};
+
+const sessionKeyMatchStrategy: ClientResolutionStrategy = (_agentAccountId, sessionKey) => {
+  if (!sessionKey) return null;
+  const entry = getRunningEntryBySessionKey(sessionKey);
+  return entry ? { client: entry.client, account: entry.account } : null;
+};
+
+const defaultLookupStrategy: ClientResolutionStrategy = (agentAccountId) => {
   const fallback = getRunningEntryByAccount(agentAccountId ?? "");
-  if (fallback) return { client: fallback.client, account: fallback.account };
-  // last resort: first running account
+  return fallback ? { client: fallback.client, account: fallback.account } : null;
+};
+
+const firstRunningAccountStrategy: ClientResolutionStrategy = () => {
   const client = getRunningClient();
   const account = getRunningAccount();
-  if (client && account) return { client, account };
-  return null;
+  return (client && account) ? { client, account } : null;
+};
+
+const clientResolverChain = new ClientResolverChain()
+  .addStrategy(exactAccountMatchStrategy)
+  .addStrategy(sessionKeyMatchStrategy)
+  .addStrategy(defaultLookupStrategy)
+  .addStrategy(firstRunningAccountStrategy);
+
+function makeToolClient(agentAccountId?: string, sessionKey?: string): { client: LansengerClient; account: ResolvedAccount } | null {
+  return clientResolverChain.resolve(agentAccountId, sessionKey);
 }
 
 const SendFileSchema = {

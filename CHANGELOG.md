@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.16.1] - 2026-06-22
+
+### Fixed
+
+- **Slash commands not working in group chat**: Group chat messages include `@botName` suffix (e.g., `/models@bot`) which broke slash command detection. Trailing `@botName` is now stripped, and `botUsername` is passed to `isControlCommandMessage()` so the OpenClaw core can also normalize postfix mentions.
+- **Account display name always "default" in Settings UI**: `inspectAccount` was missing `name`, `appId`, and `accountId` fields in its return value, causing the OpenClaw web UI to show "default" for all Lansenger accounts. Now returns the account key (App ID) as the display name when no explicit `name` is configured.
+- **`groupPolicy` help text inconsistency**: Schema `help` recommended "allowlist" while `default` was "open". Updated recommendation to match the default.
+- **WebSocket close safety valve**: Added a 45s timeout fallback when `ws.terminate()` never fires `close`/`error` on a dead TCP connection, preventing the reconnection loop from hanging indefinitely.
+- **Heartbeat zombie-connection cleanup**: When a pong timeout or ping failure is detected, heartbeat and pong-timeout timers are now properly cleared before terminating the WebSocket, preventing stale timers from interfering with subsequent reconnection attempts.
+
+### Changed
+
+- **Tool client resolution refactored**: `makeToolClient` now uses a Chain of Responsibility pattern with four resolution strategies (exact account match → session key → default lookup → first running account), improving maintainability and extensibility for multi-account tool routing.
+
+### Added
+
+- **`lansenger-setup` skill**: A conversational setup skill (`skills/lansenger-setup/SKILL.md`) that guides users through Lansenger bot credential binding, DM pairing, group chat configuration, tool enablement, slash command permissions, and channel settings — entirely via the Agent. Includes `commands.ownerAllowFrom` documentation for enabling slash commands from Lansenger users.
+- **`lansenger-messaging` skill — CLI credential safety**: Updated to warn against modifying existing `lansenger` CLI/SDK profiles. Agents must now check `lansenger -P <appId> config show` first: reuse existing profiles as-is, only create new ones when missing. Removed dangerous `config clear` commands from the skill.
+
 ## [3.16.0] - 2026-06-18
 
 > **Compatible with OpenClaw `^2026.6.1`** (tested against `2026.6.8`).

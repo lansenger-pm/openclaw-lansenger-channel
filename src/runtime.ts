@@ -826,6 +826,21 @@ let senderAllowed = ingress?.senderAccess?.allowed ?? false;
 
   log.info(`inbound: ${chatType} from=${event.senderId} bot=${account.appId.slice(0, 20)}... agent=${agentId} session=${sessionKey.slice(0, 32)}`);
 
+  // Strip trailing @mention from group chat messages (e.g. "/models@bot" -> "/models").
+  // Lansenger group chat text includes @botName when the bot is @mentioned,
+  // which breaks slash command detection because isControlCommandMessage
+  // requires text to start with a registered command alias.
+  if (event.isGroup && event.isAtMe) {
+    const ourBotId = event.rawMessage?.botId as string | undefined;
+    const ourMention = ourBotId ? event.mentionedBots?.find(b => b.botId === ourBotId) : undefined;
+    if (ourMention) {
+      const atName = `@${ourMention.botName}`;
+      if (event.text.endsWith(atName)) {
+        event.text = event.text.slice(0, -atName.length).trimEnd();
+      }
+    }
+  }
+
   let agentText = event.text;
   if (event.mediaPaths?.length) {
     agentText = `${event.text}\n\nAttached files saved locally — use the read tool to view:\n${event.mediaPaths.map((p, i) => `${i + 1}. ${p}`).join("\n")}`;
