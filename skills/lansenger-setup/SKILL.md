@@ -55,12 +55,15 @@ metadata: {"openclaw":{"requires":{"cli":["openclaw"]},"primaryEnv":"LANSENGER_A
 | `groupPolicy` | enum | `open` | 群聊策略。可选值：`open`（所有群可触发）、`allowlist`（仅 groupAllowFrom 中的群）、`disabled`（禁止群消息） |
 | `groupAllowFrom` | string[] | `[]` | 允许触发机器人的群聊 ID 列表，仅在 `groupPolicy` 为 `allowlist` 时生效。 |
 | `requireMention` | boolean | `true` | 群聊中是否需要 `@机器人名称` 才会触发。设为 `false` 则任何消息都会触发。 |
+| `autoMentionReply` | boolean | `false` | 群聊自动回复时是否 @入站消息发送者。蓝信 API 会根据 staffId 自动拼接名字，无需 Agent 手动写 `@姓名`。支持按群、按账号覆盖。 |
 
 **按群粒度微调** — 使用 `channels.lansenger.groups.<chatId>` 覆盖单个群的设置：
 
 ```bash
 # 对特定群关闭 @提及 要求
 openclaw config set channels.lansenger.groups.<chatId>.requireMention false
+# 对特定群开启自动 @回复
+openclaw config set channels.lansenger.groups.<chatId>.autoMentionReply true
 
 # 启用/禁用特定群
 openclaw config set channels.lansenger.groups.<chatId>.enabled false

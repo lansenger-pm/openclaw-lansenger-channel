@@ -4,7 +4,7 @@ import { createSubsystemLogger } from "openclaw/plugin-sdk/logging-core";
 import { createAccountStatusSink, waitUntilAbort } from "openclaw/plugin-sdk/channel-runtime";
 import { createChannelInboundDebouncer, shouldDebounceTextInbound, resolveInboundDebounceMs } from "openclaw/plugin-sdk/channel-inbound";
 import { LansengerClient } from "./client.js";
-import type { InboundEvent, ClientLogger, ApiResult, AppCardData } from "./client.js";
+import type { InboundEvent, ClientLogger, ApiResult, AppCardData, ReminderParams } from "./client.js";
 import { resolveAccount, makeClient, isPathAllowed } from "./channel.js";
 import { PersistentStore } from "./persistent-store.js";
 import type { ResolvedAccount } from "./channel.js";
@@ -696,6 +696,17 @@ function autoStart(api: OpenClawPluginApi, accounts?: Record<string, any>): void
   }
 }
 
+function resolveAutoMentionReply(api: OpenClawPluginApi, groupId?: string, accountId?: string): boolean {
+  const cfg = api.config as any;
+  const ch = cfg?.channels?.lansenger ?? {};
+  // per-group override (highest priority)
+  if (groupId && ch.groups?.[groupId]?.autoMentionReply !== undefined) return ch.groups[groupId].autoMentionReply;
+  // per-account override
+  if (accountId && ch.accounts?.[accountId]?.autoMentionReply !== undefined) return ch.accounts[accountId].autoMentionReply;
+  // section default
+  return ch.autoMentionReply ?? false;
+}
+
 async function handleInbound(
   api: OpenClawPluginApi,
   event: InboundEvent,
@@ -1036,10 +1047,15 @@ let senderAllowed = ingress?.senderAccess?.allowed ?? false;
                 const turnTextKey = text?.trim() ? `${text.trim().slice(0, 80)}:${text.trim().length}` : "";
                 const sessionTextKey = turnTextKey ? `t:${sessionKey}:${turnTextKey}` : "";
 
+                const autoMention = event.isGroup && resolveAutoMentionReply(api, event.chatId, (account as any).accountId);
+                const reminder: ReminderParams | undefined = autoMention && event.senderId
+                  ? { userIds: [event.senderId] }
+                  : undefined;
+
                 if (text?.trim() && !turnTextDelivered.has(turnTextKey) && !sessionDeliveredSet.has(sessionTextKey)) {
                   turnTextDelivered.add(turnTextKey);
                   sessionDeliveredSet.add(sessionTextKey);
-                  const result = await deliverReply(client, to, text);
+                  const result = await deliverReply(client, to, text, reminder);
                   if (result.messageId) messageIds.push(result.messageId);
                 }
 
@@ -1118,14 +1134,14 @@ let senderAllowed = ingress?.senderAccess?.allowed ?? false;
   }
 }
 
-async function deliverReply(client: LansengerClient, to: string, text: string): Promise<ApiResult> {
-  log.info(`deliverReply: to=${to} textLen=${text.length} preview="${text.slice(0, 100)}"`);
+async function deliverReply(client: LansengerClient, to: string, text: string, reminder?: ReminderParams): Promise<ApiResult> {
+  log.info(`deliverReply: to=${to} textLen=${text.length} preview="${text.slice(0, 100)}"${reminder ? ` reminder=${JSON.stringify(reminder)}` : ""}`);
   if (!text.trim()) {
     log.warn(`deliverReply: empty text after OpenClaw MEDIA processing, skipping delivery`);
     return { success: true, messageId: undefined };
   }
-  const fmtResult = await client.sendFormatText(to, text);
+  const fmtResult = await client.sendFormatText(to, text, reminder);
   if (fmtResult.success) return fmtResult;
   log.info(`formatText failed (${fmtResult.error ?? "unknown"}), falling back to text`);
-  return client.sendText(to, text);
+  return client.sendText(to, text, reminder);
 }
