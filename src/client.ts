@@ -487,7 +487,7 @@ export class LansengerClient {
     }
   }
 
-  async queryGroups(pageOffset: number = 1, pageSize: number = 100): Promise<{ totalGroupIds: number; groupIds: string[] } | { error: string }> {
+  async queryGroups(pageOffset: number = 0, pageSize: number = 100): Promise<{ totalGroupIds: number; groupIds: string[] } | { error: string }> {
     const token = await this.getAppToken();
     if (!token) return { error: "No access token" };
     try {

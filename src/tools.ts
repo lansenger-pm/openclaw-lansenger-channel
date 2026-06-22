@@ -435,7 +435,7 @@ export function registerLansengerTools(api: any) {
         description: "Query the bot's group list on Lansenger (蓝信). Returns total count and group IDs. ⚠️ May return errCode=10005 'API服务无权限' on enterprise deployments where /v2/groups/fetch is not authorized. If permission denied, ask the user for group chatIds manually.",
         parameters: QueryGroupsSchema,
         async execute(_toolCallId: string, params: any) {
-          const result = await tc.client.queryGroups(params.pageOffset ?? 1, params.pageSize ?? 100);
+          const result = await tc.client.queryGroups(params.pageOffset ?? 0, params.pageSize ?? 100);
           if ("error" in result) return jsonResult({ error: result.error });
           return jsonResult({ success: true, totalGroupIds: result.totalGroupIds, groupIds: result.groupIds });
         },
