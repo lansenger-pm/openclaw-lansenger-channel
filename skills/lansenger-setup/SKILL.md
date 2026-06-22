@@ -35,6 +35,18 @@ metadata: {"openclaw":{"requires":{"cli":["openclaw"]},"primaryEnv":"LANSENGER_A
 | `appSecret` | ✅ | — | 机器人 App Secret，与 App ID 在同一页面获取。**敏感信息，绝对不要完整回显，始终脱敏处理。** |
 | `apiGatewayUrl` | ❌ | `https://open.e.lanxin.cn/open/apigw` | API 网关地址。公有云用户无需修改，企业私有部署用户需设置自定义地址。 |
 
+### 多账号注意事项
+
+> **设置 config 时优先使用 account 级路径**：`channels.lansenger.accounts.<appId>.` 只影响指定机器人。`channels.lansenger.` 是**顶级配置**，会影响所有机器人——其他机器人可能属于其他用户，不要随意改动顶级配置。
+
+| 层级 | 路径示例 | 影响范围 |
+|------|---------|---------|
+| 顶级（慎用） | `channels.lansenger.groupPolicy` | 所有机器人 |
+| 单账号（优先） | `channels.lansenger.accounts.13107200-4218880.groupPolicy` | 仅该机器人 |
+| 单群 | `channels.lansenger.groups.<chatId>.requireMention` | 仅该群 |
+
+> 如果用户只有一个机器人，顶级配置和 account 级配置效果相同；如果存在多个机器人（`accounts` 下有多个 key），始终优先用 `accounts.<appId>.` 路径。
+
 ### 私聊访问控制
 
 > **重要：蓝信个人机器人只能接收主人（创建者）的私聊消息。** 其他人发送的私聊消息在蓝信平台层面就不会送达，因此 `allowlist` / `open` 策略对个人机器人没有实际意义。
@@ -168,6 +180,13 @@ openclaw config get channels.lansenger
 
 #### 步骤 1.4：写入凭证
 
+> **多账号检查**：先执行 `openclaw config get channels.lansenger.accounts`。如果返回了多个 account key，说明存在其他用户配置的其他机器人，**使用 account 级路径**，不要影响他们：
+> ```bash
+> openclaw config set channels.lansenger.accounts.<appId>.appId "<appId>"
+> openclaw config set channels.lansenger.accounts.<appId>.appSecret "<appSecret>"
+> ```
+> 如果 `accounts` 下只有一个机器人或为空，可以直接用顶级路径。
+
 ```bash
 openclaw config set channels.lansenger.appId "<appId>"
 openclaw config set channels.lansenger.appSecret "<appSecret>"
@@ -179,6 +198,8 @@ openclaw config set channels.lansenger.apiGatewayUrl "<url>"
 ```
 
 #### 步骤 1.5：启用并设置默认值
+
+> 多账号环境同样优先使用 `accounts.<appId>.` 路径。
 
 ```bash
 openclaw config set channels.lansenger.enabled true
@@ -260,8 +281,10 @@ openclaw pairing approve lansenger <配对码>
 
 1. **禁用私聊** — 如果只想让机器人在群聊中使用：
 
+> 多账号环境同样优先使用 `accounts.<appId>.dmPolicy`。
+
 ```bash
-openclaw config set channels.lansenger.dmPolicy disabled
+openclaw config set channels.lansenger.accounts.<appId>.dmPolicy disabled
 ```
 
 > 注意：蓝信个人机器人只能接收主人的私聊。`allowFrom`、`allowlist`、`open` 等策略对个人机器人无实际意义。只有主人的私聊会被送达。
@@ -272,11 +295,13 @@ openclaw config set channels.lansenger.dmPolicy disabled
 3. **群聊 @提及** — 默认需要 @机器人才会触发，是否需要关闭？
 4. **允许的群聊列表** — 如果群聊策略设为 `allowlist`，需要提供允许的群 ID 列表。
 
+> **多账号环境 → 使用 account 级路径**：`channels.lansenger.accounts.<appId>.groupPolicy`，仅影响该机器人。
+
 ```bash
-openclaw config set channels.lansenger.groupPolicy allowlist        # 仅允许列表群
-openclaw config set channels.lansenger.groupPolicy disabled         # 禁止群消息
-openclaw config set channels.lansenger.requireMention false         # 无需 @提及
-openclaw config set channels.lansenger.groupAllowFrom '["<chatId1>"]'
+openclaw config set channels.lansenger.accounts.<appId>.groupPolicy allowlist   # 仅允许列表群
+openclaw config set channels.lansenger.accounts.<appId>.groupPolicy disabled    # 禁止群消息
+openclaw config set channels.lansenger.accounts.<appId>.requireMention false    # 无需 @提及
+openclaw config set channels.lansenger.accounts.<appId>.groupAllowFrom '["<chatId1>"]'
 ```
 
 #### 批次 C：确认消息

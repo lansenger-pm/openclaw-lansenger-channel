@@ -807,9 +807,10 @@ let senderAllowed = ingress?.senderAccess?.allowed ?? false;
         conversation: { kind: "group", id: event.chatId },
         event: { kind: "message", authMode: "inbound", mayPair: false, originSubject: { identifiers: [{ opaqueId: event.senderId, kind: "platform-id" as any, sensitivity: "normal", value: event.senderId }] } },
         policy: { dmPolicy: "pairing", groupPolicy: (account.groupPolicy as "open" | "allowlist" | "disabled") ?? "open", activation: { requireMention, allowTextCommands: false } },
-        groupAllowFrom: [],
+        groupAllowFrom: account.groupAllowFrom ?? [],
         mentionFacts: { canDetectMention: true, wasMentioned: event.isAtMe ?? false, hasAnyMention: event.isAtAll ?? false },
       });
+      log.info(`inbound: group ingress debug — groupPolicy=${account.groupPolicy} groupAllowFrom=[${(account.groupAllowFrom ?? []).join(",")}] chatId=${event.chatId} allowed=${ingress?.senderAccess?.allowed}`);
       if (!ingress?.senderAccess?.allowed) {
         log.info(`inbound: group dropped — sender not allowed for chatId=${event.chatId}`);
         return;
