@@ -746,11 +746,6 @@ let senderAllowed = ingress?.senderAccess?.allowed ?? false;
   }
 
   if (event.isGroup) {
-    if (account.groupPolicy === "disabled") {
-      log.info(`inbound: group dropped — groupPolicy=disabled for chatId=${event.chatId}`);
-      return;
-    }
-
     let ingress: any;
     let requireMention = account.requireMention ?? true;
     try {
