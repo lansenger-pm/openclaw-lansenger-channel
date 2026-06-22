@@ -577,6 +577,11 @@ export async function gatewayStartAccount(ctx: ChannelGatewayContext<ResolvedAcc
 
   accountStatusSinks.set(key, statusSink);
 
+  if (pendingConnections.has(key)) {
+    log.info(`gateway: skipping start — connection already in progress (key=${key})`);
+    return { connected: true };
+  }
+
   if (runningAccounts.has(key)) {
     const entry = runningAccounts.get(key)!;
     log.info(`gateway: disconnecting existing WS for reconnection with updated config (key=${key})`);
@@ -584,56 +589,61 @@ export async function gatewayStartAccount(ctx: ChannelGatewayContext<ResolvedAcc
     runningAccounts.delete(key);
   }
 
-  const api = pluginApi!;
-  const client = makeClient(account, sdkLogger());
+  pendingConnections.add(key);
+  try {
+    const api = pluginApi!;
+    const client = makeClient(account, sdkLogger());
 
-  const debounceApi = (api.runtime as any)?.channel?.debounce;
-  const debounceMs = debounceApi ? resolveInboundDebounceMs({ cfg: api.config, channel: "lansenger" }) : 0;
-  let debouncer: RunningAccount["debouncer"] = undefined;
+    const debounceApi = (api.runtime as any)?.channel?.debounce;
+    const debounceMs = debounceApi ? resolveInboundDebounceMs({ cfg: api.config, channel: "lansenger" }) : 0;
+    let debouncer: RunningAccount["debouncer"] = undefined;
 
-  if (debounceApi && debounceMs > 0) {
-    const { debounceMs: resolvedMs, debouncer: created } = createChannelInboundDebouncer({
-      cfg: api.config,
-      channel: "lansenger",
-      buildKey: (event: InboundEvent) => `${event.chatId}:${event.senderId}`,
-      shouldDebounce: (event: InboundEvent) =>
-        shouldDebounceTextInbound({ text: event.text, cfg: api.config, hasMedia: !!event.mediaPaths?.length }),
-      onFlush: async (events: InboundEvent[]) => {
-        const merged = mergeInboundEvents(events);
-        await handleInbound(api, merged, account, key);
+    if (debounceApi && debounceMs > 0) {
+      const { debounceMs: resolvedMs, debouncer: created } = createChannelInboundDebouncer({
+        cfg: api.config,
+        channel: "lansenger",
+        buildKey: (event: InboundEvent) => `${event.chatId}:${event.senderId}`,
+        shouldDebounce: (event: InboundEvent) =>
+          shouldDebounceTextInbound({ text: event.text, cfg: api.config, hasMedia: !!event.mediaPaths?.length }),
+        onFlush: async (events: InboundEvent[]) => {
+          const merged = mergeInboundEvents(events);
+          await handleInbound(api, merged, account, key);
+        },
+      });
+      debouncer = { debounceMs: resolvedMs, enqueue: created.enqueue, flushKey: created.flushKey };
+      log.info(`gateway debounce enabled: debounceMs=${resolvedMs} key=${key}`);
+    }
+
+    client.setMessageHandler(async (event: InboundEvent) => {
+      if (debouncer) {
+        await debouncer.enqueue(event);
+      } else {
+        await handleInbound(api, event, account, key);
+      }
+    });
+    client.setWsLifecycleCallbacks({
+      onOpen: () => {
+        statusSink({ connected: true, lastConnectedAt: Date.now(), lastError: null });
+        log.info(`gateway: WS connected (key=${key})`);
+      },
+      onClose: () => {
+        statusSink({ connected: false });
+        log.info(`gateway: WS disconnected (key=${key})`);
       },
     });
-    debouncer = { debounceMs: resolvedMs, enqueue: created.enqueue, flushKey: created.flushKey };
-    log.info(`gateway debounce enabled: debounceMs=${resolvedMs} key=${key}`);
-  }
 
-  client.setMessageHandler(async (event: InboundEvent) => {
-    if (debouncer) {
-      await debouncer.enqueue(event);
-    } else {
-      await handleInbound(api, event, account, key);
+    const connected = await client.connect();
+    if (!connected) {
+      statusSink({ connected: false, lastError: "Failed to connect to Lansenger WebSocket" });
+      throw new Error("Failed to connect to Lansenger WebSocket");
     }
-  });
-  client.setWsLifecycleCallbacks({
-    onOpen: () => {
-      statusSink({ connected: true, lastConnectedAt: Date.now(), lastError: null });
-      log.info(`gateway: WS connected (key=${key})`);
-    },
-    onClose: () => {
-      statusSink({ connected: false });
-      log.info(`gateway: WS disconnected (key=${key})`);
-    },
-  });
 
-  const connected = await client.connect();
-  if (!connected) {
-    statusSink({ connected: false, lastError: "Failed to connect to Lansenger WebSocket" });
-    throw new Error("Failed to connect to Lansenger WebSocket");
+    runningAccounts.set(key, { accountId: ctx.accountId, account, client, debouncer });
+    statusSink({ connected: true, lastConnectedAt: Date.now(), lastError: null });
+    log.info(`gateway: started (key=${key} accountId=${ctx.accountId})`);
+  } finally {
+    pendingConnections.delete(key);
   }
-
-  runningAccounts.set(key, { accountId: ctx.accountId, account, client, debouncer });
-  statusSink({ connected: true, lastConnectedAt: Date.now(), lastError: null });
-  log.info(`gateway: started (key=${key} accountId=${ctx.accountId})`);
 
   return waitUntilAbort(ctx.abortSignal, async () => {
     const e = runningAccounts.get(key);
