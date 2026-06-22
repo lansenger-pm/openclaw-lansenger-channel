@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.16.3] - 2026-06-22
+
+### Fixed
+
+- **`queryGroups` returns empty `groupIds`**: Default `pageOffset` was `1` but the API `page_offset` starts from `0`. With few groups, the first page was skipped entirely, returning `totalGroupIds > 0` but `groupIds: []`.
+
 ## [3.16.2] - 2026-06-22
 
 ### Added
