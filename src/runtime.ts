@@ -588,7 +588,11 @@ export async function gatewayStartAccount(ctx: ChannelGatewayContext<ResolvedAcc
 
   if (runningAccounts.has(key)) {
     const entry = runningAccounts.get(key)!;
-    log.info(`gateway: disconnecting existing WS for reconnection with updated config (key=${key})`);
+    if (entry.client.isWsAlive()) {
+      log.info(`gateway: WS alive, skipping reconnect (key=${key})`);
+      return { connected: true };
+    }
+    log.info(`gateway: disconnecting stale WS for reconnection (key=${key})`);
     try { await entry.client.disconnect(); } catch {}
     runningAccounts.delete(key);
   }
