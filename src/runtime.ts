@@ -877,8 +877,8 @@ let senderAllowed = ingress?.senderAccess?.allowed ?? false;
 
   // Prepend referenced/quoted message as context
   if (event.referenceMsg) {
-    const refLabel = event.referenceMsg.fromType === 1 ? "用户" : "机器人";
-    const refLine = `\u2139 引用${refLabel}消息: "${event.referenceMsg.content}"`;
+    const refLabel = event.referenceMsg.fromType === 1 ? "机器人" : "员工";
+    const refLine = `\u2139 引用${refLabel}(${event.referenceMsg.from})的消息: "${event.referenceMsg.content}"`;
     if (!agentText.trim()) {
       agentText = refLine;
     } else {

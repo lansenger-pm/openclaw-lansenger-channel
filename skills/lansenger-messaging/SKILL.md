@@ -300,8 +300,8 @@ lansenger -P <appId> message update-dynamic-card <msg_id> --last --status-desc '
 
 ## @提及规则
 
-1. **消息文本中始终包含 "@姓名"** — reminder 负责推送通知，"@姓名" 让消息内容中可见。在**群聊**中尤其重要。
-2. **reminder 是可选的** — 当你希望某人收到消息的推送通知时使用。
+1. **不要在消息文本中手动写 "@姓名"** — 蓝信 API 会根据 `reminderUserIds` / `reminderAll` 自动在消息前拼接对方的名字，无需 Agent 显式写入。
+2. **reminder 控制推送通知** — 当你希望某人收到推送通知时，通过 `reminder` / `reminderUserIds` / `mention-all` 参数指定其 staffId 或 botId。
 
 ## 入站消息类型
 

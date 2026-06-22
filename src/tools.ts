@@ -90,7 +90,7 @@ const SendTextSchema = {
     filePath: { type: "string", description: "Optional local file/image/video to attach. If provided, content becomes the caption." },
     to: { type: "string", description: "Chat ID to send to. Leave empty to auto-detect from current session." },
     reminderAll: { type: "boolean", description: "@mention all members in a group (only works in group chat, not DMs)." },
-    reminderUserIds: { type: "array", items: { type: "string" }, description: "List of user IDs to @mention (group chat only). Include '@姓名' in the message text so users can see who was mentioned." },
+    reminderUserIds: { type: "array", items: { type: "string" }, description: "List of staff IDs or bot IDs to @mention (group chat only). Lansenger API auto-prepends the recipient name — do NOT manually write '@Name' in the message text." },
   },
   required: ["content"],
 };
@@ -101,7 +101,7 @@ const SendFormatTextSchema = {
     content: { type: "string", description: "Markdown-formatted text. Renders as rich text on Lansenger. Use this when you need Markdown + @mention. Does NOT support file attachments." },
     to: { type: "string", description: "Chat ID to send to. Leave empty to auto-detect from current session." },
     reminderAll: { type: "boolean", description: "@mention all members in a group (group chat only)." },
-    reminderUserIds: { type: "array", items: { type: "string" }, description: "List of user IDs to @mention (group chat only). Include '@姓名' in text so the mention is visible." },
+    reminderUserIds: { type: "array", items: { type: "string" }, description: "List of staff IDs or bot IDs to @mention (group chat only). Lansenger API auto-prepends the recipient name — do NOT manually write '@Name' in the message text." },
   },
   required: ["content"],
 };
