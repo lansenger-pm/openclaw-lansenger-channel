@@ -136,6 +136,11 @@
             "default": true,
             "description": "Require @mention to trigger in groups (can be overridden per-group) / 群聊中是否需要 @提及才触发（可在单群配置中覆盖）"
           },
+          "autoMentionReply": {
+            "type": "boolean",
+            "default": false,
+            "description": "Auto @mention the sender when replying in groups. Lansenger API auto-prepends the name — no need to manually write @Name in the message. / 群聊自动回复时是否 @发送者。蓝信 API 会自动拼接名字，无需在消息中手动写 @姓名。"
+          },
           "groups": {
             "type": "object",
             "description": "Per-group configuration / 单群配置（key 为群聊 chatId）",
@@ -143,6 +148,7 @@
               "type": "object",
               "properties": {
                 "requireMention": { "type": "boolean", "description": "Require @mention to trigger / 是否需要 @提及才触发" },
+                "autoMentionReply": { "type": "boolean", "description": "Auto @mention the sender when replying in this group / 该群自动回复时是否 @发送者" },
                 "enabled": { "type": "boolean", "description": "Enable/disable this group / 启用/禁用该群" },
                 "allowFrom": { "type": "array", "items": { "type": "string" }, "description": "Sender IDs allowed in this group / 该群允许的发送者 ID" }
               }
@@ -190,6 +196,7 @@
                 "groupPolicy": { "type": "string", "enum": ["open", "allowlist", "disabled"], "default": "open", "description": "Group chat policy / 群聊策略" },
                 "groupAllowFrom": { "type": "array", "items": { "type": "string" }, "description": "Group IDs allowed to trigger the bot / 允许触发机器人的群聊 ID 列表" },
                 "requireMention": { "type": "boolean", "description": "Require @mention to trigger in groups (inherits from top-level if unset) / 群聊中是否需要 @提及才触发（未设置时继承顶层配置）" },
+                "autoMentionReply": { "type": "boolean", "description": "Auto @mention the sender when replying in groups (inherits from top-level if unset) / 群聊自动回复时是否 @发送者（未设置时继承顶层配置）" },
                 "ackMessage": { "type": "boolean", "description": "Send ack message before agent processing (inherits from top-level if unset) / 代理处理前发送确认消息（未设置时继承顶层配置）" },
                 "revokeAckMessage": { "type": "boolean", "description": "Auto-revoke ack message after agent reply (inherits from top-level if unset, default true) / 代理回复后自动撤回确认消息（未设置时继承顶层配置，默认 true）" },
                 "ackMessageTextZh": { "type": "string", "default": "收到，正在处理...", "description": "Chinese ack message text / 中文确认消息文案" },
