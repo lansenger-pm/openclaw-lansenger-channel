@@ -764,11 +764,7 @@ export class LansengerClient {
           resolveClose?.();
         };
 
-        // Safety valve: if terminate() doesn't fire close/error on a dead TCP connection,
-        // the heartbeat will never resolve closePromise. Force-resolve after 45s.
-        const CLOSE_TIMEOUT_MS = 45_000;
-        const closeTimeout = new Promise<void>((r) => setTimeout(r, CLOSE_TIMEOUT_MS));
-        await Promise.race([closePromise, closeTimeout]);
+        await closePromise;
 
         if (!this.running) return;
       } catch (e: any) {
