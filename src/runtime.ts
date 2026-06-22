@@ -72,14 +72,17 @@ export function mergeInboundEvents(events: InboundEvent[]): InboundEvent {
 
 const ACK_MESSAGE_ID_KEY = "__lansenger_ack_msg_id";
 
-const runningAccounts = new Map<string, RunningAccount>();
-const pendingConnections = new Set<string>(); // prevents concurrent startAccount for same key
-const accountStatusSinks = new Map<string, (patch: Omit<ChannelAccountSnapshot, "accountId">) => void>();
-const lastInboundChatIds = new Map<string, string>();
-const lastInboundTimes = new Map<string, number>();
-const sessionAccountMap = new Map<string, string>(); // sessionKey -> runningKey
-const sessionDeliveryTracker = new Map<string, Set<string>>();
-const activeDeliverySessions = new Set<string>();
+// Module-reload-safe shared state via globalThis (OpenClaw may reload plugin modules,
+// resetting all module-level variables — globalThis persists across reloads).
+const _g = (globalThis as any).__lansenger_channel = (globalThis as any).__lansenger_channel ?? {};
+const runningAccounts: Map<string, RunningAccount> = _g.runningAccounts ?? (_g.runningAccounts = new Map());
+const pendingConnections: Set<string> = _g.pendingConnections ?? (_g.pendingConnections = new Set());
+const accountStatusSinks: Map<string, (patch: Omit<ChannelAccountSnapshot, "accountId">) => void> = _g.accountStatusSinks ?? (_g.accountStatusSinks = new Map());
+const lastInboundChatIds: Map<string, string> = _g.lastInboundChatIds ?? (_g.lastInboundChatIds = new Map());
+const lastInboundTimes: Map<string, number> = _g.lastInboundTimes ?? (_g.lastInboundTimes = new Map());
+const sessionAccountMap: Map<string, string> = _g.sessionAccountMap ?? (_g.sessionAccountMap = new Map());
+const sessionDeliveryTracker: Map<string, Set<string>> = _g.sessionDeliveryTracker ?? (_g.sessionDeliveryTracker = new Map());
+const activeDeliverySessions: Set<string> = _g.activeDeliverySessions ?? (_g.activeDeliverySessions = new Set());
 
 const INBOUND_CONTEXT_FILE = path.join(os.homedir(), ".openclaw", "lansenger-inbound-contexts.json");
 
@@ -325,11 +328,12 @@ async function recoverPendingInboundContexts(api: OpenClawPluginApi): Promise<vo
 
 export function startLansengerGateway(api: OpenClawPluginApi): void {
   pluginApi = api;
-  (globalThis as any).__lansenger_channel = {
-    getRunningClient,
-    getRunningAccount,
-    getLastInboundChatId,
-  };
+  // Preserve existing state maps (runningAccounts etc) that live on this object
+  const g = (globalThis as any).__lansenger_channel ?? {};
+  g.getRunningClient = getRunningClient;
+  g.getRunningAccount = getRunningAccount;
+  g.getLastInboundChatId = getLastInboundChatId;
+  (globalThis as any).__lansenger_channel = g;
 
   if (api.on) {
     api.on("message_sending", (event: any) => {
