@@ -596,6 +596,11 @@ export class LansengerClient {
         this.selfBotId = eventData.botId as string;
       }
 
+      // Debug: log all event keys to find referenceMsg location
+      const evKeys = Object.keys(ev).filter(k => k !== "data");
+      const dataKeys = Object.keys(eventData);
+      this.log.info(`inbound: event keys — evKeys=[${evKeys.join(",")}] dataKeys=[${dataKeys.slice(0, 15).join(",")}] hasRef=${"referenceMsg" in eventData}`);
+
       // skip messages sent by our own bot to avoid self-echo
       if (this.selfBotId && eventData.from === this.selfBotId) continue;
 
