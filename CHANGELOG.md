@@ -302,7 +302,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 ### Bug Fixes
 
 - Exclude test files from npm package (fix OpenClaw security scan blocking install).
-- Add OpenClaw device pairing troubleshooting section (all 5 locales).
 
 ## [3.4.5] - 2026-05-12
 

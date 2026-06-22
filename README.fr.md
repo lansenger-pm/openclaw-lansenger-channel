@@ -410,26 +410,6 @@ openclaw-lansenger-channel/
 
 ## Dépannage
 
-### OpenClaw v2026.5.18+ : Appairage des appareils requis
-
-Après la mise à jour d'OpenClaw vers v2026.5.18 ou version ultérieure, **l'appairage des appareils** est requis avant que tout client (Dashboard navigateur, Control UI) puisse se connecter. Cela affecte également le canal Lansenger — si l'appareil de la machine hébergeant la passerelle n'est pas approuvé, les connexions WebSocket peuvent être bloquées et les messages de pairage ne peuvent pas être envoyés aux utilisateurs Lansenger.
-
-**Correction — exécuter ces commandes sur la machine hébergeant la passerelle OpenClaw :**
-
-```bash
-# 1. Liste des demandes d'appairage en attente
-openclaw devices list
-
-# 2. Approuver la dernière demande (prévisualiser d'abord, puis approuver avec l'ID exact)
-openclaw devices approve --latest   # prévisualisation
-openclaw devices approve <requestId>  # approuver avec l'ID exact affiché
-
-# 3. Redémarrer la passerelle
-openclaw gateway restart
-```
-
-Voir [Documentation des appareils OpenClaw](https://docs.openclaw.ai/cli/devices) pour plus de détails.
-
 ### "Le client mobile ne permet pas de voir les identifiants"
 
 Utilisez uniquement le **client Lansenger (desktop)**. L'application mobile n'affiche pas les identifiants du robot.
