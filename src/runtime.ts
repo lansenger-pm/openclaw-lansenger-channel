@@ -679,11 +679,6 @@ async function handleInbound(
 
   if (chatType === "dm") {
     const dmPolicy = (account.dmPolicy ?? "pairing") as "pairing" | "allowlist" | "open" | "disabled";
-    if (dmPolicy === "disabled") {
-      log.info(`inbound: dm dropped — dmPolicy=disabled for sender=${event.senderId}`);
-      return;
-    }
-
     const configAllowFrom = account.allowFrom ?? [];
     const pairing = (api.runtime as any)?.channel?.pairing;
 
