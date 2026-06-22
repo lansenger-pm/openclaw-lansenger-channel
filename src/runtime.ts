@@ -73,6 +73,7 @@ export function mergeInboundEvents(events: InboundEvent[]): InboundEvent {
 const ACK_MESSAGE_ID_KEY = "__lansenger_ack_msg_id";
 
 const runningAccounts = new Map<string, RunningAccount>();
+const pendingConnections = new Set<string>(); // prevents concurrent startAccount for same key
 const accountStatusSinks = new Map<string, (patch: Omit<ChannelAccountSnapshot, "accountId">) => void>();
 const lastInboundChatIds = new Map<string, string>();
 const lastInboundTimes = new Map<string, number>();
@@ -128,6 +129,10 @@ async function startAccount(api: OpenClawPluginApi, accountId?: string | null): 
   }
 
   const key = account.appId || account.accountId || "__default__";
+  if (pendingConnections.has(key)) {
+    log.info(`skip auto-start: connection already in progress (key=${key})`);
+    return true;
+  }
   if (runningAccounts.has(key)) {
     const entry = runningAccounts.get(key)!;
     if (entry.client.isWsAlive()) {
@@ -139,7 +144,9 @@ async function startAccount(api: OpenClawPluginApi, accountId?: string | null): 
     runningAccounts.delete(key);
   }
 
-  const client = makeClient(account, sdkLogger());
+  pendingConnections.add(key);
+  try {
+    const client = makeClient(account, sdkLogger());
 
   const debounceApi = (api.runtime as any)?.channel?.debounce;
   const debounceMs = debounceApi ? resolveInboundDebounceMs({ cfg: api.config, channel: "lansenger" }) : 0;
@@ -190,6 +197,9 @@ async function startAccount(api: OpenClawPluginApi, accountId?: string | null): 
   runningAccounts.set(key, { accountId: account.accountId, account, client, debouncer });
   log.info(`auto-started: key=${key} (accountId=${account.accountId})`);
   return true;
+  } finally {
+    pendingConnections.delete(key);
+  }
 }
 
 export function getLastInboundChatId(): string {
