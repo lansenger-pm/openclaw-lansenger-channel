@@ -329,7 +329,6 @@ async function recoverPendingInboundContexts(api: OpenClawPluginApi): Promise<vo
 
 export function startLansengerGateway(api: OpenClawPluginApi): void {
   pluginApi = api;
-  // Preserve existing state maps (runningAccounts etc) that live on this object
   const g = (globalThis as any).__lansenger_channel ?? {};
   g.getRunningClient = getRunningClient;
   g.getRunningAccount = getRunningAccount;
@@ -572,7 +571,12 @@ export function startLansengerGateway(api: OpenClawPluginApi): void {
     opts.respond(true, { messageId, status, lang: detectedLang, rawResponse: result.rawResponse });
   });
 
-  autoStart(api, accounts);
+  // autoStart only once per process — subsequent module reloads are covered
+  // by gatewayStartAccount which waits on the existing connection.
+  if (!g._gatewayStarted) {
+    g._gatewayStarted = true;
+    autoStart(api, accounts);
+  }
 }
 
 export async function gatewayStartAccount(ctx: ChannelGatewayContext<ResolvedAccount>): Promise<unknown> {
@@ -582,16 +586,22 @@ export async function gatewayStartAccount(ctx: ChannelGatewayContext<ResolvedAcc
 
   accountStatusSinks.set(key, statusSink);
 
+  // If a connection is already in progress (pendingConnections) or the WS is alive,
+  // just wait until the framework tells us to stop — do NOT return early.
   if (pendingConnections.has(key)) {
-    log.info(`gateway: skipping start — connection already in progress (key=${key})`);
-    return { connected: true };
+    log.info(`gateway: connection already in progress, waiting for abort (key=${key})`);
+    return waitUntilAbort(ctx.abortSignal, () => {
+      log.info(`gateway: stopped on abort (key=${key}, was pending)`);
+    });
   }
 
   if (runningAccounts.has(key)) {
     const entry = runningAccounts.get(key)!;
     if (entry.client.isWsAlive()) {
-      log.info(`gateway: WS alive, skipping reconnect (key=${key})`);
-      return { connected: true };
+      log.info(`gateway: WS alive, waiting for abort (key=${key})`);
+      return waitUntilAbort(ctx.abortSignal, () => {
+        log.info(`gateway: stopped on abort (key=${key}, ws was alive)`);
+      });
     }
     log.info(`gateway: disconnecting stale WS for reconnection (key=${key})`);
     try { await entry.client.disconnect(); } catch {}
