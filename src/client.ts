@@ -619,6 +619,22 @@ export class LansengerClient {
       const mentionedStaffs: Array<{ staffId?: string; staffName?: string }> = Array.isArray(reminder.staffs) ? reminder.staffs : [];
       const mentionedBots: Array<{ botId: string; botName: string }> = Array.isArray(reminder.bots) ? reminder.bots : [];
 
+      // parse referenceMsg (quoted message)
+      let referenceMsg: ReferenceMsg | undefined;
+      const refData = eventData.referenceMsg as Record<string, any> | undefined;
+      if (refData && refData.msgType && refData.msgData) {
+        const refExtracted = await this.extractText(refData);
+        if (refExtracted.text) {
+          referenceMsg = {
+            from: (refData.from ?? "") as string,
+            fromType: (refData.fromType ?? 0) as number,
+            msgType: (refData.msgType ?? "text") as string,
+            msgData: refData.msgData as Record<string, any>,
+            content: refExtracted.text,
+          };
+        }
+      }
+
       this.cacheChatType(chatId, isGroup ? "group" : "dm");
       if (extracted.text) this.cacheUserLang(senderId, extracted.text);
 
@@ -637,6 +653,7 @@ export class LansengerClient {
         isAtAll,
         mentionedStaffs: mentionedStaffs.length > 0 ? mentionedStaffs : undefined,
         mentionedBots: mentionedBots.length > 0 ? mentionedBots : undefined,
+        referenceMsg,
       });
     }
     return results;
@@ -979,6 +996,14 @@ export type ArticleCardOptions = {
   sourceIcon?: string;
 };
 
+export type ReferenceMsg = {
+  from: string;
+  fromType: number;
+  msgType: string;
+  msgData: Record<string, any>;
+  content: string;
+};
+
 export type InboundEvent = {
   messageId: string;
   text: string;
@@ -996,6 +1021,8 @@ export type InboundEvent = {
   mentionedStaffs?: Array<{ staffId?: string; staffName?: string }>;
   /** Bots @mentioned (from eventData.reminder.bots) */
   mentionedBots?: Array<{ botId: string; botName: string }>;
+  /** Quoted/referenced message (from eventData.referenceMsg) */
+  referenceMsg?: ReferenceMsg;
 };
 
 export type LansengerApiResponse = {

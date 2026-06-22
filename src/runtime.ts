@@ -64,6 +64,9 @@ export function mergeInboundEvents(events: InboundEvent[]): InboundEvent {
     mediaPaths: mergedMediaPaths.length > 0 ? mergedMediaPaths : undefined,
     isAtMe: last.isAtMe,
     isAtAll: last.isAtAll,
+    mentionedStaffs: last.mentionedStaffs,
+    mentionedBots: last.mentionedBots,
+    referenceMsg: last.referenceMsg,
   };
 }
 
@@ -842,6 +845,13 @@ let senderAllowed = ingress?.senderAccess?.allowed ?? false;
   }
 
   let agentText = event.text;
+
+  // Prepend referenced/quoted message as context
+  if (event.referenceMsg) {
+    const refLabel = event.referenceMsg.fromType === 1 ? `用户(${event.referenceMsg.from.slice(0, 20)})` : `机器人(${event.referenceMsg.from.slice(0, 20)})`;
+    agentText = `[引用消息 — ${refLabel}]: "${event.referenceMsg.content}"\n---\n${agentText}`;
+  }
+
   if (event.mediaPaths?.length) {
     agentText = `${event.text}\n\nAttached files saved locally — use the read tool to view:\n${event.mediaPaths.map((p, i) => `${i + 1}. ${p}`).join("\n")}`;
   }
@@ -976,6 +986,7 @@ let senderAllowed = ingress?.senderAccess?.allowed ?? false;
               Provider: "lansenger",
               Surface: "lansenger",
               To: replyTo,
+              ReferenceMsg: event.referenceMsg ?? undefined,
             },
             recordInboundSession: api.runtime.channel.session.recordInboundSession,
             dispatchReplyWithBufferedBlockDispatcher: api.runtime.channel.reply.dispatchReplyWithBufferedBlockDispatcher,
