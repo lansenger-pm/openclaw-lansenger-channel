@@ -175,9 +175,10 @@ Les identifiants peuvent aussi être fournis via la configuration `openclaw.json
 | `configWrites` | Autoriser Lansenger à écrire la config en réponse aux événements du canal | `true` |
 | `name` | Nom d'affichage pour ce compte | — |
 | `accounts` | Configuration multi-robot | — |
-| `groupPolicy` | Politique de groupe : `open` (tous les groupes), `allowlist` (groupes autorisés uniquement), `disabled` (messages de groupe désactivés) | `allowlist` |
-| `groupAllowFrom` | IDs de groupes autorisés à déclencher le robot | `[]` |
-| `groups` | Configuration par groupe (requireMention, enabled, allowFrom) | — |
+| `groupPolicy` | Politique de groupe : `open` (tous les groupes), `allowlist` (groupes autorisés), `disabled` (désactivé) | `open` |
+| `groups` | Configuration par groupe : `enabled`, `requireMention`, `autoMentionReply`, `autoQuoteReply`, `allowFrom`. Clé = `chatId` du groupe. Utiliser `groups.<chatId>.enabled: true` pour le mode allowlist. | — |
+| `autoMentionReply` | @mention automatique de l'expéditeur dans les réponses de groupe | `false` |
+| `autoQuoteReply` | Citation automatique du message entrant dans les réponses (groupes et DM) | `false` |
 | `ackMessage` | Envoyer un message de confirmation avant le traitement de l'agent | `true` |
 | `revokeAckMessage` | Révoquer automatiquement le message ack après la réponse de l'agent. Mettre `false` pour garder le message visible (certains utilisateurs préfèrent voir le message plutôt qu'une notification « message révoqué ») | `false` |
 | `mediaLocalRoots` | Répertoires racine autorisés pour l'envoi de fichiers locaux via média ; tableau vide par défaut = workspace + `/tmp` | `[cwd, /tmp]` |

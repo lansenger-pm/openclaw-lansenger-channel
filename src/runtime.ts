@@ -586,26 +586,46 @@ export async function gatewayStartAccount(ctx: ChannelGatewayContext<ResolvedAcc
 
   accountStatusSinks.set(key, statusSink);
 
-  // If a connection is already in progress (pendingConnections) or the WS is alive,
-  // just wait until the framework tells us to stop — do NOT return early.
-  if (pendingConnections.has(key)) {
-    log.info(`gateway: connection already in progress, waiting for abort (key=${key})`);
-    return waitUntilAbort(ctx.abortSignal, () => {
-      log.info(`gateway: stopped on abort (key=${key}, was pending)`);
-    });
-  }
-
+  // If WS is already alive (from a previous autoStart or gatewayStartAccount that
+  // survived a gatewayStopAccount skip), just report connected and return.
   if (runningAccounts.has(key)) {
     const entry = runningAccounts.get(key)!;
     if (entry.client.isWsAlive()) {
-      log.info(`gateway: WS alive, waiting for abort (key=${key})`);
-      return waitUntilAbort(ctx.abortSignal, () => {
-        log.info(`gateway: stopped on abort (key=${key}, ws was alive)`);
+      log.info(`gateway: WS alive, reporting connected (key=${key})`);
+        return waitUntilAbort(ctx.abortSignal, () => {
+        if (!entry.client.isWsAlive()) {
+          runningAccounts.delete(key);
+          accountStatusSinks.delete(key);
+        }
+        log.info(`gateway: stopped monitoring (key=${key})`);
       });
     }
     log.info(`gateway: disconnecting stale WS for reconnection (key=${key})`);
     try { await entry.client.disconnect(); } catch {}
     runningAccounts.delete(key);
+  }
+
+  // Wait for a pending autoStart to finish.
+  if (pendingConnections.has(key)) {
+    let waited = 0;
+    while (pendingConnections.has(key) && waited < 30_000) {
+      await new Promise(r => setTimeout(r, 200));
+      waited += 200;
+    }
+    if (runningAccounts.has(key)) {
+      const entry = runningAccounts.get(key)!;
+      if (entry.client.isWsAlive()) {
+        log.info(`gateway: pending connection ready, monitoring (key=${key})`);
+        return waitUntilAbort(ctx.abortSignal, () => {
+          if (!entry.client.isWsAlive()) {
+            runningAccounts.delete(key);
+            accountStatusSinks.delete(key);
+          }
+          log.info(`gateway: stopped monitoring (key=${key})`);
+        });
+      }
+    }
+    log.info(`gateway: pending connection timed out or WS dead, creating fresh (key=${key})`);
   }
 
   pendingConnections.add(key);
@@ -679,11 +699,17 @@ export async function gatewayStopAccount(ctx: ChannelGatewayContext<ResolvedAcco
   const key = ctx.account.appId || ctx.accountId || "__default__";
   const entry = runningAccounts.get(key);
   if (entry) {
-    await entry.client.disconnect();
-    runningAccounts.delete(key);
+    // Only stop if the WS is truly dead — never kill a live connection
+    // created by autoStart / startAccount.
+    if (!entry.client.isWsAlive()) {
+      await entry.client.disconnect();
+      runningAccounts.delete(key);
+      accountStatusSinks.delete(key);
+      log.info(`gateway: stopAccount (key=${key})`);
+    } else {
+      log.info(`gateway: stopAccount skipped — WS still alive (key=${key})`);
+    }
   }
-  accountStatusSinks.delete(key);
-  log.info(`gateway: stopAccount (key=${key})`);
 }
 
 function autoStart(api: OpenClawPluginApi, accounts?: Record<string, any>): void {
@@ -709,12 +735,34 @@ function autoStart(api: OpenClawPluginApi, accounts?: Record<string, any>): void
 function resolveAutoMentionReply(api: OpenClawPluginApi, groupId?: string, accountId?: string): boolean {
   const cfg = api.config as any;
   const ch = cfg?.channels?.lansenger ?? {};
-  // per-group override (highest priority)
+  // per-group under account (highest priority)
+  if (groupId && accountId && ch.accounts?.[accountId]?.groups?.[groupId]?.autoMentionReply !== undefined)
+    return ch.accounts[accountId].groups[groupId].autoMentionReply;
+  // per-group under section
   if (groupId && ch.groups?.[groupId]?.autoMentionReply !== undefined) return ch.groups[groupId].autoMentionReply;
-  // per-account override
+  // per-account
   if (accountId && ch.accounts?.[accountId]?.autoMentionReply !== undefined) return ch.accounts[accountId].autoMentionReply;
   // section default
   return ch.autoMentionReply ?? false;
+}
+
+function resolveAutoQuoteReply(api: OpenClawPluginApi, groupId?: string, accountId?: string): boolean {
+  const cfg = api.config as any;
+  const ch = cfg?.channels?.lansenger ?? {};
+  // account-level per-group override (highest priority)
+  if (groupId && accountId && ch.accounts?.[accountId]?.groups?.[groupId]?.autoQuoteReply !== undefined) {
+    return ch.accounts[accountId].groups[groupId].autoQuoteReply;
+  }
+  // section-level per-group override
+  if (groupId && ch.groups?.[groupId]?.autoQuoteReply !== undefined) {
+    return ch.groups[groupId].autoQuoteReply;
+  }
+  // per-account override
+  if (accountId && ch.accounts?.[accountId]?.autoQuoteReply !== undefined) {
+    return ch.accounts[accountId].autoQuoteReply;
+  }
+  // section default
+  return ch.autoQuoteReply ?? false;
 }
 
 async function handleInbound(
@@ -798,6 +846,32 @@ let senderAllowed = ingress?.senderAccess?.allowed ?? false;
   if (event.isGroup) {
     let ingress: any;
     let requireMention = account.requireMention ?? true;
+
+    // Framework-native group access check via resolveGroupPolicy.
+    // Group access is controlled by channels.lansenger.groups.<chatId>.enabled
+    // and section/account-level channels.lansenger.groupPolicy (open/allowlist/disabled).
+    try {
+      const resolved = api.runtime.channel.groups.resolveGroupPolicy({
+        cfg: api.config,
+        channel: "lansenger",
+        groupId: event.chatId,
+        accountId: account.accountId,
+      });
+      if (!resolved.allowed) {
+        log.info(`inbound: group dropped — not allowed (chatId=${event.chatId})`);
+        return;
+      }
+      // Also resolve per-group requireMention
+      try {
+        requireMention = api.runtime.channel.groups.resolveRequireMention({
+          cfg: api.config,
+          channel: "lansenger",
+          groupId: event.chatId,
+          accountId: account.accountId,
+        });
+      } catch {}
+    } catch {}
+
     try {
       ingress = await resolveChannelMessageIngress({
         channelId: "lansenger",
@@ -806,11 +880,9 @@ let senderAllowed = ingress?.senderAccess?.allowed ?? false;
         subject: { stableId: event.senderId },
         conversation: { kind: "group", id: event.chatId },
         event: { kind: "message", authMode: "inbound", mayPair: false, originSubject: { identifiers: [{ opaqueId: event.senderId, kind: "platform-id" as any, sensitivity: "normal", value: event.senderId }] } },
-        policy: { dmPolicy: "pairing", groupPolicy: (account.groupPolicy as "open" | "allowlist" | "disabled") ?? "open", activation: { requireMention, allowTextCommands: false } },
-        groupAllowFrom: account.groupAllowFrom ?? [],
+        policy: { dmPolicy: "pairing", groupPolicy: "open", activation: { requireMention, allowTextCommands: false } },
         mentionFacts: { canDetectMention: true, wasMentioned: event.isAtMe ?? false, hasAnyMention: event.isAtAll ?? false },
       });
-      log.info(`inbound: group ingress debug — groupPolicy=${account.groupPolicy} groupAllowFrom=[${(account.groupAllowFrom ?? []).join(",")}] chatId=${event.chatId} allowed=${ingress?.senderAccess?.allowed}`);
       if (!ingress?.senderAccess?.allowed) {
         log.info(`inbound: group dropped — sender not allowed for chatId=${event.chatId}`);
         return;
@@ -1060,13 +1132,18 @@ let senderAllowed = ingress?.senderAccess?.allowed ?? false;
 
                 const autoMention = event.isGroup && resolveAutoMentionReply(api, event.chatId, (account as any).accountId);
                 const reminder: ReminderParams | undefined = autoMention && event.senderId
-                  ? { userIds: [event.senderId] }
+                  ? (event.senderFromType === 1
+                    ? { botIds: [event.senderId] }
+                    : { userIds: [event.senderId] })
                   : undefined;
+
+                const autoQuote = resolveAutoQuoteReply(api, event.isGroup ? event.chatId : undefined, (account as any).accountId);
+                const refMsgId = autoQuote ? event.messageId : undefined;
 
                 if (text?.trim() && !turnTextDelivered.has(turnTextKey) && !sessionDeliveredSet.has(sessionTextKey)) {
                   turnTextDelivered.add(turnTextKey);
                   sessionDeliveredSet.add(sessionTextKey);
-                  const result = await deliverReply(client, to, text, reminder);
+                  const result = await deliverReply(client, to, text, reminder, refMsgId);
                   if (result.messageId) messageIds.push(result.messageId);
                 }
 
@@ -1145,14 +1222,14 @@ let senderAllowed = ingress?.senderAccess?.allowed ?? false;
   }
 }
 
-async function deliverReply(client: LansengerClient, to: string, text: string, reminder?: ReminderParams): Promise<ApiResult> {
-  log.info(`deliverReply: to=${to} textLen=${text.length} preview="${text.slice(0, 100)}"${reminder ? ` reminder=${JSON.stringify(reminder)}` : ""}`);
+async function deliverReply(client: LansengerClient, to: string, text: string, reminder?: ReminderParams, refMsgId?: string): Promise<ApiResult> {
+  log.info(`deliverReply: to=${to} textLen=${text.length} preview="${text.slice(0, 100)}"${reminder ? ` reminder=${JSON.stringify(reminder)}` : ""}${refMsgId ? ` refMsgId=${refMsgId}` : ""}`);
   if (!text.trim()) {
     log.warn(`deliverReply: empty text after OpenClaw MEDIA processing, skipping delivery`);
     return { success: true, messageId: undefined };
   }
-  const fmtResult = await client.sendFormatText(to, text, reminder);
+  const fmtResult = await client.sendFormatText(to, text, reminder, refMsgId);
   if (fmtResult.success) return fmtResult;
   log.info(`formatText failed (${fmtResult.error ?? "unknown"}), falling back to text`);
-  return client.sendText(to, text, reminder);
+  return client.sendText(to, text, reminder, refMsgId);
 }

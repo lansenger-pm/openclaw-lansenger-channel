@@ -76,7 +76,6 @@ type LansengerAccount = {
   dmPolicy?: string;
   dmSecurity?: string;
   groupPolicy?: string;
-  groupAllowFrom?: string[];
   requireMention?: boolean;
   homeChannel?: string;
   enabled?: boolean;
@@ -96,7 +95,6 @@ type ResolvedAccount = {
   allowFrom: string[];
   dmPolicy: string | undefined;
   groupPolicy: string | undefined;
-  groupAllowFrom: string[];
   requireMention: boolean;
   homeChannel: string | undefined;
   enabled: boolean;
@@ -164,7 +162,6 @@ function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): Resolve
   const allowFrom: string[] = account?.allowFrom ?? [];
   const dmPolicy = account?.dmPolicy ?? account?.dmSecurity;
   const groupPolicy = account?.groupPolicy ?? section?.groupPolicy ?? "open";
-  const groupAllowFrom: string[] = (account?.groupAllowFrom ?? section?.groupAllowFrom ?? []).map(String);
   const requireMention = account?.requireMention ?? section?.requireMention ?? true;
   const homeChannel = account?.homeChannel;
   const enabled = Boolean(appId && appSecret);
@@ -183,7 +180,6 @@ function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): Resolve
     allowFrom,
     dmPolicy,
     groupPolicy,
-    groupAllowFrom,
     requireMention,
     homeChannel,
     enabled,
@@ -441,8 +437,8 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
           }
         }
       }
-      if (section.groupPolicy || section.groupAllowFrom) {
-        findings.push({ checkId: "lansenger/group-config", severity: "info", title: "Group config is active / 群聊配置已生效", detail: "Lansenger supports group chat. groupPolicy and groupAllowFrom settings control group behavior. / 蓝信支持群聊功能。", remediation: "Group settings are active. / 群聊设置已启用。" });
+      if (section.groupPolicy) {
+        findings.push({ checkId: "lansenger/group-config", severity: "info", title: "Group config is active / 群聊配置已生效", detail: "Lansenger supports group chat. groupPolicy setting controls group behavior. Per-group settings can be configured via groups.<chatId>.enabled / 蓝信支持群聊功能。", remediation: "Group settings are active. / 群聊设置已启用。" });
       }
       const topLevelGatewayUrl = section.apiGatewayUrl;
       const envHasGatewayUrl = Boolean(process.env.LANSENGER_API_GATEWAY_URL);

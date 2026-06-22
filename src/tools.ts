@@ -90,7 +90,9 @@ const SendTextSchema = {
     filePath: { type: "string", description: "Optional local file/image/video to attach. If provided, content becomes the caption." },
     to: { type: "string", description: "Chat ID to send to. Leave empty to auto-detect from current session." },
     reminderAll: { type: "boolean", description: "@mention all members in a group (only works in group chat, not DMs)." },
-    reminderUserIds: { type: "array", items: { type: "string" }, description: "List of staff IDs or bot IDs to @mention (group chat only). Lansenger API auto-prepends the recipient name — do NOT manually write '@Name' in the message text." },
+    reminderUserIds: { type: "array", items: { type: "string" }, description: "List of staff IDs to @mention (group chat only). Lansenger API auto-prepends the recipient name — do NOT manually write '@Name' in the message text." },
+    reminderBotIds: { type: "array", items: { type: "string" }, description: "List of bot IDs to @mention (group chat only)." },
+    refMsgId: { type: "string", description: "Message ID to quote/reply to. When provided, the sent message will appear as a reply to the specified message." },
   },
   required: ["content"],
 };
@@ -101,7 +103,9 @@ const SendFormatTextSchema = {
     content: { type: "string", description: "Markdown-formatted text. Renders as rich text on Lansenger. Use this when you need Markdown + @mention. Does NOT support file attachments." },
     to: { type: "string", description: "Chat ID to send to. Leave empty to auto-detect from current session." },
     reminderAll: { type: "boolean", description: "@mention all members in a group (group chat only)." },
-    reminderUserIds: { type: "array", items: { type: "string" }, description: "List of staff IDs or bot IDs to @mention (group chat only). Lansenger API auto-prepends the recipient name — do NOT manually write '@Name' in the message text." },
+    reminderUserIds: { type: "array", items: { type: "string" }, description: "List of staff IDs to @mention (group chat only). Lansenger API auto-prepends the recipient name — do NOT manually write '@Name' in the message text." },
+    reminderBotIds: { type: "array", items: { type: "string" }, description: "List of bot IDs to @mention (group chat only)." },
+    refMsgId: { type: "string", description: "Message ID to quote/reply to. When provided, the sent message will appear as a reply to the specified message." },
   },
   required: ["content"],
 };
@@ -292,25 +296,25 @@ export function registerLansengerTools(api: any) {
             const result = await client.sendFile(to, resolved, content);
             return jsonResult({ success: result.success, messageId: result.messageId ?? null });
           }
-          const reminder = (params.reminderAll || (params.reminderUserIds && params.reminderUserIds.length > 0))
-            ? { all: Boolean(params.reminderAll), userIds: params.reminderUserIds ?? [] }
+          const reminder = (params.reminderAll || (params.reminderUserIds?.length > 0) || (params.reminderBotIds?.length > 0))
+            ? { all: Boolean(params.reminderAll), userIds: params.reminderUserIds ?? [], botIds: params.reminderBotIds ?? [] }
             : undefined;
-          const result = await client.sendText(to, content, reminder);
+          const result = await client.sendText(to, content, reminder, params.refMsgId);
           return jsonResult({ success: result.success, messageId: result.messageId ?? null });
         },
       },
       {
         name: "lansenger_send_format_text",
-        description: "Send Markdown-formatted text on Lansenger (蓝信) with optional @mentions. Uses msgType=formatText: Markdown renders as rich text. Supports @mentions via reminder params. Does NOT support file attachments — for Markdown + file, write the Markdown reply normally first, then use lansenger_send_file separately.",
+        description: "Send Markdown-formatted text on Lansenger (蓝信) with optional @mentions and quote reply. Uses msgType=formatText: Markdown renders as rich text. Supports @mentions via reminder params and quoting via refMsgId. Does NOT support file attachments.",
         parameters: SendFormatTextSchema,
         async execute(_toolCallId: string, params: any) {
           const content = params.content ?? "";
           const to = resolveTarget(params.to);
           if (!to) return jsonResult({ error: "No target specified. Provide a 'to' parameter (chat ID)." });
-          const reminder = (params.reminderAll || (params.reminderUserIds && params.reminderUserIds.length > 0))
-            ? { all: Boolean(params.reminderAll), userIds: params.reminderUserIds ?? [] }
+          const reminder = (params.reminderAll || (params.reminderUserIds?.length > 0) || (params.reminderBotIds?.length > 0))
+            ? { all: Boolean(params.reminderAll), userIds: params.reminderUserIds ?? [], botIds: params.reminderBotIds ?? [] }
             : undefined;
-          const result = await tc.client.sendFormatText(to, content, reminder);
+          const result = await tc.client.sendFormatText(to, content, reminder, params.refMsgId);
           return jsonResult({ success: result.success, messageId: result.messageId ?? null });
         },
       },

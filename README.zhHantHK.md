@@ -175,9 +175,10 @@ openclaw pairing approve lansenger <配對碼>
 | `configWrites` | 允許藍信回應頻道事件寫入配置 | `true` |
 | `name` | 此帳戶的顯示名稱 | — |
 | `accounts` | 多機械人設定 | — |
-| `groupPolicy` | 羣聊策略：`open`（所有羣）、`allowlist`（僅允許列表羣）、`disabled`（禁止羣訊息） | `allowlist` |
-| `groupAllowFrom` | 允許觸發機械人的羣 ID | `[]` |
-| `groups` | 羣級設定（requireMention、enabled、allowFrom） | — |
+| `groupPolicy` | 羣聊策略：`open`（所有羣）、`allowlist`（僅允許列表羣）、`disabled`（禁止羣訊息） | `open` |
+| `groups` | 羣級設定：`enabled`、`requireMention`、`autoMentionReply`、`autoQuoteReply`、`allowFrom`。key 為羣 `chatId`。allowlist 模式設 `groups.<chatId>.enabled: true`。 | — |
+| `autoMentionReply` | 羣聊回覆時自動 @發送者 | `false` |
+| `autoQuoteReply` | 回覆時自動引用入站訊息（羣聊和私聊） | `false` |
 | `ackMessage` | 在代理處理前發送確認訊息 | `true` |
 | `revokeAckMessage` | 代理回覆遞送後自動撤回確認訊息。設為 `false` 則保留確認訊息可見（有些使用者偏好看到確認訊息而非撤回的系統通知） | `false` |
 | `mediaLocalRoots` | 透過媒體發送本地檔案時允許的根目錄列表；空陣列預設為工作區 + `/tmp` | `[cwd, /tmp]` |

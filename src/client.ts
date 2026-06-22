@@ -180,11 +180,11 @@ export class LansengerClient {
     }
   }
 
-  async sendText(chatId: string, content: string, reminder?: ReminderParams): Promise<ApiResult> {
+  async sendText(chatId: string, content: string, reminder?: ReminderParams, refMsgId?: string): Promise<ApiResult> {
     const token = await this.getAppToken();
     if (!token) return { success: false, error: "No access token" };
     try {
-      const { url, wrap } = this.msgTarget(chatId);
+      const { url, wrap } = this.msgTarget(chatId, refMsgId);
       const textData: Record<string, unknown> = { content };
       if (reminder) textData.reminder = reminder;
       const payload = wrap({ text: textData, msgType: "text" });
@@ -200,11 +200,11 @@ export class LansengerClient {
     }
   }
 
-  async sendFormatText(chatId: string, content: string, reminder?: ReminderParams): Promise<ApiResult> {
+  async sendFormatText(chatId: string, content: string, reminder?: ReminderParams, refMsgId?: string): Promise<ApiResult> {
     const token = await this.getAppToken();
     if (!token) return { success: false, error: "No access token" };
     try {
-      const { url, wrap } = this.msgTarget(chatId);
+      const { url, wrap } = this.msgTarget(chatId, refMsgId);
       const fmtData: Record<string, unknown> = { formatType: 1, text: content };
       if (reminder) fmtData.reminder = reminder;
       const payload = wrap({ formatText: fmtData, msgType: "formatText" });
@@ -230,11 +230,11 @@ export class LansengerClient {
     }
   }
 
-  async sendTextWithMedia(chatId: string, content: string, mediaType: number, mediaIds: string[], reminder?: ReminderParams): Promise<ApiResult> {
+  async sendTextWithMedia(chatId: string, content: string, mediaType: number, mediaIds: string[], reminder?: ReminderParams, refMsgId?: string): Promise<ApiResult> {
     const token = await this.getAppToken();
     if (!token) return { success: false, error: "No access token" };
     try {
-      const { url, wrap } = this.msgTarget(chatId);
+      const { url, wrap } = this.msgTarget(chatId, refMsgId);
       const textData: Record<string, unknown> = { content, mediaType, mediaIds };
       if (reminder) textData.reminder = reminder;
       const payload = wrap({ text: textData, msgType: "text" });
@@ -601,16 +601,20 @@ export class LansengerClient {
 
       const senderId = (eventData.from ?? "") as string;
       const chatId = isGroup ? ((eventData.groupId ?? eventData.from ?? "") as string) : senderId;
+      const senderFromType = typeof eventData.fromType === "number" ? (eventData.fromType as number) : undefined;
 
       // extract inner message body: eventData.msgData.{msgType}.{content}
       const extracted = await this.extractText(eventData);
-      if (!extracted.text) continue;
+      if (!extracted.text) {
+        this.log.info(`processRawMessage: skipping message — msgType=${eventData.msgType ?? "n/a"} text=${JSON.stringify(extracted.text)} chatId=${chatId}`);
+        continue;
+      }
       if (extracted.mediaPaths?.length) {
         this.log.info(`inbound media: msgType=${eventData.msgType ?? "n/a"} count=${extracted.mediaPaths.length} saved=${extracted.mediaPaths.join(",")}`);
       }
 
-      // messageId: group messages carry `msgId`; private messages don't, so UUID
-      const messageId = ((isGroup ? eventData.msgId : undefined) as string) ?? crypto.randomUUID();
+      // messageId: use platform msgId when available (groups and DMs); fall back to UUID
+      const messageId = (eventData.msgId as string) ?? crypto.randomUUID();
 
       // @mention info from eventData.reminder (top-level, not nested in msgData)
       const reminder = (eventData.reminder ?? {}) as Record<string, any>;
@@ -651,6 +655,7 @@ export class LansengerClient {
         mediaPaths: extracted.mediaPaths,
         isAtMe,
         isAtAll,
+        senderFromType,
         mentionedStaffs: mentionedStaffs.length > 0 ? mentionedStaffs : undefined,
         mentionedBots: mentionedBots.length > 0 ? mentionedBots : undefined,
         referenceMsg,
@@ -827,7 +832,7 @@ export class LansengerClient {
     this.clearPongTimeout();
   }
 
-  private msgTarget(chatId: string): { url: string; wrap: (msgData: Record<string, unknown>) => Record<string, unknown> } {
+  private msgTarget(chatId: string, refMsgId?: string): { url: string; wrap: (msgData: Record<string, unknown>) => Record<string, unknown> } {
     const isGroup = this.isGroupChat(chatId);
     const endpoint = isGroup ? API_ENDPOINTS.groupMessage : API_ENDPOINTS.privateMessage;
     const url = `${this.apiGatewayUrl}${endpoint}`;
@@ -836,14 +841,18 @@ export class LansengerClient {
         const mt = msgData.msgType ?? "text";
         const data: Record<string, unknown> = {};
         for (const [k, v] of Object.entries(msgData)) { if (k !== "msgType") data[k] = v; }
-        return { groupId: chatId, msgType: mt, msgData: data };
+        const payload: Record<string, unknown> = { groupId: chatId, msgType: mt, msgData: data };
+        if (refMsgId) payload.refMsgId = refMsgId;
+        return payload;
       } };
     }
     return { url, wrap: (msgData) => {
       const mt = msgData.msgType ?? "text";
       const data: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(msgData)) { if (k !== "msgType") data[k] = v; }
-      return { userIdList: [chatId], msgType: mt, msgData: data };
+      const payload: Record<string, unknown> = { userIdList: [chatId], msgType: mt, msgData: data };
+      if (refMsgId) payload.refMsgId = refMsgId;
+      return payload;
     } };
   }
 
@@ -885,6 +894,13 @@ export class LansengerClient {
       return { text: paths.length > 0 ? "[Voice]" : "[Voice]", mediaPaths: paths.length > 0 ? paths : undefined };
     }
     if (msgType === "formatText") return { text: payload.formatText?.text?.trim() ?? null };
+    if (msgType === "format") {
+      const raw = payload.format?.text?.trim();
+      if (!raw) return { text: null };
+      // Strip HTML tags (e.g. <br>) and @mention prefixes from the text
+      const stripped = raw.replace(/<[^>]*>/g, "").replace(/^@\S+\s*/, "").trim();
+      return { text: stripped || null };
+    }
     if (msgType === "position") {
       const pos = payload.position ?? {};
       const parts = [pos.name ?? "", pos.address ?? ""].filter(Boolean);
@@ -894,6 +910,7 @@ export class LansengerClient {
     }
     if (msgType === "card") return { text: `[Contact Card] ${payload.card?.staffId ?? ""}` };
     if (msgType === "sticker") return { text: `[Sticker] ${payload.sticker?.stickerId ?? ""}` };
+    this.log.info(`extractText: unhandled msgType=${msgType} payloadKeys=${Object.keys(payload).join(",")}`);
     return { text: null };
   }
 
@@ -931,7 +948,7 @@ export class LansengerClient {
   }
 }
 
-export type ReminderParams = { all?: boolean; userIds?: string[] };
+export type ReminderParams = { all?: boolean; userIds?: string[]; botIds?: string[] };
 
 export type LinkCardOptions = {
   description?: string;
@@ -1013,6 +1030,8 @@ export type InboundEvent = {
   mediaPaths?: string[];
   isAtMe?: boolean;
   isAtAll?: boolean;
+  /** Sender type from eventData.fromType: 0=staff, 1=app/bot */
+  senderFromType?: number;
   /** Staffs @mentioned (from eventData.reminder.staffs) */
   mentionedStaffs?: Array<{ staffId?: string; staffName?: string }>;
   /** Bots @mentioned (from eventData.reminder.bots) */

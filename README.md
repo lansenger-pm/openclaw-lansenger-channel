@@ -167,9 +167,10 @@ Credentials can also be provided via `openclaw.json` config (see Optional Config
 | `configWrites` | Allow Lansenger to write config in response to channel events | `true` |
 | `name` | Display name for this account | — |
 | `accounts` | Multi-bot configuration | — |
-| `groupPolicy` | Group policy: `open`, `allowlist`, `disabled` | `allowlist` |
-| `groupAllowFrom` | Group IDs allowed to trigger the bot | `[]` |
-| `groups` | Per-group configuration (requireMention, enabled, allowFrom) | — |
+| `groupPolicy` | Group policy: `open`, `allowlist`, `disabled` | `open` |
+| `groups` | Per-group configuration: `enabled`, `requireMention`, `autoMentionReply`, `autoQuoteReply`, `allowFrom`. Key is group `chatId`. Use `groups.<chatId>.enabled: true` for allowlist mode. | — |
+| `autoMentionReply` | Auto @mention the sender when replying in groups | `false` |
+| `autoQuoteReply` | Auto quote the inbound message when replying (groups and DMs) | `false` |
 | `ackMessage` | Send a brief acknowledgment message before agent processing | `true` |
 | `revokeAckMessage` | Auto-revoke ack message after agent reply is delivered. Set `false` to keep ack visible (some users prefer it over a "message revoked" system notice) | `false` |
 | `mediaLocalRoots` | Allowed root directories for sending local files via media; empty array defaults to workspace + `/tmp` | `[cwd, /tmp]` |

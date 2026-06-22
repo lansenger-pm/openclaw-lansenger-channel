@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.16.2] - 2026-06-22
+
+### Added
+
+- **`autoQuoteReply`**: Auto-quote the inbound message when replying. Supports four-level config (account-per-group > section-group > account > section), applies to both groups and DMs. Default `false`.
+- **`botIds` in `ReminderParams` + `senderFromType` in `InboundEvent`**: `autoMentionReply` now correctly routes bot senders to `botIds` and human senders to `userIds` based on `fromType` (0=staff, 1=app/bot).
+- **`groups` at account level**: Per-group config (`enabled`, `requireMention`, `autoMentionReply`, `autoQuoteReply`, `allowFrom`) now supported under `accounts.<appId>.groups.<chatId>`, in addition to section-level `groups.<chatId>`.
+- **`msgType: "format"` inbound parsing**: Handles Lansenger markdown messages, stripping HTML tags (`<br>`) and leading `@name` prefixes.
+
+### Changed
+
+- **`groupAllowFrom` removed in favor of framework-native `groups.<chatId>.enabled`**: Group allowlisting now uses the OpenClaw framework's per-group config (`groups.<chatId>.enabled` + `groupPolicy`). The flat `groupAllowFrom` array has been removed from schema and config. **Migration**: use `openclaw config set channels.lansenger.groups.<chatId>.enabled true` instead.
+
+### Fixed
+
+- **DM auto-quote reply not working**: DM `messageId` was a random UUID instead of the platform's real `msgId`, so `refMsgId` was unrecognized by the Lansenger API.
+- **`requireMention` per-group config not working**: Switched to framework-native `resolveRequireMention` which respects the full config hierarchy (account-per-group > section-group > account > section).
+- **`resolveAutoMentionReply` missing account-per-group priority**: Added the missing top-level priority tier.
+- **Gateway stability**: `gatewayStartAccount` no longer creates duplicate WS connections when the connection is already alive; `gatewayStopAccount` skips disconnecting live connections to prevent premature shutdown loops.
+
 ## [3.16.1] - 2026-06-22
 
 ### Fixed

@@ -132,6 +132,8 @@ lansenger config list-profiles              # 列出所有 profile
 | to              | string   | ❌    | 目标 chatId |
 | reminderAll     | boolean  | ❌    | @提及所有成员（仅群聊） |
 | reminderUserIds | string[] | ❌    | @提及指定用户（仅群聊） |
+| reminderBotIds  | string[] | ❌    | @提及指定机器人（仅群聊） |
+| refMsgId        | string   | ❌    | 引用回复的消息 ID |
 
 ### lansenger_send_format_text
 
@@ -141,6 +143,8 @@ lansenger config list-profiles              # 列出所有 profile
 | to              | string   | ❌    | 目标 chatId |
 | reminderAll     | boolean  | ❌    | @提及所有人（仅群聊） |
 | reminderUserIds | string[] | ❌    | @提及指定用户（仅群聊） |
+| reminderBotIds  | string[] | ❌    | @提及指定机器人（仅群聊） |
+| refMsgId        | string   | ❌    | 引用回复的消息 ID |
 
 ### lansenger_send_image_url
 
@@ -300,8 +304,9 @@ lansenger -P <appId> message update-dynamic-card <msg_id> --last --status-desc '
 
 ## @提及规则
 
-1. **不要在消息文本中手动写 "@姓名"** — 蓝信 API 会根据 `reminderUserIds` / `reminderAll` 自动在消息前拼接对方的名字，无需 Agent 显式写入。
-2. **reminder 控制推送通知** — 当你希望某人收到推送通知时，通过 `reminder` / `reminderUserIds` / `mention-all` 参数指定其 staffId 或 botId。
+1. **不要在消息文本中手动写 "@姓名"** — 蓝信 API 会根据 `reminderUserIds` / `reminderBotIds` / `reminderAll` 自动在消息前拼接对方的名字，无需 Agent 显式写入。
+2. **reminder 控制推送通知** — 当你希望某人收到推送通知时，通过 `reminderUserIds`（员工）或 `reminderBotIds`（机器人）参数指定其 ID。
+3. **引用回复** — 使用 `refMsgId` 可以让消息以引用形式回复到指定消息，在群聊中显示更清晰的上下文。
 
 ## 入站消息类型
 

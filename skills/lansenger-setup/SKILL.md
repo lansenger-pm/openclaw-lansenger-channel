@@ -64,25 +64,30 @@ metadata: {"openclaw":{"requires":{"cli":["openclaw"]},"primaryEnv":"LANSENGER_A
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `groupPolicy` | enum | `open` | 群聊策略。可选值：`open`（所有群可触发）、`allowlist`（仅 groupAllowFrom 中的群）、`disabled`（禁止群消息） |
-| `groupAllowFrom` | string[] | `[]` | 允许触发机器人的群聊 ID 列表，仅在 `groupPolicy` 为 `allowlist` 时生效。 |
+| `groupPolicy` | enum | `open` | 群聊策略。可选值：`open`（所有群可触发）、`allowlist`（仅 groups 中 enabled:true 的群）、`disabled`（禁止群消息） |
+| `groups` | object | `{}` | 单群配置（key 为群 chatId），可设置 `enabled`、`requireMention`、`autoMentionReply`、`autoQuoteReply`、`allowFrom`。allowlist 模式下设置 `enabled:true` 加入白名单。 |
 | `requireMention` | boolean | `true` | 群聊中是否需要 `@机器人名称` 才会触发。设为 `false` 则任何消息都会触发。 |
 | `autoMentionReply` | boolean | `false` | 群聊自动回复时是否 @入站消息发送者。蓝信 API 会根据 staffId 自动拼接名字，无需 Agent 手动写 `@姓名`。支持按群、按账号覆盖。 |
+| `autoQuoteReply` | boolean | `false` | 群聊和私聊回复时是否自动引用入站消息。支持按群、按账号覆盖。私聊时 per-group 配置不生效。 |
 
-**按群粒度微调** — 使用 `channels.lansenger.groups.<chatId>` 覆盖单个群的设置：
+**按群粒度微调** — 优先使用 account 级路径 `channels.lansenger.accounts.<appId>.groups.<chatId>` 避免影响其他机器人：
 
 ```bash
 # 对特定群关闭 @提及 要求
-openclaw config set channels.lansenger.groups.<chatId>.requireMention false
+openclaw config set channels.lansenger.accounts.<appId>.groups.<chatId>.requireMention false
 # 对特定群开启自动 @回复
-openclaw config set channels.lansenger.groups.<chatId>.autoMentionReply true
+openclaw config set channels.lansenger.accounts.<appId>.groups.<chatId>.autoMentionReply true
+# 开启自动引用回复
+openclaw config set channels.lansenger.accounts.<appId>.groups.<chatId>.autoQuoteReply true
 
 # 启用/禁用特定群
-openclaw config set channels.lansenger.groups.<chatId>.enabled false
+openclaw config set channels.lansenger.accounts.<appId>.groups.<chatId>.enabled false
 
 # 限制特定群中的发送者
-openclaw config set channels.lansenger.groups.<chatId>.allowFrom '["<userId1>","<userId2>"]'
+openclaw config set channels.lansenger.accounts.<appId>.groups.<chatId>.allowFrom '["<userId1>","<userId2>"]'
 ```
+
+> 仅有一个机器人时可以用 section 级 `channels.lansenger.groups.<chatId>` 简化配置。
 
 ### 确认消息
 
@@ -130,7 +135,7 @@ openclaw config set channels.lansenger.accounts.<appId>.enabled true
 openclaw config set channels.lansenger.accounts.<appId>.dmPolicy pairing
 
 # 每个账号独立支持以上所有设置：
-# name, apiGatewayUrl, groupPolicy, groupAllowFrom, requireMention,
+# name, apiGatewayUrl, groupPolicy, requireMention,
 # ackMessage, revokeAckMessage, ackMessageTextZh, ackMessageTextEn,
 # mediaLocalRoots, dangerouslyAllowPrivateNetwork
 # （allowFrom / dmPolicy=allowlist/open 对个人机器人无实际意义）
@@ -291,17 +296,29 @@ openclaw config set channels.lansenger.accounts.<appId>.dmPolicy disabled
 
 #### 批次 B：群聊
 
-2. **群聊策略** — 默认 `open`（所有群可触发），是否需要限制？
+2. **群聊策略** — 默认 `open`（所有群可触发）：
+   - `open` — 所有群可触发（推荐，个人机器人的群权限由主人控制）
+   - `allowlist` — 仅白名单群可触发（配合 `groups.<chatId>.enabled: true` 使用）
+   - `disabled` — 禁止所有群消息
 3. **群聊 @提及** — 默认需要 @机器人才会触发，是否需要关闭？
-4. **允许的群聊列表** — 如果群聊策略设为 `allowlist`，需要提供允许的群 ID 列表。
+4. **群白名单** — 如果群聊策略设为 `allowlist`，需要在 `groups` 中启用允许的群。
 
 > **多账号环境 → 使用 account 级路径**：`channels.lansenger.accounts.<appId>.groupPolicy`，仅影响该机器人。
 
 ```bash
-openclaw config set channels.lansenger.accounts.<appId>.groupPolicy allowlist   # 仅允许列表群
-openclaw config set channels.lansenger.accounts.<appId>.groupPolicy disabled    # 禁止群消息
-openclaw config set channels.lansenger.accounts.<appId>.requireMention false    # 无需 @提及
-openclaw config set channels.lansenger.accounts.<appId>.groupAllowFrom '["<chatId1>"]'
+# allowlist 模式：仅允许特定群
+openclaw config set channels.lansenger.accounts.<appId>.groupPolicy allowlist
+openclaw config set channels.lansenger.groups.<chatId>.enabled true
+
+# open 模式 + 封禁特定群
+openclaw config set channels.lansenger.accounts.<appId>.groupPolicy open
+openclaw config set channels.lansenger.groups.<chatId>.enabled false
+
+# 禁止所有群
+openclaw config set channels.lansenger.accounts.<appId>.groupPolicy disabled
+
+# 不需要 @提及
+openclaw config set channels.lansenger.accounts.<appId>.requireMention false
 ```
 
 #### 批次 C：确认消息
@@ -425,7 +442,7 @@ openclaw plugins install @lansenger-pm/openclaw-lansenger-channel
    ```bash
    openclaw config get channels.lansenger.groupPolicy
    ```
-2. 如果 `groupPolicy` 是 `allowlist`，确认群 ID 在 `groupAllowFrom` 中。
+2. 如果 `groupPolicy` 是 `allowlist`，确认群已在 `groups.<chatId>.enabled: true` 中配置。
 3. 检查 `requireMention`——如果为 `true`，用户必须 `@机器人名称` 才能触发：
    ```bash
    openclaw config get channels.lansenger.requireMention
