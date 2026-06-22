@@ -596,11 +596,6 @@ export class LansengerClient {
         this.selfBotId = eventData.botId as string;
       }
 
-      // Debug: log all event keys to find referenceMsg location
-      const evKeys = Object.keys(ev).filter(k => k !== "data");
-      const dataKeys = Object.keys(eventData);
-      this.log.info(`inbound: event keys — evKeys=[${evKeys.join(",")}] dataKeys=[${dataKeys.slice(0, 15).join(",")}] hasRef=${"referenceMsg" in eventData}`);
-
       // skip messages sent by our own bot to avoid self-echo
       if (this.selfBotId && eventData.from === this.selfBotId) continue;
 
@@ -627,13 +622,9 @@ export class LansengerClient {
       // parse referenceMsg (quoted message)
       let referenceMsg: ReferenceMsg | undefined;
       const refData = eventData.referenceMsg as Record<string, any> | undefined;
-      if (refData) {
-        this.log.info(`inbound: referenceMsg present — from=${refData.from ?? "n/a"} fromType=${refData.fromType ?? "n/a"} msgType=${refData.msgType ?? "n/a"} hasMsgData=${!!refData.msgData}`);
-      }
       if (refData && refData.msgType && refData.msgData) {
         const refExtracted = await this.extractText(refData);
         if (refExtracted.text) {
-          this.log.info(`inbound: referenceMsg content extracted — textLen=${refExtracted.text.length} preview="${refExtracted.text.slice(0, 60)}"`);
           referenceMsg = {
             from: (refData.from ?? "") as string,
             fromType: (refData.fromType ?? 0) as number,
@@ -641,8 +632,6 @@ export class LansengerClient {
             msgData: refData.msgData as Record<string, any>,
             content: refExtracted.text,
           };
-        } else {
-          this.log.info(`inbound: referenceMsg extraction returned no text (refExtracted.text is falsy)`);
         }
       }
 

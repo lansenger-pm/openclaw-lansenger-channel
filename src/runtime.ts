@@ -132,7 +132,6 @@ async function startAccount(api: OpenClawPluginApi, accountId?: string | null): 
   }
 
   const key = account.appId || account.accountId || "__default__";
-  log.info(`gateway: startAccount called — key=${key} pendingConnections.has=${pendingConnections.has(key)} runningAccounts.has=${runningAccounts.has(key)} pendingSize=${pendingConnections.size} runningSize=${runningAccounts.size}`);
 
   if (pendingConnections.has(key)) {
     log.info(`skip auto-start: connection already in progress (key=${key})`);
@@ -583,8 +582,6 @@ export async function gatewayStartAccount(ctx: ChannelGatewayContext<ResolvedAcc
 
   accountStatusSinks.set(key, statusSink);
 
-  log.info(`gateway: gatewayStartAccount called — key=${key} pendingConnections.has=${pendingConnections.has(key)} runningAccounts.has=${runningAccounts.has(key)} pendingSize=${pendingConnections.size} runningSize=${runningAccounts.size}`);
-
   if (pendingConnections.has(key)) {
     log.info(`gateway: skipping start — connection already in progress (key=${key})`);
     return { connected: true };
@@ -880,7 +877,6 @@ let senderAllowed = ingress?.senderAccess?.allowed ?? false;
 
   // Prepend referenced/quoted message as context
   if (event.referenceMsg) {
-    log.info(`inbound: referenceMsg in handleInbound — content="${event.referenceMsg.content.slice(0, 60)}"`);
     const refLabel = event.referenceMsg.fromType === 1 ? `用户(${event.referenceMsg.from.slice(0, 20)})` : `机器人(${event.referenceMsg.from.slice(0, 20)})`;
     if (!agentText.trim()) {
       agentText = `[引用消息 — ${refLabel}]: "${event.referenceMsg.content}"`;
