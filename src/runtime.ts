@@ -2,30 +2,23 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk/channel-core";
 import type { ChannelGatewayContext, ChannelAccountSnapshot } from "openclaw/plugin-sdk";
 import { createSubsystemLogger } from "openclaw/plugin-sdk/logging-core";
 import { createAccountStatusSink, waitUntilAbort } from "openclaw/plugin-sdk/channel-runtime";
+import { CHANNEL_APPROVAL_NATIVE_RUNTIME_CONTEXT_CAPABILITY } from "openclaw/plugin-sdk/approval-handler-runtime";
+import { registerChannelRuntimeContext } from "openclaw/plugin-sdk/channel-runtime-context";
 import { createChannelInboundDebouncer, shouldDebounceTextInbound, resolveInboundDebounceMs } from "openclaw/plugin-sdk/channel-inbound";
 import { LansengerClient } from "./client.js";
-import type { InboundEvent, ClientLogger, ApiResult, AppCardData, ReminderParams } from "./client.js";
+import type { InboundEvent, ClientLogger, ApiResult, ApproveCardData } from "./client.js";
 import { resolveAccount, makeClient, isPathAllowed } from "./channel.js";
-import { PersistentStore } from "./persistent-store.js";
 import type { ResolvedAccount } from "./channel.js";
 import { errorShape } from "openclaw/plugin-sdk/gateway-runtime";
 import { pendingApprovalCards } from "./channel.js";
-import { defineStableChannelIngressIdentity, createChannelIngressResolver, resolveChannelMessageIngress, type ResolvedChannelMessageIngress } from "openclaw/plugin-sdk/channel-ingress-runtime";
-import { DEFAULT_ACCOUNT_ID } from "openclaw/plugin-sdk/account-id";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import * as path from "node:path";
 import * as os from "node:os";
 import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
+import { execSync } from "node:child_process";
 
 const log = createSubsystemLogger("lansenger");
-
-const lansengerIngressIdentity = defineStableChannelIngressIdentity({
-  key: "senderId",
-  normalize: (v: string) => v.replace(/^lansenger:/, ""),
-  sensitivity: "normal",
-  entryIdPrefix: "lx",
-});
 
 function sdkLogger(): ClientLogger {
   return {
@@ -62,63 +55,27 @@ export function mergeInboundEvents(events: InboundEvent[]): InboundEvent {
     rawMessage: mergedRawMessage,
     msgType: last.msgType,
     mediaPaths: mergedMediaPaths.length > 0 ? mergedMediaPaths : undefined,
+    eventType: last.eventType,
+    referenceMsg: last.referenceMsg,
     isAtMe: last.isAtMe,
     isAtAll: last.isAtAll,
-    mentionedStaffs: last.mentionedStaffs,
-    mentionedBots: last.mentionedBots,
-    referenceMsg: last.referenceMsg,
+    fromType: last.fromType,
+    groupName: last.groupName,
+    botCreator: last.botCreator,
+    botId: last.botId,
   };
 }
 
 const ACK_MESSAGE_ID_KEY = "__lansenger_ack_msg_id";
 
-// Module-reload-safe shared state via globalThis (OpenClaw may reload plugin modules,
-// resetting all module-level variables — globalThis persists across reloads).
-const _g = (globalThis as any).__lansenger_channel = (globalThis as any).__lansenger_channel ?? {};
-const runningAccounts: Map<string, RunningAccount> = _g.runningAccounts ?? (_g.runningAccounts = new Map());
-const pendingConnections: Set<string> = _g.pendingConnections ?? (_g.pendingConnections = new Set());
-const accountStatusSinks: Map<string, (patch: Omit<ChannelAccountSnapshot, "accountId">) => void> = _g.accountStatusSinks ?? (_g.accountStatusSinks = new Map());
-const lastInboundChatIds: Map<string, string> = _g.lastInboundChatIds ?? (_g.lastInboundChatIds = new Map());
-const lastInboundTimes: Map<string, number> = _g.lastInboundTimes ?? (_g.lastInboundTimes = new Map());
-const sessionAccountMap: Map<string, string> = _g.sessionAccountMap ?? (_g.sessionAccountMap = new Map());
-const sessionDeliveryTracker: Map<string, Set<string>> = _g.sessionDeliveryTracker ?? (_g.sessionDeliveryTracker = new Map());
-const activeDeliverySessions: Set<string> = _g.activeDeliverySessions ?? (_g.activeDeliverySessions = new Set());
-
-const INBOUND_CONTEXT_FILE = path.join(os.homedir(), ".openclaw", "lansenger-inbound-contexts.json");
-
-interface InboundDeliveryContext {
-  chatId: string;
-  sessionKey: string;
-  agentId: string;
-  accountId: string | null;
-  runningKey: string;
-  ackMessageId?: string;
-  timestamp: number;
-}
-
-class PersistentInboundContextStore extends PersistentStore<InboundDeliveryContext> {
-  constructor() {
-    super(INBOUND_CONTEXT_FILE, "inbound contexts");
-  }
-
-  entries() { return this.data.entries(); }
-
-  size() { return this.data.size; }
-}
-
-const inboundContextStore = new PersistentInboundContextStore();
-
-let recoveryGuard = false;
+const runningAccounts = new Map<string, RunningAccount>();
+const accountStatusSinks = new Map<string, (patch: Omit<ChannelAccountSnapshot, "accountId">) => void>();
+const lastInboundChatIds = new Map<string, string>();
+const lastInboundTimes = new Map<string, number>();
+const sessionDeliveryTracker = new Map<string, Set<string>>();
+const sessionAccountTracker = new Map<string, string>();
 
 let pluginApi: OpenClawPluginApi | null = null;
-
-function extractChatIdFromSessionKey(sessionKey: string): string | undefined {
-  if (!sessionKey || !sessionKey.includes("lansenger")) return undefined;
-  const parts = sessionKey.split(":");
-  const last = parts[parts.length - 1];
-  if (last && last !== "main" && last !== "lansenger" && last.length > 1) return last;
-  return undefined;
-}
 
 export function stripOpenClawUuidSuffix(name: string): string {
   return name.replace(/---[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i, "");
@@ -132,11 +89,6 @@ async function startAccount(api: OpenClawPluginApi, accountId?: string | null): 
   }
 
   const key = account.appId || account.accountId || "__default__";
-
-  if (pendingConnections.has(key)) {
-    log.info(`skip auto-start: connection already in progress (key=${key})`);
-    return true;
-  }
   if (runningAccounts.has(key)) {
     const entry = runningAccounts.get(key)!;
     if (entry.client.isWsAlive()) {
@@ -148,9 +100,7 @@ async function startAccount(api: OpenClawPluginApi, accountId?: string | null): 
     runningAccounts.delete(key);
   }
 
-  pendingConnections.add(key);
-  try {
-    const client = makeClient(account, sdkLogger());
+  const client = makeClient(account, sdkLogger());
 
   const debounceApi = (api.runtime as any)?.channel?.debounce;
   const debounceMs = debounceApi ? resolveInboundDebounceMs({ cfg: api.config, channel: "lansenger" }) : 0;
@@ -168,6 +118,7 @@ async function startAccount(api: OpenClawPluginApi, accountId?: string | null): 
         await handleInbound(api, merged, account, key);
       },
     });
+    debounceMs;
     debouncer = { debounceMs: resolvedMs, enqueue: created.enqueue, flushKey: created.flushKey };
     log.info(`debounce enabled: debounceMs=${resolvedMs} key=${key}`);
   }
@@ -201,9 +152,6 @@ async function startAccount(api: OpenClawPluginApi, accountId?: string | null): 
   runningAccounts.set(key, { accountId: account.accountId, account, client, debouncer });
   log.info(`auto-started: key=${key} (accountId=${account.accountId})`);
   return true;
-  } finally {
-    pendingConnections.delete(key);
-  }
 }
 
 export function getLastInboundChatId(): string {
@@ -212,20 +160,6 @@ export function getLastInboundChatId(): string {
 }
 
 export function getLastInboundTime(): number | null {
-  for (const [, ts] of lastInboundTimes) return ts;
-  return null;
-}
-
-export function getLastInboundTimeByAccount(accountId: string): number | null {
-  for (const [key, ts] of lastInboundTimes) {
-    if (key === accountId) return ts;
-  }
-  // check by matching accountId within the entry key
-  for (const [key, ts] of lastInboundTimes) {
-    const entry = runningAccounts.get(key);
-    if (entry && (entry.accountId === accountId || entry.account.accountId === accountId || entry.account.appId === accountId)) return ts;
-  }
-  // single-account fallback
   for (const [, ts] of lastInboundTimes) return ts;
   return null;
 }
@@ -240,100 +174,47 @@ export function getRunningAccount(): ResolvedAccount | null {
   return null;
 }
 
-export function getRunningEntryBySessionKey(sessionKey: string): { client: LansengerClient; account: ResolvedAccount } | null {
-  const runningKey = sessionAccountMap.get(sessionKey);
-  if (runningKey) {
-    const entry = runningAccounts.get(runningKey);
-    if (entry) return { client: entry.client, account: entry.account };
-  }
-  return null;
-}
-
-export function getRunningEntryByAccount(accountId: string): { client: LansengerClient; account: ResolvedAccount } | null {
+export function getRunningClientByAccountId(accountId?: string | null): LansengerClient | null {
+  if (!accountId) return getRunningClient();
   for (const [key, entry] of runningAccounts) {
-    if (key === accountId || entry.accountId === accountId || entry.account.accountId === accountId || entry.account.appId === accountId) {
-      return { client: entry.client, account: entry.account };
+    if (entry.accountId === accountId || entry.account.appId === accountId) {
+      return entry.client;
     }
   }
-  // single-account fallback: if only one account is running, use it
-  const entries = Array.from(runningAccounts.values());
-  if (entries.length === 1 && entries[0]) {
-    return { client: entries[0].client, account: entries[0].account };
+  for (const [key, entry] of runningAccounts) {
+    if (key === accountId) return entry.client;
   }
   return null;
 }
 
-async function recoverPendingInboundContexts(api: OpenClawPluginApi): Promise<void> {
-  if (recoveryGuard) {
-    log.info("recovery: already performed in this process lifetime — skipping");
-    return;
-  }
-  recoveryGuard = true;
-
-  const pendingCount = inboundContextStore.size();
-  if (pendingCount === 0) return;
-
-  log.info(`recovery: found ${pendingCount} pending inbound context(s) — checking for interrupted sessions`);
-
-  const RECOVERY_NOTICE_ZH = "系统重启，正在重新处理您的请求，请稍候...";
-  const RECOVERY_NOTICE_EN = "System restarted. Your request is being reprocessed, please wait...";
-  const MAX_CONTEXT_AGE_MS = 5 * 60 * 1000;
-
-  const toDelete: string[] = [];
-  const notifiedChats = new Set<string>();
-
-  for (const [sessionKey, ctx] of inboundContextStore.entries()) {
-    const age = Date.now() - ctx.timestamp;
-    if (age > MAX_CONTEXT_AGE_MS) {
-      log.info(`recovery: context expired (age=${age}ms) for session=${sessionKey.slice(0, 32)} — discarding`);
-      toDelete.push(sessionKey);
-      continue;
+export function getRunningAccountByAccountId(accountId?: string | null): ResolvedAccount | null {
+  if (!accountId) return getRunningAccount();
+  for (const [key, entry] of runningAccounts) {
+    if (entry.accountId === accountId || entry.account.appId === accountId) {
+      return entry.account;
     }
-
-    log.info(`recovery: pending context session=${sessionKey.slice(0, 32)} chatId=${ctx.chatId} age=${age}ms ackMessageId=${ctx.ackMessageId ?? "none"}`);
-
-    // Send only one restart notice per chat to avoid duplicate messages
-    if (!notifiedChats.has(ctx.chatId)) {
-      notifiedChats.add(ctx.chatId);
-      try {
-        const account = resolveAccount(api.config, ctx.accountId ?? undefined);
-        const client = makeClient(account, sdkLogger());
-        const lang = client.getUserLang(ctx.chatId);
-        const noticeText = lang === "en" ? RECOVERY_NOTICE_EN : RECOVERY_NOTICE_ZH;
-
-        if (ctx.ackMessageId) {
-          try {
-            await client.revokeMessage([ctx.ackMessageId], "bot");
-            log.info(`recovery: revoked stale ack messageId=${ctx.ackMessageId}`);
-          } catch (e: unknown) {
-            log.warn(`recovery: failed to revoke ack messageId=${ctx.ackMessageId} — ${e instanceof Error ? e.message : String(e)}`);
-          }
-        }
-
-        await client.sendFormatText(ctx.chatId, noticeText);
-        log.info(`recovery: sent restart notice to chatId=${ctx.chatId}`);
-      } catch (e: unknown) {
-        log.error(`recovery: failed to send notice for session=${sessionKey.slice(0, 32)} — ${e instanceof Error ? e.message : String(e)}`);
-      }
-    } else {
-      log.info(`recovery: already notified chatId=${ctx.chatId}, skipping duplicate notice for session=${sessionKey.slice(0, 32)}`);
-    }
-
-    toDelete.push(sessionKey);
   }
-
-  for (const key of toDelete) {
-    inboundContextStore.delete(key);
+  for (const [key, entry] of runningAccounts) {
+    if (key === accountId) return entry.account;
   }
+  return null;
+}
+
+export function setSessionAccountId(sessionKey: string, accountId: string): void {
+  sessionAccountTracker.set(sessionKey, accountId);
+}
+
+export function getSessionAccountId(sessionKey: string): string | undefined {
+  return sessionAccountTracker.get(sessionKey);
 }
 
 export function startLansengerGateway(api: OpenClawPluginApi): void {
   pluginApi = api;
-  const g = (globalThis as any).__lansenger_channel ?? {};
-  g.getRunningClient = getRunningClient;
-  g.getRunningAccount = getRunningAccount;
-  g.getLastInboundChatId = getLastInboundChatId;
-  (globalThis as any).__lansenger_channel = g;
+  (globalThis as any).__lansenger_channel = {
+    getRunningClient,
+    getRunningAccount,
+    getLastInboundChatId,
+  };
 
   if (api.on) {
     api.on("message_sending", (event: any) => {
@@ -354,32 +235,10 @@ export function startLansengerGateway(api: OpenClawPluginApi): void {
           log.info(`reply_payload_sending: approval payload detected — execApproval=${payload.channelData.execApproval}`);
         }
 
-        if (sessionKey && !activeDeliverySessions.has(sessionKey) && payload?.text?.trim()) {
-          const runningEntry = getRunningEntryByAccount("");
-          const client = runningEntry?.client ?? getRunningClient();
-          if (client) {
-            const to = payload.to ?? payload.chatId ?? extractChatIdFromSessionKey(sessionKey) ?? "";
-            if (to) {
-              log.info(`reply_payload_sending: fallback delivery for session=${sessionKey.slice(0, 32)} (no active inbound.run) — sending directly to=${to}`);
-              try {
-                deliverReply(client, to, payload.text);
-              } catch (e: unknown) {
-                log.error(`reply_payload_sending fallback delivery failed — ${e instanceof Error ? e.message : String(e)}`);
-              }
-            } else {
-              log.warn(`reply_payload_sending: fallback delivery skipped — cannot resolve target for session=${sessionKey.slice(0, 32)}`);
-            }
-          } else {
-            log.warn(`reply_payload_sending: fallback delivery skipped — no running client available`);
-          }
-        }
-
         return void 0;
       }
     });
   }
-
-  recoverPendingInboundContexts(api);
 
   const rt = api.runtime as any;
   const rtKeys = rt ? Object.keys(rt) : [];
@@ -496,46 +355,52 @@ export function startLansengerGateway(api: OpenClawPluginApi): void {
     const sessText = sessionId ?? "unknown";
     const sigText = signature ?? (detectedLang === "zh" ? "OpenClaw 安全审批" : "OpenClaw Security");
 
-    const zhCard: AppCardData = {
-      headTitle: "⚠️ 危险命令审批",
-      isDynamic: true,
-      headStatusInfo: {
-        description: '<div style="color:#FFB116;text-align:left">待审批</div>',
-        colour: "#FFB116",
+    const zhCard: ApproveCardData = {
+      head: {
+        title: "⚠️ 危险命令审批",
+        headStatus: {
+          describe: "待审批",
+          colour: "#FFB116",
+        },
       },
-      bodyTitle: "危险命令审批请求",
-      bodyContent: `<div style="color:#000;font-size:13pt;text-align:left;text-indent:0em">会话 ID: ${sessText}\n命令:\n${cmdText}</div>`,
-      signature: sigText,
-      fields: [
-        { key: "执行一次", value: "/approve" },
-        { key: "本会话有效", value: "/approve session" },
-        { key: "拒绝执行", value: "/deny" },
+      body: {
+        title: "危险命令审批请求",
+        content: {
+          formatType: 1,
+          text: `会话 ID: ${sessText}\n命令:\n${cmdText}`,
+        },
+      },
+      buttons: [
+        { text: "执行一次", buttonTheme: 1 },
+        { text: "本会话有效", buttonTheme: 2 },
+        { text: "拒绝执行", buttonTheme: 4 },
       ],
-      cardLink: "",
-      pcCardLink: "",
     };
 
-    const enCard: AppCardData = {
-      headTitle: "⚠️ Dangerous Command Approval",
-      isDynamic: true,
-      headStatusInfo: {
-        description: '<div style="color:#FFB116;text-align:left">Pending</div>',
-        colour: "#FFB116",
+    const enCard: ApproveCardData = {
+      head: {
+        title: "⚠️ Dangerous Command Approval",
+        headStatus: {
+          describe: "Pending",
+          colour: "#FFB116",
+        },
       },
-      bodyTitle: "Dangerous Command Approval Request",
-      bodyContent: `<div style="color:#000;font-size:13pt;text-align:left;text-indent:0em">Session: ${sessText}\nCommand:\n${cmdText}</div>`,
-      signature: sigText,
-      fields: [
-        { key: "Approve Once", value: "/approve" },
-        { key: "This Session", value: "/approve session" },
-        { key: "Deny", value: "/deny" },
+      body: {
+        title: "Dangerous Command Approval Request",
+        content: {
+          formatType: 1,
+          text: `Session: ${sessText}\nCommand:\n${cmdText}`,
+        },
+      },
+      buttons: [
+        { text: "Approve Once", buttonTheme: 1 },
+        { text: "This Session", buttonTheme: 2 },
+        { text: "Deny", buttonTheme: 4 },
       ],
-      cardLink: "",
-      pcCardLink: "",
     };
 
     const card = detectedLang === "zh" ? zhCard : enCard;
-    const result = await client.sendAppCard(chatId, card);
+    const result = await client.sendApproveCard(chatId, card);
     if (!result.success) {
       opts.respond(false, undefined, errorShape("UNAVAILABLE", result.error ?? "Failed to send card"));
       return;
@@ -571,11 +436,29 @@ export function startLansengerGateway(api: OpenClawPluginApi): void {
     opts.respond(true, { messageId, status, lang: detectedLang, rawResponse: result.rawResponse });
   });
 
-  // autoStart only once per process — subsequent module reloads are covered
-  // by gatewayStartAccount which waits on the existing connection.
-  if (!g._gatewayStarted) {
-    g._gatewayStarted = true;
-    autoStart(api, accounts);
+  autoStart(api, accounts);
+}
+
+/**
+ * Auto-configure approvals.exec.allowFrom.lansenger from the bot owner's
+ * homeChannel when no explicit allowFrom is set. This ensures the bot
+ * owner can approve exec commands without manual config.
+ */
+async function autoConfigureApprovalAllowFrom(cfg: any, account: ResolvedAccount): Promise<void> {
+  try {
+    const execApprovals = cfg?.approvals?.exec;
+    const existing = execApprovals?.allowFrom?.lansenger;
+    if (existing && existing.length > 0) return; // already configured
+    const ownerId = account.homeChannel;
+    if (!ownerId) return;
+    execSync(
+      `openclaw config set approvals.exec.allowFrom.lansenger '["${ownerId}"]'`,
+      { stdio: "pipe", timeout: 5000 },
+    );
+    log.info(`autoConfigureApprovalAllowFrom: set approvals.exec.allowFrom.lansenger = ["${ownerId}"]`);
+  } catch (e: any) {
+    // Not fatal — user can still use /approve via resolveLansengerApprovers fallback
+    log.warn(`autoConfigureApprovalAllowFrom: ${e.message}`);
   }
 }
 
@@ -586,102 +469,77 @@ export async function gatewayStartAccount(ctx: ChannelGatewayContext<ResolvedAcc
 
   accountStatusSinks.set(key, statusSink);
 
-  // If WS is already alive (from a previous autoStart or gatewayStartAccount that
-  // survived a gatewayStopAccount skip), just report connected and return.
   if (runningAccounts.has(key)) {
     const entry = runningAccounts.get(key)!;
-    if (entry.client.isWsAlive()) {
-      log.info(`gateway: WS alive, reporting connected (key=${key})`);
-        return waitUntilAbort(ctx.abortSignal, () => {
-        if (!entry.client.isWsAlive()) {
-          runningAccounts.delete(key);
-          accountStatusSinks.delete(key);
-        }
-        log.info(`gateway: stopped monitoring (key=${key})`);
-      });
-    }
-    log.info(`gateway: disconnecting stale WS for reconnection (key=${key})`);
+    log.info(`gateway: disconnecting existing WS for reconnection with updated config (key=${key})`);
     try { await entry.client.disconnect(); } catch {}
     runningAccounts.delete(key);
   }
 
-  // Wait for a pending autoStart to finish.
-  if (pendingConnections.has(key)) {
-    let waited = 0;
-    while (pendingConnections.has(key) && waited < 30_000) {
-      await new Promise(r => setTimeout(r, 200));
-      waited += 200;
-    }
-    if (runningAccounts.has(key)) {
-      const entry = runningAccounts.get(key)!;
-      if (entry.client.isWsAlive()) {
-        log.info(`gateway: pending connection ready, monitoring (key=${key})`);
-        return waitUntilAbort(ctx.abortSignal, () => {
-          if (!entry.client.isWsAlive()) {
-            runningAccounts.delete(key);
-            accountStatusSinks.delete(key);
-          }
-          log.info(`gateway: stopped monitoring (key=${key})`);
-        });
-      }
-    }
-    log.info(`gateway: pending connection timed out or WS dead, creating fresh (key=${key})`);
+  const api = pluginApi!;
+  const client = makeClient(account, sdkLogger());
+
+  const debounceApi = (api.runtime as any)?.channel?.debounce;
+  const debounceMs = debounceApi ? resolveInboundDebounceMs({ cfg: api.config, channel: "lansenger" }) : 0;
+  let debouncer: RunningAccount["debouncer"] = undefined;
+
+  if (debounceApi && debounceMs > 0) {
+    const { debounceMs: resolvedMs, debouncer: created } = createChannelInboundDebouncer({
+      cfg: api.config,
+      channel: "lansenger",
+      buildKey: (event: InboundEvent) => `${event.chatId}:${event.senderId}`,
+      shouldDebounce: (event: InboundEvent) =>
+        shouldDebounceTextInbound({ text: event.text, cfg: api.config, hasMedia: !!event.mediaPaths?.length }),
+      onFlush: async (events: InboundEvent[]) => {
+        const merged = mergeInboundEvents(events);
+        await handleInbound(api, merged, account, key);
+      },
+    });
+    debouncer = { debounceMs: resolvedMs, enqueue: created.enqueue, flushKey: created.flushKey };
+    log.info(`gateway debounce enabled: debounceMs=${resolvedMs} key=${key}`);
   }
 
-  pendingConnections.add(key);
-  try {
-    const api = pluginApi!;
-    const client = makeClient(account, sdkLogger());
-
-    const debounceApi = (api.runtime as any)?.channel?.debounce;
-    const debounceMs = debounceApi ? resolveInboundDebounceMs({ cfg: api.config, channel: "lansenger" }) : 0;
-    let debouncer: RunningAccount["debouncer"] = undefined;
-
-    if (debounceApi && debounceMs > 0) {
-      const { debounceMs: resolvedMs, debouncer: created } = createChannelInboundDebouncer({
-        cfg: api.config,
-        channel: "lansenger",
-        buildKey: (event: InboundEvent) => `${event.chatId}:${event.senderId}`,
-        shouldDebounce: (event: InboundEvent) =>
-          shouldDebounceTextInbound({ text: event.text, cfg: api.config, hasMedia: !!event.mediaPaths?.length }),
-        onFlush: async (events: InboundEvent[]) => {
-          const merged = mergeInboundEvents(events);
-          await handleInbound(api, merged, account, key);
-        },
-      });
-      debouncer = { debounceMs: resolvedMs, enqueue: created.enqueue, flushKey: created.flushKey };
-      log.info(`gateway debounce enabled: debounceMs=${resolvedMs} key=${key}`);
+  client.setMessageHandler(async (event: InboundEvent) => {
+    if (debouncer) {
+      await debouncer.enqueue(event);
+    } else {
+      await handleInbound(api, event, account, key);
     }
+  });
+  client.setWsLifecycleCallbacks({
+    onOpen: () => {
+      statusSink({ connected: true, lastConnectedAt: Date.now(), lastError: null });
+      log.info(`gateway: WS connected (key=${key})`);
+    },
+    onClose: () => {
+      statusSink({ connected: false });
+      log.info(`gateway: WS disconnected (key=${key})`);
+    },
+  });
 
-    client.setMessageHandler(async (event: InboundEvent) => {
-      if (debouncer) {
-        await debouncer.enqueue(event);
-      } else {
-        await handleInbound(api, event, account, key);
-      }
+  const connected = await client.connect();
+  if (!connected) {
+    statusSink({ connected: false, lastError: "Failed to connect to Lansenger WebSocket" });
+    throw new Error("Failed to connect to Lansenger WebSocket");
+  }
+
+  runningAccounts.set(key, { accountId: ctx.accountId, account, client, debouncer });
+  statusSink({ connected: true, lastConnectedAt: Date.now(), lastError: null });
+  log.info(`gateway: started (key=${key} accountId=${ctx.accountId})`);
+
+  // Register native approval runtime context so the framework can route
+  // approval cards through our nativeRuntime.deliverPending path.
+  if (ctx.channelRuntime) {
+    registerChannelRuntimeContext({
+      channelRuntime: ctx.channelRuntime,
+      channelId: "lansenger",
+      accountId: ctx.accountId,
+      capability: CHANNEL_APPROVAL_NATIVE_RUNTIME_CONTEXT_CAPABILITY,
+      context: {},
+      abortSignal: ctx.abortSignal,
     });
-    client.setWsLifecycleCallbacks({
-      onOpen: () => {
-        statusSink({ connected: true, lastConnectedAt: Date.now(), lastError: null });
-        log.info(`gateway: WS connected (key=${key})`);
-      },
-      onClose: () => {
-        statusSink({ connected: false });
-        log.info(`gateway: WS disconnected (key=${key})`);
-      },
-    });
-
-    const connected = await client.connect();
-    if (!connected) {
-      statusSink({ connected: false, lastError: "Failed to connect to Lansenger WebSocket" });
-      throw new Error("Failed to connect to Lansenger WebSocket");
-    }
-
-    runningAccounts.set(key, { accountId: ctx.accountId, account, client, debouncer });
-    statusSink({ connected: true, lastConnectedAt: Date.now(), lastError: null });
-    log.info(`gateway: started (key=${key} accountId=${ctx.accountId})`);
-  } finally {
-    pendingConnections.delete(key);
+    // Auto-configure approvals.exec.allowFrom.lansenger from homeChannel if not set
+    await autoConfigureApprovalAllowFrom(ctx.cfg, account);
   }
 
   return waitUntilAbort(ctx.abortSignal, async () => {
@@ -699,17 +557,11 @@ export async function gatewayStopAccount(ctx: ChannelGatewayContext<ResolvedAcco
   const key = ctx.account.appId || ctx.accountId || "__default__";
   const entry = runningAccounts.get(key);
   if (entry) {
-    // Only stop if the WS is truly dead — never kill a live connection
-    // created by autoStart / startAccount.
-    if (!entry.client.isWsAlive()) {
-      await entry.client.disconnect();
-      runningAccounts.delete(key);
-      accountStatusSinks.delete(key);
-      log.info(`gateway: stopAccount (key=${key})`);
-    } else {
-      log.info(`gateway: stopAccount skipped — WS still alive (key=${key})`);
-    }
+    await entry.client.disconnect();
+    runningAccounts.delete(key);
   }
+  accountStatusSinks.delete(key);
+  log.info(`gateway: stopAccount (key=${key})`);
 }
 
 function autoStart(api: OpenClawPluginApi, accounts?: Record<string, any>): void {
@@ -732,39 +584,6 @@ function autoStart(api: OpenClawPluginApi, accounts?: Record<string, any>): void
   }
 }
 
-function resolveAutoMentionReply(api: OpenClawPluginApi, groupId?: string, accountId?: string): boolean {
-  const cfg = api.config as any;
-  const ch = cfg?.channels?.lansenger ?? {};
-  // per-group under account (highest priority)
-  if (groupId && accountId && ch.accounts?.[accountId]?.groups?.[groupId]?.autoMentionReply !== undefined)
-    return ch.accounts[accountId].groups[groupId].autoMentionReply;
-  // per-group under section
-  if (groupId && ch.groups?.[groupId]?.autoMentionReply !== undefined) return ch.groups[groupId].autoMentionReply;
-  // per-account
-  if (accountId && ch.accounts?.[accountId]?.autoMentionReply !== undefined) return ch.accounts[accountId].autoMentionReply;
-  // section default
-  return ch.autoMentionReply ?? false;
-}
-
-function resolveAutoQuoteReply(api: OpenClawPluginApi, groupId?: string, accountId?: string): boolean {
-  const cfg = api.config as any;
-  const ch = cfg?.channels?.lansenger ?? {};
-  // account-level per-group override (highest priority)
-  if (groupId && accountId && ch.accounts?.[accountId]?.groups?.[groupId]?.autoQuoteReply !== undefined) {
-    return ch.accounts[accountId].groups[groupId].autoQuoteReply;
-  }
-  // section-level per-group override
-  if (groupId && ch.groups?.[groupId]?.autoQuoteReply !== undefined) {
-    return ch.groups[groupId].autoQuoteReply;
-  }
-  // per-account override
-  if (accountId && ch.accounts?.[accountId]?.autoQuoteReply !== undefined) {
-    return ch.accounts[accountId].autoQuoteReply;
-  }
-  // section default
-  return ch.autoQuoteReply ?? false;
-}
-
 async function handleInbound(
   api: OpenClawPluginApi,
   event: InboundEvent,
@@ -776,43 +595,22 @@ async function handleInbound(
   const turnMediaDelivered = new Set<string>();
 
   if (chatType === "dm") {
-    const dmPolicy = (account.dmPolicy ?? "pairing") as "pairing" | "allowlist" | "open" | "disabled";
+    const dmPolicy = account.dmPolicy ?? "pairing";
     const configAllowFrom = account.allowFrom ?? [];
     const pairing = (api.runtime as any)?.channel?.pairing;
-
-    let ingress: any;
+    let storeAllowFrom: string[] = [];
     try {
-      ingress = await resolveChannelMessageIngress({
-        channelId: "lansenger",
-        accountId: account.accountId ?? DEFAULT_ACCOUNT_ID,
-        identity: lansengerIngressIdentity,
-        subject: { stableId: event.senderId },
-        conversation: { kind: "direct", id: event.chatId },
-        event: { kind: "message", authMode: "inbound", mayPair: true, originSubject: { identifiers: [{ opaqueId: event.senderId, kind: "platform-id" as any, sensitivity: "normal", value: event.senderId }] } },
-        policy: { dmPolicy, groupPolicy: "allowlist" },
-        allowFrom: configAllowFrom,
-        useDefaultPairingStore: true,
-      });
-    } catch (e: unknown) {
-      log.error(`inbound: ingress resolution failed — ${e instanceof Error ? e.message : String(e)}, falling back to manual DM check`);
-    }
-
-let senderAllowed = ingress?.senderAccess?.allowed ?? false;
-    if (!senderAllowed && !ingress) {
-      let storeAllowFrom: string[] = [];
-      try {
-        if (pairing?.readAllowFromStore) {
-          storeAllowFrom = await pairing.readAllowFromStore({ channel: "lansenger", accountId: account.accountId ?? undefined });
-        }
-      } catch (e: unknown) {
-        log.error(`inbound: readAllowFromStore failed — ${e instanceof Error ? e.message : String(e)}`);
+      if (pairing?.readAllowFromStore) {
+        storeAllowFrom = await pairing.readAllowFromStore({ channel: "lansenger", accountId: account.accountId ?? undefined });
       }
-      const effectiveAllowFrom = [...new Set([...configAllowFrom, ...storeAllowFrom])];
-      senderAllowed = effectiveAllowFrom.some((id: string) => {
-        const bare = id.replace(/^lansenger:/, "");
-        return bare === event.senderId || id === event.senderId;
-      });
+    } catch (e: unknown) {
+      log.error(`inbound: readAllowFromStore failed — ${e instanceof Error ? e.message : String(e)}`);
     }
+    const effectiveAllowFrom = [...new Set([...configAllowFrom, ...storeAllowFrom])];
+    const senderAllowed = effectiveAllowFrom.some((id: string) => {
+      const bare = id.replace(/^lansenger:/, "");
+      return bare === event.senderId || id === event.senderId;
+    });
 
     if (!senderAllowed) {
       if (dmPolicy === "pairing" && pairing?.upsertPairingRequest) {
@@ -838,89 +636,44 @@ let senderAllowed = ingress?.senderAccess?.allowed ?? false;
         }
         return;
       }
-      log.info(`inbound: dm dropped — sender=${event.senderId} not allowed (dmPolicy=${dmPolicy})`);
-      return;
+      if (dmPolicy === "disabled") {
+        log.info(`inbound: dm dropped — dmPolicy=disabled sender=${event.senderId}`);
+        return;
+      }
+      if (dmPolicy === "allowlist") {
+        log.info(`inbound: dm dropped — sender=${event.senderId} not in allowFrom (dmPolicy=allowlist)`);
+        return;
+      }
     }
   }
 
   if (event.isGroup) {
-    let ingress: any;
-    let requireMention = account.requireMention ?? true;
-
-    // Framework-native group access check via resolveGroupPolicy.
-    // Group access is controlled by channels.lansenger.groups.<chatId>.enabled
-    // and section/account-level channels.lansenger.groupPolicy (open/allowlist/disabled).
     try {
-      const resolved = api.runtime.channel.groups.resolveGroupPolicy({
+      const groupPolicy = api.runtime.channel.groups.resolveGroupPolicy({
         cfg: api.config,
         channel: "lansenger",
         groupId: event.chatId,
         accountId: account.accountId,
       });
-      if (!resolved.allowed) {
-        log.info(`inbound: group dropped — not allowed (chatId=${event.chatId})`);
+      if (!groupPolicy.allowed) {
+        log.info(`inbound: group dropped — groupPolicy not allowed for chatId=${event.chatId}`);
         return;
       }
-      // Also resolve per-group requireMention
-      try {
-        requireMention = api.runtime.channel.groups.resolveRequireMention({
-          cfg: api.config,
-          channel: "lansenger",
-          groupId: event.chatId,
-          accountId: account.accountId,
-        });
-      } catch {}
-    } catch {}
-
-    try {
-      ingress = await resolveChannelMessageIngress({
-        channelId: "lansenger",
-        accountId: account.accountId ?? DEFAULT_ACCOUNT_ID,
-        identity: lansengerIngressIdentity,
-        subject: { stableId: event.senderId },
-        conversation: { kind: "group", id: event.chatId },
-        event: { kind: "message", authMode: "inbound", mayPair: false, originSubject: { identifiers: [{ opaqueId: event.senderId, kind: "platform-id" as any, sensitivity: "normal", value: event.senderId }] } },
-        policy: { dmPolicy: "pairing", groupPolicy: "open", activation: { requireMention, allowTextCommands: false } },
-        mentionFacts: { canDetectMention: true, wasMentioned: event.isAtMe ?? false, hasAnyMention: event.isAtAll ?? false },
+      const requireMention = api.runtime.channel.groups.resolveRequireMention({
+        cfg: api.config,
+        channel: "lansenger",
+        groupId: event.chatId,
+        accountId: account.accountId,
       });
-      if (!ingress?.senderAccess?.allowed) {
-        log.info(`inbound: group dropped — sender not allowed for chatId=${event.chatId}`);
+      const atMe = event.isAtMe ?? false;
+      const atAll = event.isAtAll ?? false;
+      log.info(`inbound: group allowed — chatId=${event.chatId} requireMention=${requireMention} isAtMe=${atMe} isAtAll=${atAll}`);
+      if (requireMention && !atMe && !atAll) {
+        log.info(`inbound: group dropped — requireMention but bot not @mentioned`);
         return;
       }
-      if (ingress?.activationAccess?.shouldSkip) {
-        log.info(`inbound: group dropped — requireMention=${requireMention} but bot not @mentioned`);
-        return;
-      }
-      log.info(`inbound: group allowed — chatId=${event.chatId} requireMention=${requireMention} senderAllowed=${ingress?.senderAccess?.allowed}`);
     } catch (e: unknown) {
-      log.error(`inbound: group ingress resolution failed — ${e instanceof Error ? e.message : String(e)}, falling back to manual check`);
-      try {
-        let fallbackRequireMention = requireMention;
-        try {
-          fallbackRequireMention = api.runtime.channel.groups.resolveRequireMention({
-            cfg: api.config,
-            channel: "lansenger",
-            groupId: event.chatId,
-            accountId: account.accountId,
-          });
-        } catch {}
-        const groupPolicy = api.runtime.channel.groups.resolveGroupPolicy({
-          cfg: api.config,
-          channel: "lansenger",
-          groupId: event.chatId,
-          accountId: account.accountId,
-        });
-        if (!groupPolicy.allowed) {
-          log.info(`inbound: group dropped — groupPolicy not allowed for chatId=${event.chatId}`);
-          return;
-        }
-        if (fallbackRequireMention && !(event.isAtMe ?? false)) {
-          log.info(`inbound: group dropped — fallback requireMention=${fallbackRequireMention} but bot not @mentioned for chatId=${event.chatId}`);
-          return;
-        }
-      } catch (e2: unknown) {
-        log.error(`inbound: group policy check also failed — ${e2 instanceof Error ? e2.message : String(e2)}`);
-      }
+      log.error(`inbound: group policy check failed — ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 
@@ -944,103 +697,95 @@ let senderAllowed = ingress?.senderAccess?.allowed ?? false;
   const replyTo = event.chatId;
   lastInboundChatIds.set(runningKey, event.chatId);
   lastInboundTimes.set(runningKey, Date.now());
-  if (sessionKey) sessionAccountMap.set(sessionKey, runningKey);
+  if (account.accountId) {
+    setSessionAccountId(sessionKey, account.accountId);
+  }
 
   const sessionDeliveredSet = sessionDeliveryTracker.get(sessionKey) ?? new Set<string>();
   sessionDeliveryTracker.set(sessionKey, sessionDeliveredSet);
-  activeDeliverySessions.add(sessionKey);
 
   log.info(`inbound: ${chatType} from=${event.senderId} bot=${account.appId.slice(0, 20)}... agent=${agentId} session=${sessionKey.slice(0, 32)}`);
 
-  // Strip trailing @mention from group chat messages (e.g. "/models@bot" -> "/models").
-  // Lansenger group chat text includes @botName when the bot is @mentioned,
-  // which breaks slash command detection because isControlCommandMessage
-  // requires text to start with a registered command alias.
-  if (event.isGroup && event.isAtMe) {
-    const ourBotId = event.rawMessage?.botId as string | undefined;
-    const ourMention = ourBotId ? event.mentionedBots?.find(b => b.botId === ourBotId) : undefined;
-    if (ourMention) {
-      const atName = `@${ourMention.botName}`;
-      if (event.text.endsWith(atName)) {
-        event.text = event.text.slice(0, -atName.length).trimEnd();
-      }
-    }
-  }
-
   let agentText = event.text;
-
-  // Prepend referenced/quoted message as context
-  if (event.referenceMsg) {
-    const refLabel = event.referenceMsg.fromType === 1 ? "机器人" : "员工";
-    const refLine = `\u2139 引用${refLabel}(${event.referenceMsg.from})的消息: "${event.referenceMsg.content}"`;
-    if (!agentText.trim()) {
-      agentText = refLine;
-    } else {
-      agentText = `${refLine}\n${agentText}`;
-    }
-  }
-
   if (event.mediaPaths?.length) {
     agentText = `${event.text}\n\nAttached files saved locally — use the read tool to view:\n${event.mediaPaths.map((p, i) => `${i + 1}. ${p}`).join("\n")}`;
+  }
+  if (event.referenceMsg) {
+    try {
+      const refEntry = runningAccounts.get(runningKey);
+      const refClient = refEntry?.client ?? makeClient(account, sdkLogger());
+      const refText = await refClient.extractReferenceText(event.referenceMsg);
+      if (refText) {
+        agentText = `${agentText}\n\n${refText}`;
+      }
+    } catch (e: unknown) {
+      log.error(`inbound: reference message extraction failed — ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 
   const rawText = event.text;
   let allowTextCommands = false;
+  let shouldComputeAuth = false;
   let hasCommand = false;
-  let cmdIngress: ResolvedChannelMessageIngress | undefined;
   try {
     allowTextCommands = api.runtime.channel.commands.shouldHandleTextCommands({
       cfg: api.config,
       surface: "lansenger",
     });
+    shouldComputeAuth = api.runtime.channel.commands.shouldComputeCommandAuthorized(rawText, api.config);
     hasCommand = api.runtime.channel.commands.isControlCommandMessage(rawText, api.config);
   } catch (e: unknown) {
     log.error(`inbound: command detection failed — ${e instanceof Error ? e.message : String(e)}, skipping command checks`);
   }
 
-  if (allowTextCommands && hasCommand) {
-    try {
-      // merge global commands.ownerAllowFrom for "lansenger:"-prefixed entries
-      const globalAllowFrom = (api.config as any)?.commands?.ownerAllowFrom as Array<string | number> | undefined;
-      let commandOwnerAllowFrom: string[] | undefined;
-      if (Array.isArray(globalAllowFrom) && globalAllowFrom.length > 0) {
-        const entries: string[] = [];
-        for (const entry of globalAllowFrom) {
-          const trimmed = String(entry ?? "").trim();
-          if (!trimmed) continue;
-          const idx = trimmed.indexOf(":");
-          if (idx > 0 && trimmed.slice(0, idx).toLowerCase() === "lansenger") {
-            const remainder = trimmed.slice(idx + 1).trim();
-            if (remainder) entries.push(remainder);
-            continue;
-          }
-          entries.push(trimmed);
+  let commandAuthorized: boolean | undefined = undefined;
+
+  if (shouldComputeAuth) {
+    const commandsCfg = (api.config as any).commands ?? {};
+    const useAccessGroups = commandsCfg.useAccessGroups !== false;
+
+    const explicitAllowFrom: string[] | undefined = (() => {
+      const af = commandsCfg.allowFrom;
+      if (!af || typeof af !== "object") return undefined;
+      return af["lansenger"] ?? af["*"] ?? undefined;
+    })();
+
+    const ownerAllowFrom: string[] = commandsCfg.ownerAllowFrom ?? [];
+    const senderId = event.senderId;
+
+    const senderMatches = (id: string) => {
+      const bare = id.replace(/^lansenger:/, "");
+      return bare === senderId || id === senderId;
+    };
+
+    if (explicitAllowFrom) {
+      commandAuthorized = explicitAllowFrom.some(senderMatches);
+    } else {
+      const channelAllowFrom = account.allowFrom;
+      const noAuthorizersConfigured = ownerAllowFrom.length === 0 && channelAllowFrom.length === 0;
+      const dmPolicyIsPairing = (account.dmPolicy ?? "pairing") === "pairing";
+      if (noAuthorizersConfigured && dmPolicyIsPairing) {
+        commandAuthorized = undefined;
+      } else {
+        try {
+          commandAuthorized = api.runtime.channel.commands.resolveCommandAuthorizedFromAuthorizers({
+            useAccessGroups,
+            authorizers: [
+              { configured: ownerAllowFrom.length > 0, allowed: ownerAllowFrom.some(senderMatches) },
+              { configured: channelAllowFrom.length > 0, allowed: channelAllowFrom.some(senderMatches) },
+            ],
+          });
+        } catch (e: unknown) {
+          log.error(`inbound: resolveCommandAuthorizedFromAuthorizers failed — ${e instanceof Error ? e.message : String(e)}`);
+          commandAuthorized = undefined;
         }
-        if (entries.length > 0) commandOwnerAllowFrom = entries;
       }
-      cmdIngress = await resolveChannelMessageIngress({
-        channelId: "lansenger",
-        accountId: account.accountId ?? DEFAULT_ACCOUNT_ID,
-        identity: lansengerIngressIdentity,
-        subject: { stableId: event.senderId },
-        conversation: { kind: chatType as "direct" | "group", id: event.chatId },
-        event: { kind: "slash-command", authMode: "command", mayPair: false },
-        policy: {
-          dmPolicy: (account.dmPolicy ?? "pairing") as "pairing" | "allowlist" | "open" | "disabled",
-          groupPolicy: (account.groupPolicy ?? "open") as "allowlist" | "open" | "disabled",
-          command: { useAccessGroups: true, allowTextCommands, hasControlCommand: true },
-        },
-        command: commandOwnerAllowFrom ? { allowTextCommands, hasControlCommand: true, commandOwnerAllowFrom } : undefined,
-        allowFrom: account.allowFrom ?? [],
-        useDefaultPairingStore: true,
-      });
-      if (!cmdIngress?.commandAccess?.authorized) {
-        log.info(`inbound: command blocked — sender=${event.senderId} not authorized: ${rawText.slice(0, 60)}`);
-        return;
-      }
-    } catch (e: unknown) {
-      log.error(`inbound: command ingress resolution failed — ${e instanceof Error ? e.message : String(e)}, allowing by default`);
     }
+  }
+
+  if (allowTextCommands && hasCommand && commandAuthorized !== true) {
+    log.info(`inbound: command blocked — sender=${event.senderId} not authorized: ${rawText.slice(0, 60)}`);
+    return;
   }
 
   let ackMessageId: string | undefined = undefined;
@@ -1059,16 +804,6 @@ let senderAllowed = ingress?.senderAccess?.allowed ?? false;
       log.error(`inbound: ack message send failed — ${e instanceof Error ? e.message : String(e)}`);
     }
   }
-
-  inboundContextStore.set(sessionKey, {
-    chatId: event.chatId,
-    sessionKey,
-    agentId,
-    accountId: account.accountId,
-    runningKey,
-    ackMessageId,
-    timestamp: Date.now(),
-  });
 
   try {
     log.info(`inbound.run starting: sessionKey=${sessionKey} agentId=${agentId} accountId=${account.accountId}`);
@@ -1104,17 +839,22 @@ let senderAllowed = ingress?.senderAccess?.allowed ?? false;
               Body: event.text,
               BodyForAgent: agentText,
               CommandBody: rawText,
-              CommandAuthorized: cmdIngress?.commandAccess?.authorized,
+              CommandAuthorized: commandAuthorized,
               CommandSource: "text",
               From: event.senderId,
               FromName: event.userName,
+              FromType: event.fromType,
               SessionKey: sessionKey,
               ChatType: chatType,
+              ChatName: event.chatName,
+              GroupName: event.groupName,
+              IsGroup: event.isGroup,
+              IsAtMe: event.isAtMe,
+              IsAtAll: event.isAtAll,
               Channel: "lansenger",
               Provider: "lansenger",
               Surface: "lansenger",
               To: replyTo,
-              ReferenceMsg: event.referenceMsg ?? undefined,
             },
             recordInboundSession: api.runtime.channel.session.recordInboundSession,
             dispatchReplyWithBufferedBlockDispatcher: api.runtime.channel.reply.dispatchReplyWithBufferedBlockDispatcher,
@@ -1130,20 +870,10 @@ let senderAllowed = ingress?.senderAccess?.allowed ?? false;
                 const turnTextKey = text?.trim() ? `${text.trim().slice(0, 80)}:${text.trim().length}` : "";
                 const sessionTextKey = turnTextKey ? `t:${sessionKey}:${turnTextKey}` : "";
 
-                const autoMention = event.isGroup && resolveAutoMentionReply(api, event.chatId, (account as any).accountId);
-                const reminder: ReminderParams | undefined = autoMention && event.senderId
-                  ? (event.senderFromType === 1
-                    ? { botIds: [event.senderId] }
-                    : { userIds: [event.senderId] })
-                  : undefined;
-
-                const autoQuote = resolveAutoQuoteReply(api, event.isGroup ? event.chatId : undefined, (account as any).accountId);
-                const refMsgId = autoQuote ? event.messageId : undefined;
-
                 if (text?.trim() && !turnTextDelivered.has(turnTextKey) && !sessionDeliveredSet.has(sessionTextKey)) {
                   turnTextDelivered.add(turnTextKey);
                   sessionDeliveredSet.add(sessionTextKey);
-                  const result = await deliverReply(client, to, text, reminder, refMsgId);
+                  const result = await deliverReply(client, to, text);
                   if (result.messageId) messageIds.push(result.messageId);
                 }
 
@@ -1196,8 +926,6 @@ let senderAllowed = ingress?.senderAccess?.allowed ?? false;
       },
     } as any);
     log.info(`inbound.run completed: sessionKey=${sessionKey}`);
-    activeDeliverySessions.delete(sessionKey);
-    inboundContextStore.delete(sessionKey);
     if (ackMessageId && account.revokeAckMessage) {
       try {
         const entry = runningAccounts.get(runningKey);
@@ -1210,8 +938,6 @@ let senderAllowed = ingress?.senderAccess?.allowed ?? false;
     }
   } catch (e: unknown) {
     log.error(`inbound.run failed: ${e instanceof Error ? e.message : String(e)}`);
-    activeDeliverySessions.delete(sessionKey);
-    inboundContextStore.delete(sessionKey);
     if (ackMessageId && account.revokeAckMessage) {
       try {
         const entry = runningAccounts.get(runningKey);
@@ -1222,14 +948,14 @@ let senderAllowed = ingress?.senderAccess?.allowed ?? false;
   }
 }
 
-async function deliverReply(client: LansengerClient, to: string, text: string, reminder?: ReminderParams, refMsgId?: string): Promise<ApiResult> {
-  log.info(`deliverReply: to=${to} textLen=${text.length} preview="${text.slice(0, 100)}"${reminder ? ` reminder=${JSON.stringify(reminder)}` : ""}${refMsgId ? ` refMsgId=${refMsgId}` : ""}`);
+async function deliverReply(client: LansengerClient, to: string, text: string): Promise<ApiResult> {
+  log.info(`deliverReply: to=${to} textLen=${text.length} preview="${text.slice(0, 100)}"`);
   if (!text.trim()) {
     log.warn(`deliverReply: empty text after OpenClaw MEDIA processing, skipping delivery`);
     return { success: true, messageId: undefined };
   }
-  const fmtResult = await client.sendFormatText(to, text, reminder, refMsgId);
+  const fmtResult = await client.sendFormatText(to, text);
   if (fmtResult.success) return fmtResult;
   log.info(`formatText failed (${fmtResult.error ?? "unknown"}), falling back to text`);
-  return client.sendText(to, text, reminder, refMsgId);
+  return client.sendText(to, text);
 }

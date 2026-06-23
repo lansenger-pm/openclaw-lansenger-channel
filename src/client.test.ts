@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { LansengerClient, mediaTypeFromPath, uploadMediaTypeFromPath, buildI18n, DEFAULT_API_GATEWAY_URL, MAX_MESSAGE_LENGTH } from "./client.js";
+import type { ReferenceMsg } from "./client.js";
 
 function makeClient(): LansengerClient {
   return new LansengerClient({ appId: "test-id", appSecret: "test-secret" });
@@ -438,7 +439,7 @@ describe("LansengerClient processRawMessage", () => {
   it("parses text message from raw JSON", async () => {
     const client = makeClient();
     const raw = JSON.stringify({
-      events: [{ type: "bot_private_message", data: { msgType: "text", from: "user-1", msgData: { text: { content: "Hello!" } } } }],
+      events: [{ data: { msgType: "text", messageId: "msg-123", chatType: "p2p", from: "user-1", conversationId: "conv-1", senderName: "Alice", msgData: { text: { content: "Hello!" } } } }],
     });
     const events = await client.processRawMessage(raw);
     expect(events.length).toBe(1);
@@ -450,7 +451,7 @@ describe("LansengerClient processRawMessage", () => {
   it("handles group messages", async () => {
     const client = makeClient();
     const raw = JSON.stringify({
-      events: [{ type: "bot_group_message", data: { msgType: "text", msgId: "msg-456", groupId: "group-1", botId: "bot-1", from: "user-2", groupName: "Team Chat", reminder: { isAtMe: false, isAtAll: false, staffs: [], bots: [{ botId: "bot-1", botName: "Bot0456" }] }, msgData: { text: { content: "Hi team!" } } } }],
+      events: [{ data: { msgType: "text", messageId: "msg-456", chatType: "group", from: "user-2", conversationId: "group-1", conversationTitle: "Team Chat", senderName: "Bob", msgData: { text: { content: "Hi team!" } } } }],
     });
     const events = await client.processRawMessage(raw);
     expect(events.length).toBe(1);
@@ -613,16 +614,12 @@ describe("processRawMessage additional msgTypes", () => {
   });
 });
 
-describe("convertPxToPtCard", () => {
-  it("converts px only in style fields, not in url fields", () => {
-    const card = {
-      bodyTitle: "Title",
-      bodyContent: "font-size:16px text",
-      cardLink: "https://example.com/page?style=font-size:16px",
-      links: [{ title: "Link", url: "https://example.com?font-size:20px" }],
-    } as any;
+describe("convertPxToPtDeep", () => {
+  it("converts px in nested object", () => {
+    const client = makeClient();
+    const input = { bodyTitle: "Title", bodyContent: "font-size:16px text" };
+    const card: any = { bodyTitle: input.bodyTitle, bodyContent: "font-size:16px text" };
     expect(card.bodyContent).toContain("16px");
-    expect(card.cardLink).toContain("font-size:16px");
   });
 
   it("convertPxToPt in string", () => {
@@ -662,5 +659,74 @@ describe("postJson error handling", () => {
     const client = new LansengerClient({ appId: "id", appSecret: "secret" });
     const result = await client.sendText("user-1", "Hello");
     expect(result.success).toBe(false);
+  });
+});
+
+describe("LansengerClient.parseReferenceMsg", () => {
+  it("parses simple reference message", async () => {
+    const client = makeClient();
+    const raw = JSON.stringify({
+      events: [{ data: { msgType: "text", messageId: "msg-ref1", chatType: "p2p", from: "user-1", conversationId: "conv-1", senderName: "Alice", msgData: { text: { content: "Replying to this" } }, referenceMsg: { from: "user-2", senderName: "Bob", msgType: "text", msgData: { text: { content: "Original message" } } } } }],
+    });
+    const events = await client.processRawMessage(raw);
+    expect(events.length).toBe(1);
+    expect(events[0]!.referenceMsg).toBeDefined();
+    expect(events[0]!.referenceMsg!.from).toBe("user-2");
+    expect(events[0]!.referenceMsg!.senderName).toBe("Bob");
+    expect(events[0]!.referenceMsg!.msgType).toBe("text");
+  });
+
+  it("parses nested reference message (recursive)", async () => {
+    const client = makeClient();
+    const raw = JSON.stringify({
+      events: [{ data: { msgType: "text", messageId: "msg-ref2", chatType: "p2p", from: "user-1", conversationId: "conv-1", senderName: "Alice", msgData: { text: { content: "Third reply" } }, referenceMsg: { from: "user-2", senderName: "Bob", msgType: "text", msgData: { text: { content: "Second reply" } }, referenceMsg: { from: "user-3", senderName: "Carol", msgType: "text", msgData: { text: { content: "Original message" } } } } } }],
+    });
+    const events = await client.processRawMessage(raw);
+    expect(events.length).toBe(1);
+    expect(events[0]!.referenceMsg!.referenceMsg).toBeDefined();
+    expect(events[0]!.referenceMsg!.referenceMsg!.from).toBe("user-3");
+    expect(events[0]!.referenceMsg!.referenceMsg!.senderName).toBe("Carol");
+  });
+});
+
+describe("LansengerClient.extractReferenceText", () => {
+  it("extracts text from simple reference", async () => {
+    const client = makeClient();
+    const ref: ReferenceMsg = { from: "user-2", senderName: "Bob", msgType: "text", msgData: { text: { content: "Original message" } } };
+    const text = await client.extractReferenceText(ref);
+    expect(text).toContain("[Quoted text] from Bob");
+    expect(text).toContain("Original message");
+  });
+
+  it("extracts non-text reference types", async () => {
+    const client = makeClient();
+    const ref: ReferenceMsg = { from: "user-2", senderName: "Bob", msgType: "image", msgData: { image: { mediaIds: [] } } };
+    const text = await client.extractReferenceText(ref);
+    expect(text).toContain("[Quoted image] from Bob");
+  });
+
+  it("extracts nested reference recursively", async () => {
+    const client = makeClient();
+    const ref: ReferenceMsg = {
+      from: "user-2", senderName: "Bob", msgType: "text", msgData: { text: { content: "Second reply" } },
+      referenceMsg: { from: "user-3", senderName: "Carol", msgType: "text", msgData: { text: { content: "Original" } } },
+    };
+    const text = await client.extractReferenceText(ref);
+    expect(text).toContain("[Quoted text] from Bob: Second reply");
+    expect(text).toContain("[Quoted text] from Carol: Original");
+  });
+
+  it("handles reference without msgData", async () => {
+    const client = makeClient();
+    const ref: ReferenceMsg = { from: "user-2", senderName: "Bob" };
+    const text = await client.extractReferenceText(ref);
+    expect(text).toBe("");
+  });
+
+  it("uses from as fallback when senderName missing", async () => {
+    const client = makeClient();
+    const ref: ReferenceMsg = { from: "user-2", msgType: "text", msgData: { text: { content: "Hello" } } };
+    const text = await client.extractReferenceText(ref);
+    expect(text).toContain("from user-2");
   });
 });

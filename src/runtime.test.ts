@@ -248,6 +248,14 @@ describe("mergeInboundEvents", () => {
     rawMessage: { idx },
     msgType: "text",
     mediaPaths: overrides?.mediaPaths,
+    eventType: overrides?.eventType,
+    referenceMsg: overrides?.referenceMsg,
+    isAtMe: overrides?.isAtMe,
+    isAtAll: overrides?.isAtAll,
+    fromType: overrides?.fromType,
+    groupName: overrides?.groupName,
+    botCreator: overrides?.botCreator,
+    botId: overrides?.botId,
   });
 
   it("throws on empty array", () => {
@@ -301,5 +309,24 @@ describe("mergeInboundEvents", () => {
     const e2 = makeEvent(2, "world");
     const result = mergeInboundEvents([e1, e2]);
     expect(result.mediaPaths).toBeUndefined();
+  });
+
+  it("preserves referenceMsg from last event", () => {
+    const ref = { from: "user-2", senderName: "Bob", msgType: "text", msgData: { text: { content: "Original" } } };
+    const e1 = makeEvent(1, "replying");
+    const e2 = makeEvent(2, "to this", { referenceMsg: ref });
+    const result = mergeInboundEvents([e1, e2]);
+    expect(result.referenceMsg).toEqual(ref);
+  });
+
+  it("preserves metadata fields from last event", () => {
+    const e1 = makeEvent(1, "hi");
+    const e2 = makeEvent(2, "there", { isAtMe: true, isAtAll: false, fromType: 1, groupName: "Team", eventType: "bot_group_message" });
+    const result = mergeInboundEvents([e1, e2]);
+    expect(result.isAtMe).toBe(true);
+    expect(result.isAtAll).toBe(false);
+    expect(result.fromType).toBe(1);
+    expect(result.groupName).toBe("Team");
+    expect(result.eventType).toBe("bot_group_message");
   });
 });

@@ -90,7 +90,7 @@ lansenger config list-profiles              # 列出所有 profile
 6. 链接卡片 → `lansenger_send_link_card` 或 `lansenger message send-link-card`
 7. 图文消息 → `lansenger_send_app_articles` 或 `lansenger message send-app-articles`
 8. 富文本卡片 → `lansenger_send_app_card` 或 `lansenger message send-app-card`
-9. 审批流程 → sendAppCard(isDynamic=true) → updateDynamicCard
+9. 审批卡片 → `lansenger_send_approve_card`（approveCard 交互式按钮）
 10. 撤回消息 → `lansenger_revoke_message` 或 `lansenger message revoke`
 11. 查找群 ID → `lansenger_query_groups` 或 `lansenger message query-groups`
 
@@ -194,6 +194,16 @@ lansenger config list-profiles              # 列出所有 profile
 | headIconUrl    | string   | ❌    | 头部图标 URL |
 | to             | string   | ❌    | 目标 chatId |
 
+### lansenger_send_approve_card
+
+| 参数     | 类型   | 必填 | 说明 |
+|----------|--------|------|------|
+| to       | string | ✅    | 目标 chatId |
+| title    | string | ❌    | 卡片标题（默认 "Command Approval"） |
+| commands | string[] | ❌  | 待审批的命令列表 |
+| status   | string | ❌    | pending / approved / denied |
+| lang     | string | ❌    | zh / en（默认根据用户语言自动检测） |
+
 ### lansenger_update_dynamic_card
 
 | 参数           | 类型     | 必填 | 说明 |
@@ -289,6 +299,21 @@ lansenger -P <appId> message query-groups [--page <n>] [--size <n>]
 ```
 
 ## 审批流程模式
+
+### exec 命令审批（自动触发）
+
+非白名单命令自动触发审批，由 OpenClaw 框架驱动，Agent 无需调用工具。审批卡片（approveCard）会自动发送到发起命令的聊天中，包含三个交互式按钮：
+- **执行一次** — 仅当次执行
+- **本会话有效** — 本次会话内不再审批
+- **拒绝执行** — 拒绝该命令
+
+用户可通过点击按钮（需客户端支持）或手输 `/approve <id> allow-once|allow-session|deny` 完成审批。审批后卡片状态自动更新为"已允许执行一次"等，按钮置灰。
+
+> **Agent 无需手动发送审批卡片** — 这是框架自动处理的。Agent 只需要正常执行命令，框架会根据 approvals 配置决定是否触发审批。
+
+### 业务审批（工具调用）
+
+通过 `lansenger_send_app_card` (appCard) + `lansenger_update_dynamic_card` 手动实现审批流程：
 
 **通过工具：**
 1. `lansenger_send_app_card(bodyTitle="...", isDynamic=true, headStatusInfo={description: '<div style="color:#FFB116">待审批</div>', colour: "#FFB116"})`

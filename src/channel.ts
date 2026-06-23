@@ -18,44 +18,19 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as crypto from "node:crypto";
 import { LansengerClient, DEFAULT_API_GATEWAY_URL } from "./client.js";
-import type { AppCardData, I18nAppCardData, ClientLogger } from "./client.js";
-import {
-  createMessageReceiptFromOutboundResults,
-  createChannelMessageAdapterFromOutbound,
-  type ChannelMessageOutboundBridgeAdapter,
-  type ChannelMessageOutboundBridgeResult,
-} from "openclaw/plugin-sdk/channel-outbound";
-import { getRunningEntryByAccount, getLastInboundTimeByAccount, stripOpenClawUuidSuffix, gatewayStartAccount, gatewayStopAccount } from "./runtime.js";
+import type { ApproveCardData, I18nAppCardData, ClientLogger } from "./client.js";
+import { getRunningClient, getLastInboundTime, stripOpenClawUuidSuffix, gatewayStartAccount, gatewayStopAccount } from "./runtime.js";
 import { lansengerSetupWizard } from "./setup-wizard.js";
-import { PersistentStore } from "./persistent-store.js";
 
 const log = createSubsystemLogger("lansenger");
 const LANSENGER_TEXT_CHUNK_LIMIT = 4000;
 
-const APPROVAL_CARD_FILE = path.join(os.homedir(), ".openclaw", "lansenger-approval-cards.json");
-
-class PersistentApprovalCardStore extends PersistentStore<{ messageId: string; lang: "zh" | "en" }> {
-  constructor() {
-    super(APPROVAL_CARD_FILE, "approval cards");
-  }
-}
-
-const pendingApprovalCards = new PersistentApprovalCardStore();
-
-function toOutboundResult(messageId: string | undefined, sessionKey?: string, chatId?: string) {
-  const mid = messageId ?? "";
-  const receipt = mid
-    ? createMessageReceiptFromOutboundResults({ results: [{ messageId: mid, chatId: chatId ?? "" }], kind: "text", sentAt: Date.now() })
-    : undefined;
-  return { messageId: mid, sessionKey, chatId, receipt };
-}
-
-const DEFAULT_MEDIA_LOCAL_ROOTS = [process.cwd(), path.join(os.tmpdir())];
+const pendingApprovalCards = new Map<string, { messageId: string; lang: "zh" | "en" }>();
 
 function isPathAllowed(filePath: string, roots: string[]): boolean {
-  const effectiveRoots = roots.length === 0 ? DEFAULT_MEDIA_LOCAL_ROOTS : roots;
+  if (roots.length === 0) return true;
   const resolved = path.resolve(filePath);
-  for (const root of effectiveRoots) {
+  for (const root of roots) {
     const resolvedRoot = path.resolve(root);
     if (resolved.startsWith(resolvedRoot + path.sep) || resolved === resolvedRoot) return true;
   }
@@ -75,8 +50,6 @@ type LansengerAccount = {
   allowFrom?: string[];
   dmPolicy?: string;
   dmSecurity?: string;
-  groupPolicy?: string;
-  requireMention?: boolean;
   homeChannel?: string;
   enabled?: boolean;
   ackMessage?: boolean;
@@ -94,8 +67,6 @@ type ResolvedAccount = {
   apiGatewayUrl: string;
   allowFrom: string[];
   dmPolicy: string | undefined;
-  groupPolicy: string | undefined;
-  requireMention: boolean;
   homeChannel: string | undefined;
   enabled: boolean;
   configured?: boolean;
@@ -161,14 +132,12 @@ function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): Resolve
   const apiGatewayUrl = account?.apiGatewayUrl ?? process.env.LANSENGER_API_GATEWAY_URL ?? DEFAULT_API_GATEWAY_URL;
   const allowFrom: string[] = account?.allowFrom ?? [];
   const dmPolicy = account?.dmPolicy ?? account?.dmSecurity;
-  const groupPolicy = account?.groupPolicy ?? section?.groupPolicy ?? "open";
-  const requireMention = account?.requireMention ?? section?.requireMention ?? true;
   const homeChannel = account?.homeChannel;
   const enabled = Boolean(appId && appSecret);
-  const ackMessage = account?.ackMessage !== undefined ? account.ackMessage : (section?.ackMessage ?? true);
+  const ackMessage = account?.ackMessage !== undefined ? account.ackMessage : (section?.ackMessage ?? false);
   const ackMessageTextZh = account?.ackMessageTextZh ?? section?.ackMessageTextZh ?? "收到，正在处理...";
   const ackMessageTextEn = account?.ackMessageTextEn ?? section?.ackMessageTextEn ?? "Received, processing...";
-  const revokeAckMessage = account?.revokeAckMessage !== undefined ? account.revokeAckMessage : (section?.revokeAckMessage ?? false);
+  const revokeAckMessage = account?.revokeAckMessage !== undefined ? account.revokeAckMessage : (section?.revokeAckMessage ?? true);
   const dangerouslyAllowPrivateNetwork = isPrivateNetworkOptInEnabled(account?.dangerouslyAllowPrivateNetwork ?? section?.dangerouslyAllowPrivateNetwork ?? section?.allowPrivateNetwork ?? null);
   const mediaLocalRoots: string[] = account?.mediaLocalRoots ?? section?.mediaLocalRoots ?? [];
 
@@ -179,8 +148,6 @@ function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): Resolve
     apiGatewayUrl,
     allowFrom,
     dmPolicy,
-    groupPolicy,
-    requireMention,
     homeChannel,
     enabled,
     ackMessage,
@@ -205,9 +172,15 @@ function makeClient(account: ResolvedAccount, logger?: ClientLogger): LansengerC
 function resolveLansengerApprovers({ cfg, accountId }: { cfg: OpenClawConfig; accountId?: string | null }): string[] {
   const commands = (cfg as any).commands ?? {};
   const explicitApprovers: string[] = commands.ownerAllowFrom ?? [];
-  if (explicitApprovers.length > 0) return explicitApprovers.map(String);
+  if (explicitApprovers.length > 0) {
+    return explicitApprovers.map(String).map((id) => id.startsWith("lansenger:") ? id.slice("lansenger:".length) : id);
+  }
   const account = resolveAccount(cfg, accountId);
-  return account.allowFrom;
+  if (account.allowFrom.length > 0) return account.allowFrom;
+  // Fallback: bot owner from homeChannel
+  const homeChannel = account.homeChannel;
+  if (homeChannel) return [homeChannel];
+  return [];
 }
 
 const approverAuth = createResolvedApproverActionAuthAdapter({
@@ -303,16 +276,8 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
             }
           }
         }
-        const resolvedAppId = account?.appId ?? (Object.keys(accounts ?? {}).find(k => k === accountId) ?? "");
-        const resolvedAccountId = accountId && accountId !== "default" && accountId !== DEFAULT_ACCOUNT_ID
-          ? accountId
-          : resolvedAppId;
-        const resolvedName = account?.name || resolvedAppId || resolvedAccountId;
         const hasCreds = Boolean(account?.appId && account?.appSecret) || Boolean(process.env.LANSENGER_APP_ID && process.env.LANSENGER_APP_SECRET);
         return {
-          name: resolvedName,
-          appId: resolvedAppId,
-          accountId: resolvedAccountId,
           enabled: Boolean((account?.enabled ?? false) || hasCreds),
           configured: hasCreds,
           appIdStatus: account?.appId ? "available" : (process.env.LANSENGER_APP_ID ? "env" : "missing"),
@@ -437,8 +402,8 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
           }
         }
       }
-      if (section.groupPolicy) {
-        findings.push({ checkId: "lansenger/group-config", severity: "info", title: "Group config is active / 群聊配置已生效", detail: "Lansenger supports group chat. groupPolicy setting controls group behavior. Per-group settings can be configured via groups.<chatId>.enabled / 蓝信支持群聊功能。", remediation: "Group settings are active. / 群聊设置已启用。" });
+      if (section.groupPolicy || section.groupAllowFrom) {
+        findings.push({ checkId: "lansenger/group-config-unused", severity: "info", title: "Group config is set but personal bots cannot join groups / 群聊配置已设置但个人机器人暂不支持进群", detail: "Personal bots currently cannot join Lansenger groups. groupPolicy and groupAllowFrom settings have no effect. / 个人机器人暂不支持加入蓝信群聊，groupPolicy 和 groupAllowFrom 设置暂不生效。", remediation: "These settings are reserved for future group support. You can leave them as-is. / 这些设置为群聊功能预留，可保持不变。" });
       }
       const topLevelGatewayUrl = section.apiGatewayUrl;
       const envHasGatewayUrl = Boolean(process.env.LANSENGER_API_GATEWAY_URL);
@@ -482,25 +447,25 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
       sendText: async (ctx) => {
         const sessionKey = (ctx as any).sessionKey as string | undefined;
         const account = resolveAccount(ctx.cfg, ctx.accountId ?? undefined);
-        const client = getRunningEntryByAccount(account.accountId ?? "")?.client ?? makeClient(account);
+        const client = makeClient(account);
         const result = await client.sendFormatText(ctx.to, ctx.text);
-        return toOutboundResult(result.messageId, sessionKey, ctx.to);
+        return { messageId: result.messageId ?? "", sessionKey };
       },
       sendMedia: async (ctx) => {
         const sessionKey = (ctx as any).sessionKey as string | undefined;
         const account = resolveAccount(ctx.cfg, ctx.accountId ?? undefined);
-        const client = getRunningEntryByAccount(account.accountId ?? "")?.client ?? makeClient(account);
+        const client = makeClient(account);
         const caption = ctx.text ?? "";
 
         if (ctx.mediaUrl && /^https?:\/\//i.test(ctx.mediaUrl)) {
           const result = await client.sendImageUrl(ctx.to, ctx.mediaUrl, caption, account.dangerouslyAllowPrivateNetwork);
-          return toOutboundResult(result.messageId, sessionKey, ctx.to);
+          return { messageId: result.messageId ?? "", sessionKey };
         }
 
         if (ctx.mediaUrl) {
           if (!isPathAllowed(ctx.mediaUrl, account.mediaLocalRoots)) {
             log.warn(`sendMedia: path '${ctx.mediaUrl}' outside mediaLocalRoots — blocked`);
-            return toOutboundResult(undefined, sessionKey, ctx.to);
+            return { messageId: "", sessionKey };
           }
           const readFile = ctx.mediaReadFile ?? ctx.mediaAccess?.readFile;
           if (readFile) {
@@ -513,16 +478,16 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
             const mt = ctx.audioAsVoice ? 4 : undefined;
             try {
               const result = await client.sendFile(ctx.to, tmpPath, caption, mt, srcExt ? originalName : undefined);
-              return toOutboundResult(result.messageId, sessionKey, ctx.to);
+              return { messageId: result.messageId ?? "", sessionKey };
             } finally {
               try { await fs.unlink(tmpPath); } catch {}
             }
           }
           const result = await client.sendFile(ctx.to, ctx.mediaUrl, caption);
-          return toOutboundResult(result.messageId, sessionKey, ctx.to);
+          return { messageId: result.messageId ?? "", sessionKey };
         }
 
-        return toOutboundResult(undefined, sessionKey, ctx.to);
+        return { messageId: "", sessionKey };
       },
     },
     base: {
@@ -546,35 +511,24 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
 
         if (hint?.kind === "approval-resolved") {
           const chatId = target?.to;
-          const acctId = target?.accountId ?? "";
-          const cardKey = acctId ? `${acctId}:${chatId}` : chatId;
-          const cardInfo = pendingApprovalCards.get(cardKey);
+          const cardInfo = pendingApprovalCards.get(chatId);
           if (cardInfo?.messageId) {
             const account = resolveAccount(params.cfg, target?.accountId ?? undefined);
-            const client = getRunningEntryByAccount(account.accountId ?? "")?.client ?? makeClient(account);
+            const client = makeClient(account);
             const status: "approved" | "denied" = payload?.text?.includes("✅") ? "approved" : "denied";
             try {
               await client.updateCardStatus(cardInfo.messageId, status, cardInfo.lang);
-              log.info(`beforeDeliverPayload: approval card updated — messageId=${cardInfo.messageId} status=${status}`);
-              pendingApprovalCards.delete(cardKey);
+              pendingApprovalCards.delete(chatId);
             } catch (e: unknown) {
               log.error(`beforeDeliverPayload: card update failed — ${e instanceof Error ? e.message : String(e)}`);
             }
-          } else {
-            log.info(`beforeDeliverPayload: approval-resolved but no pending card found for chatId=${chatId}`);
           }
         }
-
-        if (hint?.kind === "approval-pending") {
-          log.info(`beforeDeliverPayload: approval-pending — to=${target?.to} nativeRoute=${hint?.nativeRouteActive ?? false}`);
-        }
-
-        log.info(`beforeDeliverPayload: to=${target?.to} sessionKey=${sessionKey.slice(0, 32)} hint=${hint?.kind ?? "none"} payloadKind=${payload?.text ? "text" : "other"}`);
       },
       sendFormattedText: async (ctx) => {
         const sessionKey = (ctx as any).sessionKey as string | undefined;
         const account = resolveAccount(ctx.cfg, ctx.accountId ?? undefined);
-        const client = getRunningEntryByAccount(account.accountId ?? "")?.client ?? makeClient(account);
+        const client = makeClient(account);
         const result = await client.sendFormatText(ctx.to, ctx.text);
         return [{ channel: "lansenger", messageId: result.messageId ?? "", sessionKey }];
       },
@@ -595,148 +549,6 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
         return false;
       },
     },
-  },
-});
-
-const lansengerOutboundBridge: ChannelMessageOutboundBridgeAdapter<OpenClawConfig> = {
-  sendText: async (ctx) => {
-    const account = resolveAccount(ctx.cfg, ctx.accountId ?? undefined);
-    const client = getRunningEntryByAccount(account.accountId ?? "")?.client ?? makeClient(account);
-    const result = await client.sendFormatText(ctx.to, ctx.text);
-    const receipt = result.messageId
-      ? createMessageReceiptFromOutboundResults({ results: [{ messageId: result.messageId, chatId: ctx.to }], kind: "text", sentAt: Date.now() })
-      : undefined;
-    return { channel: "lansenger", messageId: result.messageId ?? "", chatId: ctx.to, receipt };
-  },
-  sendMedia: async (ctx) => {
-    const account = resolveAccount(ctx.cfg, ctx.accountId ?? undefined);
-    const client = getRunningEntryByAccount(account.accountId ?? "")?.client ?? makeClient(account);
-    const caption = ctx.text ?? "";
-
-    if (ctx.mediaUrl && /^https?:\/\//i.test(ctx.mediaUrl)) {
-      const result = await client.sendImageUrl(ctx.to, ctx.mediaUrl, caption, account.dangerouslyAllowPrivateNetwork);
-      const receipt = result.messageId
-        ? createMessageReceiptFromOutboundResults({ results: [{ messageId: result.messageId, chatId: ctx.to }], kind: "media", sentAt: Date.now() })
-        : undefined;
-      return { channel: "lansenger", messageId: result.messageId ?? "", chatId: ctx.to, receipt };
-    }
-
-    if (ctx.mediaUrl) {
-      if (!isPathAllowed(ctx.mediaUrl, account.mediaLocalRoots)) {
-        log.warn(`sendMedia: path '${ctx.mediaUrl}' outside mediaLocalRoots — blocked`);
-        const receipt = createMessageReceiptFromOutboundResults({ results: [], kind: "media", sentAt: Date.now() });
-        return { channel: "lansenger", messageId: "", chatId: ctx.to, receipt };
-      }
-      const readFile = ctx.mediaReadFile ?? ctx.mediaAccess?.readFile;
-      if (readFile) {
-        const buffer = await readFile(ctx.mediaUrl);
-        const srcExt = path.extname(ctx.mediaUrl).toLowerCase();
-        const ext = srcExt || (ctx.audioAsVoice ? ".amr" : ".dat");
-        const originalName = stripOpenClawUuidSuffix(path.basename(ctx.mediaUrl));
-        const tmpPath = path.join(os.tmpdir(), `lansenger_media_${crypto.randomUUID()}${ext}`);
-        await fs.writeFile(tmpPath, buffer);
-        const mt = ctx.audioAsVoice ? 4 : undefined;
-        try {
-          const result = await client.sendFile(ctx.to, tmpPath, caption, mt, srcExt ? originalName : undefined);
-          const receipt = result.messageId
-            ? createMessageReceiptFromOutboundResults({ results: [{ messageId: result.messageId, chatId: ctx.to }], kind: "media", sentAt: Date.now() })
-            : undefined;
-          return { channel: "lansenger", messageId: result.messageId ?? "", chatId: ctx.to, receipt };
-        } finally {
-          try { await fs.unlink(tmpPath); } catch {}
-        }
-      }
-      const result = await client.sendFile(ctx.to, ctx.mediaUrl, caption);
-      const receipt = result.messageId
-        ? createMessageReceiptFromOutboundResults({ results: [{ messageId: result.messageId, chatId: ctx.to }], kind: "media", sentAt: Date.now() })
-        : undefined;
-      return { channel: "lansenger", messageId: result.messageId ?? "", chatId: ctx.to, receipt };
-    }
-
-    const receipt = createMessageReceiptFromOutboundResults({ results: [], kind: "media", sentAt: Date.now() });
-    return { channel: "lansenger", messageId: "", chatId: ctx.to, receipt };
-  },
-  sendPayload: async (ctx) => {
-    const account = resolveAccount(ctx.cfg, ctx.accountId ?? undefined);
-    const client = getRunningEntryByAccount(account.accountId ?? "")?.client ?? makeClient(account);
-    const payload = ctx.payload as any;
-    const hasCodeBlock = payload?.text && /```/.test(payload.text);
-
-    if (payload?.text && !payload?.mediaUrl && !payload?.presentation) {
-      const result = await client.sendFormatText(ctx.to, payload.text);
-      const receipt = result.messageId
-        ? createMessageReceiptFromOutboundResults({ results: [{ messageId: result.messageId, chatId: ctx.to }], kind: "text", sentAt: Date.now() })
-        : undefined;
-      return { channel: "lansenger", messageId: result.messageId ?? "", chatId: ctx.to, receipt };
-    }
-
-    if (hasCodeBlock && payload?.text) {
-      const result = await client.sendFormatText(ctx.to, payload.text);
-      const receipt = result.messageId
-        ? createMessageReceiptFromOutboundResults({ results: [{ messageId: result.messageId, chatId: ctx.to }], kind: "text", sentAt: Date.now() })
-        : undefined;
-      return { channel: "lansenger", messageId: result.messageId ?? "", chatId: ctx.to, receipt };
-    }
-
-    if (payload?.text && payload?.mediaUrl) {
-      if (/^https?:\/\//i.test(payload.mediaUrl)) {
-        const mediaResult = await client.sendImageUrl(ctx.to, payload.mediaUrl, payload.text, account.dangerouslyAllowPrivateNetwork);
-        const receipt = mediaResult.messageId
-          ? createMessageReceiptFromOutboundResults({ results: [{ messageId: mediaResult.messageId, chatId: ctx.to }], kind: "media", sentAt: Date.now() })
-          : undefined;
-        return { channel: "lansenger", messageId: mediaResult.messageId ?? "", chatId: ctx.to, receipt };
-      }
-      const readFile = ctx.mediaReadFile ?? ctx.mediaAccess?.readFile;
-      if (readFile) {
-        const buffer = await readFile(payload.mediaUrl);
-        const srcExt = path.extname(payload.mediaUrl).toLowerCase();
-        const ext = srcExt || ".dat";
-        const originalName = stripOpenClawUuidSuffix(path.basename(payload.mediaUrl));
-        const tmpPath = path.join(os.tmpdir(), `lansenger_media_${crypto.randomUUID()}${ext}`);
-        await fs.writeFile(tmpPath, buffer);
-        try {
-          const result = await client.sendFile(ctx.to, tmpPath, payload.text, undefined, srcExt ? originalName : undefined);
-          const receipt = result.messageId
-            ? createMessageReceiptFromOutboundResults({ results: [{ messageId: result.messageId, chatId: ctx.to }], kind: "media", sentAt: Date.now() })
-            : undefined;
-          return { channel: "lansenger", messageId: result.messageId ?? "", chatId: ctx.to, receipt };
-        } finally {
-          try { await fs.unlink(tmpPath); } catch {}
-        }
-      }
-      const result = await client.sendFile(ctx.to, payload.mediaUrl, payload.text);
-      const receipt = result.messageId
-        ? createMessageReceiptFromOutboundResults({ results: [{ messageId: result.messageId, chatId: ctx.to }], kind: "media", sentAt: Date.now() })
-        : undefined;
-      return { channel: "lansenger", messageId: result.messageId ?? "", chatId: ctx.to, receipt };
-    }
-
-    if (payload?.text) {
-      const result = await client.sendFormatText(ctx.to, payload.text);
-      const receipt = result.messageId
-        ? createMessageReceiptFromOutboundResults({ results: [{ messageId: result.messageId, chatId: ctx.to }], kind: "text", sentAt: Date.now() })
-        : undefined;
-      return { channel: "lansenger", messageId: result.messageId ?? "", chatId: ctx.to, receipt };
-    }
-
-    const receipt = createMessageReceiptFromOutboundResults({ results: [], kind: "text", sentAt: Date.now() });
-    return { channel: "lansenger", messageId: "", chatId: ctx.to, receipt };
-  },
-};
-
-const lansengerMessageAdapter = createChannelMessageAdapterFromOutbound({
-  id: "lansenger",
-  outbound: lansengerOutboundBridge,
-  capabilities: {
-    text: true,
-    media: true,
-    payload: true,
-    messageSendingHooks: true,
-    batch: true,
-  },
-  receive: {
-    defaultAckPolicy: "after_agent_dispatch",
-    supportedAckPolicies: ["after_receive_record", "after_agent_dispatch", "after_durable_send", "manual"],
   },
 });
 
@@ -912,25 +724,6 @@ const lansengerOnboarding = {
 
 export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResult> = {
   ...chatPlugin as any,
-  message: lansengerMessageAdapter,
-  messaging: {
-    targetResolver: {
-      looksLikeId: (_raw: string, normalized: string) => /^[a-z0-9]+-/i.test(normalized),
-      resolveTarget: async ({ input, normalized, preferredKind }: { input: string; normalized: string; preferredKind?: string }) => ({
-        to: normalized || input,
-        kind: preferredKind ?? "direct",
-        source: "normalized" as const,
-      }),
-    },
-    resolveSessionConversation: ({ kind, rawId }: { kind: string; rawId: string }) => {
-      if (!rawId) return null;
-      return { id: rawId, baseConversationId: rawId };
-    },
-    resolveDeliveryTarget: ({ conversationId }: { conversationId: string }) => {
-      if (!conversationId) return undefined;
-      return { to: conversationId.trim() };
-    },
-  },
   setupWizard: lansengerSetupWizard,
   gateway: {
     startAccount: gatewayStartAccount,
@@ -955,9 +748,9 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
       return await probeLansengerAccount(account);
     },
     buildAccountSnapshot: ({ account, runtime, probe }) => {
-      const entry = getRunningEntryByAccount(account.accountId ?? "");
-      const connected = entry?.client.isWsAlive() ?? false;
-      const lastInboundAt = getLastInboundTimeByAccount(account.accountId ?? "");
+      const liveClient = getRunningClient();
+      const connected = liveClient?.isWsAlive() ?? false;
+      const lastInboundAt = getLastInboundTime();
       return {
         accountId: account.accountId ?? account.appId ?? DEFAULT_ACCOUNT_ID,
         enabled: account.enabled,
@@ -991,7 +784,8 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
         supportsApproverDmSurface: false,
       }),
       resolveOriginTarget: ({ cfg, accountId, request }: any) => {
-        const to = request?.turnSource?.target?.to ?? request?.sessionTarget?.to;
+        const req = request?.request ?? request;
+        const to = req?.turnSourceTo ?? req?.sessionTarget?.to;
         if (to) return { to, threadId: null, accountId: accountId ?? null };
         return null;
       },
@@ -999,77 +793,146 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
     nativeRuntime: {
       eventKinds: ["exec", "plugin"],
       availability: {
-        isConfiguredAndAvailable: ({ cfg, accountId }: any) => {
+        isConfigured: ({ cfg, accountId }: any) => {
+          const account = resolveAccount(cfg, accountId);
+          return account.enabled;
+        },
+        shouldHandle: ({ cfg, accountId, request }: any) => {
           const account = resolveAccount(cfg, accountId);
           return account.enabled;
         },
       } as any,
       presentation: {
         buildPendingPayload: ({ cfg, request, target, nowMs }: any) => {
-          const commandPreview = (request?.command ?? request?.summary ?? "").slice(0, 300);
-          const sessionKey = request?.sessionKey ?? "unknown";
-          const zhCard: AppCardData = {
-            headTitle: "⚠️ 命令审批",
-            isDynamic: true,
-            headStatusInfo: {
-              description: '<div style="color:#FFB116;text-align:left">待审批</div>',
-              colour: "#FFB116",
+          const req = request?.request ?? request;
+          const commandPreview = (req?.command ?? req?.summary ?? "").slice(0, 300);
+          const sessionKey = req?.sessionKey ?? "unknown";
+          const requestId = request?.id ?? req?.id ?? "unknown";
+          const shortId = requestId.length > 8 ? requestId.slice(0, 8) : requestId;
+          const zhCard: ApproveCardData = {
+            head: {
+              title: "⚠️ 命令审批",
+              headStatus: {
+                describe: "待审批",
+                colour: "#FFB116",
+              },
             },
-            bodyTitle: "危险命令审批请求",
-            bodyContent: `<div style="color:#000;font-size:13pt;text-align:left;text-indent:0em">会话 ID: ${sessionKey.slice(0, 32)}\n命令:\n${commandPreview}</div>`,
-            signature: "OpenClaw 安全审批",
-            fields: [
-              { key: "执行一次", value: "/approve" },
-              { key: "本会话有效", value: "/approve session" },
-              { key: "拒绝执行", value: "/deny" },
-            ],
-            cardLink: "",
-            pcCardLink: "",
-          };
-          const enCard: AppCardData = {
-            headTitle: "⚠️ Command Approval",
-            isDynamic: true,
-            headStatusInfo: {
-              description: '<div style="color:#FFB116;text-align:left">Pending</div>',
-              colour: "#FFB116",
+            body: {
+              title: "危险命令审批请求",
+              content: {
+                formatType: 1,
+                text: [
+                  `**会话 ID**`,
+                  sessionKey,
+                  "",
+                  `**命令**`,
+                  "```",
+                  commandPreview,
+                  "```",
+                  "",
+                  `> 按钮不可用时请发送命令审批：`,
+                  "",
+                  `> 执行一次`,
+                  "> ```",
+                  `> /approve ${shortId} allow-once`,
+                  "> ```",
+                  "",
+                  `> 本会话有效`,
+                  "> ```",
+                  `> /approve ${shortId} allow-session`,
+                  "> ```",
+                  "",
+                  `> 拒绝执行`,
+                  "> ```",
+                  `> /approve ${shortId} deny`,
+                  "> ```",
+                ].join("\n"),
+              },
             },
-            bodyTitle: "Dangerous Command Approval Request",
-            bodyContent: `<div style="color:#000;font-size:13pt;text-align:left;text-indent:0em">Session: ${sessionKey.slice(0, 32)}\nCommand:\n${commandPreview}</div>`,
-            signature: "OpenClaw Security",
-            fields: [
-              { key: "Approve Once", value: "/approve" },
-              { key: "This Session", value: "/approve session" },
-              { key: "Deny", value: "/deny" },
+            buttons: [
+              { text: "执行一次", buttonTheme: 1 },
+              { text: "本会话有效", buttonTheme: 2 },
+              { text: "拒绝执行", buttonTheme: 4 },
             ],
-            cardLink: "",
-            pcCardLink: "",
           };
-          return { type: "appCard", zh: zhCard, en: enCard };
+          const enCard: ApproveCardData = {
+            head: {
+              title: "⚠️ Command Approval",
+              headStatus: {
+                describe: "Pending",
+                colour: "#FFB116",
+              },
+            },
+            body: {
+              title: "Dangerous Command Approval Request",
+              content: {
+                formatType: 1,
+                text: [
+                  `**Session**`,
+                  sessionKey,
+                  "",
+                  `**Command**`,
+                  "```",
+                  commandPreview,
+                  "```",
+                  "",
+                  `> If buttons are unavailable, use:`,
+                  "",
+                  `> Approve once`,
+                  "> ```",
+                  `> /approve ${shortId} allow-once`,
+                  "> ```",
+                  "",
+                  `> This session`,
+                  "> ```",
+                  `> /approve ${shortId} allow-session`,
+                  "> ```",
+                  "",
+                  `> Deny`,
+                  "> ```",
+                  `> /approve ${shortId} deny`,
+                  "> ```",
+                ].join("\n"),
+              },
+            },
+            buttons: [
+              { text: "Approve Once", buttonTheme: 1 },
+              { text: "This Session", buttonTheme: 2 },
+              { text: "Deny", buttonTheme: 4 },
+            ],
+          };
+          return { type: "approveCard", zh: zhCard, en: enCard, isDynamic: true };
         },
-        buildResolvedPayload: ({ cfg, resolved, target }: any) => {
+        buildResolvedResult: ({ cfg, resolved, entry }: any) => {
+          const strategyKind = resolved?.strategy?.kind ?? resolved?.kind ?? "deny";
           if (resolved?.kind === "approved") {
-            return { type: "text", text: `✅ 命令已批准 — ${resolved?.actorLabel ?? "approver"}` };
+            return { kind: "update", payload: { status: "approved", strategyKind } };
           }
-          return { type: "text", text: "❌ 命令已拒绝" };
+          return { kind: "update", payload: { status: "denied", strategyKind: "deny" } };
+        },
+        buildExpiredResult: ({ cfg, request, entry }: any) => {
+          return { kind: "delete" };
         },
       } as any,
       transport: {
-        prepareTarget: ({ cfg, accountId, request }: any) => {
-          const to = request?.turnSource?.target?.to ?? request?.sessionTarget?.to;
+        prepareTarget: ({ cfg, accountId, plannedTarget }: any) => {
+          const to = plannedTarget?.target?.to ?? plannedTarget?.to;
           if (!to) return null;
-          return { to, threadId: null, accountId: accountId ?? null };
+          return { dedupeKey: to, target: { to, threadId: null, accountId: accountId ?? null } };
         },
-        send: async ({ cfg, accountId, target, payload }: any) => {
+        deliverPending: async ({ cfg, accountId, preparedTarget, pendingPayload }: any) => {
+          const target = preparedTarget?.target ?? preparedTarget;
+          const payload = pendingPayload;
           const account = resolveAccount(cfg, accountId);
           const client = makeClient(account);
-          if (payload?.type === "appCard") {
+          if (payload?.type === "approveCard") {
             const lang = client.getUserLang(target.to);
-            const appCard = (lang === "zh" ? payload.zh : payload.en) ?? payload.en;
-            const result = await client.sendAppCard(target.to, appCard as AppCardData);
+            const approveCard = (lang === "zh" ? payload.zh : payload.en) ?? payload.en;
+            const result = await client.sendApproveCard(target.to, approveCard as ApproveCardData);
             if (result.messageId) {
-              pendingApprovalCards.set(`${accountId}:${target.to}`, { messageId: result.messageId, lang: lang as "zh" | "en" });
+              pendingApprovalCards.set(target.to, { messageId: result.messageId, lang: lang as "zh" | "en" });
             }
-            return { delivered: result.success, messageId: result.messageId ?? null };
+            return { delivered: result.success, messageId: result.messageId ?? null, to: target.to, lang };
           }
           if (payload?.type === "text" && payload?.text) {
             const result = await client.sendFormatText(target.to, payload.text);
@@ -1077,20 +940,23 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
           }
           return { delivered: false, messageId: null };
         },
-        update: async ({ cfg, accountId, target, messageId, payload }: any) => {
+        updateEntry: async ({ cfg, accountId, entry, payload, phase }: any) => {
+          const messageId = entry?.messageId;
+          const to = entry?.to;
+          const lang = entry?.lang ?? "zh";
+          if (!messageId || !to) return;
           const account = resolveAccount(cfg, accountId);
           const client = makeClient(account);
-          const status = payload?.status ?? "pending";
-          const lang = client.getUserLang(target.to);
-          const result = await client.updateCardStatus(messageId ?? "", status as "pending" | "approved" | "denied", lang);
-          return { updated: result.success };
+          const status = payload?.status ?? (phase === "expired" ? "denied" : "pending");
+          const strategyKind = payload?.strategyKind;
+          await client.updateCardStatus(messageId, status as "approved" | "denied", lang, strategyKind);
         },
-        delete: async ({ cfg, accountId, target, messageId }: any) => {
-          if (!messageId) return { deleted: false };
+        deleteEntry: async ({ cfg, accountId, entry, phase }: any) => {
+          const messageId = entry?.messageId;
+          if (!messageId) return;
           const account = resolveAccount(cfg, accountId);
           const client = makeClient(account);
-          const result = await client.revokeMessage([messageId], "bot");
-          return { deleted: result.success };
+          await client.revokeMessage([messageId], "bot");
         },
       } as any,
     } as any,
@@ -1122,18 +988,16 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
       const sessionTarget = (() => {
         if (ctx.sessionKey) {
           const parts = String(ctx.sessionKey).split(":");
-          // sessionKey format: agent:<agentId>:<channel>:<kind>:<rawId>
-          if (parts.length >= 5) return parts[parts.length - 1];
+          if (parts.length >= 3) return parts[2];
         }
         return ctx.requesterSenderId ?? "";
       })();
-      const params = ctx.params ?? ctx.args ?? {};
-      const to = params.to ?? sessionTarget;
+      const to = ctx.args?.to ?? sessionTarget;
 
       if (ctx.action === "send") {
-        const filePath = params.filePath ?? params.mediaUrl ?? params.media ?? "";
-        const caption = params.caption ?? params.text ?? "";
-        const text = params.text ?? params.content ?? params.message ?? "";
+        const filePath = ctx.args?.filePath ?? ctx.args?.mediaUrl ?? ctx.args?.media ?? "";
+        const caption = ctx.args?.caption ?? ctx.args?.text ?? "";
+        const text = ctx.args?.text ?? ctx.args?.content ?? ctx.args?.message ?? "";
         if (filePath) {
           const resolved = path.resolve(filePath);
           try {

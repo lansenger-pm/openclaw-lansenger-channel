@@ -1,6 +1,6 @@
 {
   "name": "@lansenger-pm/openclaw-lansenger-channel",
-  "version": "3.16.3",
+  "version": "3.16.4",
   "type": "module",
   "main": "dist/index.js",
   "exports": {
@@ -15,6 +15,7 @@
     "dist/src/client.js",
     "dist/src/client.d.ts",
     "dist/src/client.js.map",
+    "dist/src/command-i18n.*",
     "dist/src/persistent-store.*",
     "dist/src/runtime.js",
     "dist/src/runtime.d.ts",
@@ -87,7 +88,7 @@
       "quickstartAllowFrom": true
     },
     "install": {
-      "npmSpec": "@lansenger-pm/openclaw-lansenger-channel@3.15.2",
+      "npmSpec": "@lansenger-pm/openclaw-lansenger-channel@3.16.4",
       "localPath": ".",
       "defaultChoice": "npm"
     },
@@ -118,6 +119,7 @@
         "lansenger_send_link_card",
         "lansenger_send_app_articles",
         "lansenger_send_app_card",
+        "lansenger_send_approve_card",
         "lansenger_update_dynamic_card",
         "lansenger_query_groups"
       ]

@@ -1,0 +1,399 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { registerLansengerTools } from "./tools.js";
+import { LansengerClient } from "./client.js";
+import * as runtime from "./runtime.js";
+
+function parseResult(result: any) {
+  return JSON.parse(result.content[0].text);
+}
+
+function makeMockApi() {
+  const tools: Record<string, any> = {};
+  return {
+    registerTool: (def: any) => {
+      if (typeof def === "function") {
+        const ctx = { agentAccountId: "test-account" };
+        const result = def(ctx);
+        if (Array.isArray(result)) {
+          for (const tool of result) tools[tool.name] = tool;
+        } else if (result) {
+          tools[result.name] = result;
+        }
+      } else {
+        tools[def.name] = def;
+      }
+    },
+    _tools: tools,
+  };
+}
+
+const mockClient = new LansengerClient({ appId: "test-id", appSecret: "test-secret" });
+const mockAccount = {
+  accountId: "test-account",
+  appId: "test-id",
+  appSecret: "test-secret",
+  apiGatewayUrl: "https://open.e.lanxin.cn/open/apigw",
+  allowFrom: [],
+  dmPolicy: undefined,
+  homeChannel: undefined,
+  enabled: true,
+  ackMessage: false,
+  ackMessageTextZh: "",
+  ackMessageTextEn: "",
+  revokeAckMessage: false,
+  dangerouslyAllowPrivateNetwork: false,
+  mediaLocalRoots: [] as string[],
+};
+
+function mockRunning() {
+  vi.spyOn(runtime, "getRunningClient").mockReturnValue(mockClient);
+  vi.spyOn(runtime, "getRunningAccount").mockReturnValue(mockAccount);
+  vi.spyOn(runtime, "getLastInboundChatId").mockReturnValue("chat-1");
+}
+
+function mockNotRunning() {
+  vi.spyOn(runtime, "getRunningClient").mockReturnValue(null);
+  vi.spyOn(runtime, "getRunningAccount").mockReturnValue(null);
+}
+
+function mockNoChatId() {
+  vi.spyOn(runtime, "getLastInboundChatId").mockReturnValue("");
+}
+
+describe("registerLansengerTools", () => {
+  it("registers all 11 tools", () => {
+    mockRunning();
+    const api = makeMockApi();
+    registerLansengerTools(api);
+    const names = Object.keys(api._tools);
+    expect(names.length).toBe(11);
+    expect(names).toContain("lansenger_send_file");
+    expect(names).toContain("lansenger_send_text");
+    expect(names).toContain("lansenger_send_format_text");
+    expect(names).toContain("lansenger_send_image_url");
+    expect(names).toContain("lansenger_revoke_message");
+    expect(names).toContain("lansenger_send_link_card");
+    expect(names).toContain("lansenger_send_app_articles");
+    expect(names).toContain("lansenger_send_app_card");
+    expect(names).toContain("lansenger_update_dynamic_card");
+    expect(names).toContain("lansenger_send_approve_card");
+    expect(names).toContain("lansenger_query_groups");
+    vi.restoreAllMocks();
+  });
+});
+
+describe("lansenger_send_file", () => {
+  let api: any;
+  beforeEach(() => { api = makeMockApi(); mockRunning(); registerLansengerTools(api); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it("returns error when account not running", async () => {
+    mockNotRunning();
+    const api2 = makeMockApi();
+    registerLansengerTools(api2);
+    const tool = api2._tools["lansenger_send_file"];
+    expect(tool).toBeDefined();
+    const result = await tool.execute("tc1", { filePath: "/tmp/test.txt", to: "chat-1" });
+    expect(parseResult(result).error).toContain("not configured or not running");
+  });
+
+  it("returns error when filePath missing", async () => {
+    const result = await api._tools["lansenger_send_file"].execute("tc1", { to: "chat-1" });
+    expect(parseResult(result).error).toContain("filePath is required");
+  });
+
+  it("returns error when to missing and no inbound chat", async () => {
+    mockNoChatId();
+    const result = await api._tools["lansenger_send_file"].execute("tc1", { filePath: "/tmp/test.txt" });
+    expect(parseResult(result).error).toContain("No target");
+  });
+
+  it("returns error when file not found", async () => {
+    const result = await api._tools["lansenger_send_file"].execute("tc1", { filePath: "/tmp/nonexistent_abc.txt", to: "chat-1" });
+    expect(parseResult(result).error).toContain("File not found");
+  });
+
+  it("returns error when path is directory", async () => {
+    const result = await api._tools["lansenger_send_file"].execute("tc1", { filePath: "/tmp", to: "chat-1" });
+    expect(parseResult(result).error).toContain("Not a file");
+  });
+
+  it("uses lastInboundChatId as default target", async () => {
+    const result = await api._tools["lansenger_send_file"].execute("tc1", { filePath: "/tmp" });
+    expect(parseResult(result).error).toContain("Not a file");
+  });
+});
+
+describe("lansenger_send_text", () => {
+  let api: any;
+  beforeEach(() => { api = makeMockApi(); mockRunning(); registerLansengerTools(api); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it("returns error when account not running", async () => {
+    mockNotRunning();
+    const api2 = makeMockApi();
+    registerLansengerTools(api2);
+    const tool = api2._tools["lansenger_send_text"];
+    expect(tool).toBeDefined();
+    const result = await tool.execute("tc1", { content: "hello", to: "chat-1" });
+    expect(parseResult(result).error).toContain("not configured or not running");
+  });
+
+  it("returns error when to missing", async () => {
+    mockNoChatId();
+    const result = await api._tools["lansenger_send_text"].execute("tc1", { content: "hello" });
+    expect(parseResult(result).error).toContain("No target");
+  });
+
+  it("returns error when file attachment not found", async () => {
+    const result = await api._tools["lansenger_send_text"].execute("tc1", { content: "caption", filePath: "/tmp/nonexistent_xyz.txt", to: "chat-1" });
+    expect(parseResult(result).error).toContain("File not found");
+  });
+});
+
+describe("lansenger_send_format_text", () => {
+  let api: any;
+  beforeEach(() => { api = makeMockApi(); mockRunning(); registerLansengerTools(api); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it("returns error when account not running", async () => {
+    mockNotRunning();
+    const api2 = makeMockApi();
+    registerLansengerTools(api2);
+    const tool = api2._tools["lansenger_send_format_text"];
+    expect(tool).toBeDefined();
+    const result = await tool.execute("tc1", { content: "**bold**", to: "chat-1" });
+    expect(parseResult(result).error).toContain("not configured or not running");
+  });
+
+  it("returns error when to missing", async () => {
+    mockNoChatId();
+    const result = await api._tools["lansenger_send_format_text"].execute("tc1", { content: "**bold**" });
+    expect(parseResult(result).error).toContain("No target");
+  });
+});
+
+describe("lansenger_send_image_url", () => {
+  let api: any;
+  beforeEach(() => { api = makeMockApi(); mockRunning(); registerLansengerTools(api); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it("returns error when imageUrl missing", async () => {
+    const result = await api._tools["lansenger_send_image_url"].execute("tc1", { to: "chat-1" });
+    expect(parseResult(result).error).toContain("imageUrl is required");
+  });
+
+  it("returns error when to missing", async () => {
+    mockNoChatId();
+    const result = await api._tools["lansenger_send_image_url"].execute("tc1", { imageUrl: "https://img.com/x.jpg" });
+    expect(parseResult(result).error).toContain("No target");
+  });
+});
+
+describe("lansenger_revoke_message", () => {
+  let api: any;
+  beforeEach(() => { api = makeMockApi(); mockRunning(); registerLansengerTools(api); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it("returns error when messageIds empty", async () => {
+    const result = await api._tools["lansenger_revoke_message"].execute("tc1", { messageIds: [] });
+    expect(parseResult(result).error).toContain("messageIds is required");
+  });
+
+  it("returns error when chatType=group without senderId", async () => {
+    const result = await api._tools["lansenger_revoke_message"].execute("tc1", { messageIds: ["m1"], chatType: "group" });
+    expect(parseResult(result).error).toContain("chatType='group' requires senderId");
+  });
+});
+
+describe("lansenger_send_link_card", () => {
+  let api: any;
+  beforeEach(() => { api = makeMockApi(); mockRunning(); registerLansengerTools(api); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it("returns error when title or link missing", async () => {
+    const result = await api._tools["lansenger_send_link_card"].execute("tc1", { title: "", link: "", to: "chat-1" });
+    expect(parseResult(result).error).toContain("title and link are required");
+  });
+
+  it("returns error when to missing", async () => {
+    mockNoChatId();
+    const result = await api._tools["lansenger_send_link_card"].execute("tc1", { title: "T", link: "https://x.com" });
+    expect(parseResult(result).error).toContain("No target");
+  });
+});
+
+describe("lansenger_send_app_articles", () => {
+  let api: any;
+  beforeEach(() => { api = makeMockApi(); mockRunning(); registerLansengerTools(api); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it("returns error when articles empty", async () => {
+    const result = await api._tools["lansenger_send_app_articles"].execute("tc1", { articles: [], to: "chat-1" });
+    expect(parseResult(result).error).toContain("articles is required");
+  });
+
+  it("returns error when to missing", async () => {
+    mockNoChatId();
+    const result = await api._tools["lansenger_send_app_articles"].execute("tc1", { articles: [{ imgUrl: "i", title: "t", url: "u" }] });
+    expect(parseResult(result).error).toContain("No target");
+  });
+});
+
+describe("lansenger_send_app_card", () => {
+  let api: any;
+  beforeEach(() => { api = makeMockApi(); mockRunning(); registerLansengerTools(api); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it("returns error when bodyTitle missing", async () => {
+    const result = await api._tools["lansenger_send_app_card"].execute("tc1", { to: "chat-1" });
+    expect(parseResult(result).error).toContain("bodyTitle is required");
+  });
+
+  it("returns error when to missing", async () => {
+    mockNoChatId();
+    const result = await api._tools["lansenger_send_app_card"].execute("tc1", { bodyTitle: "Card" });
+    expect(parseResult(result).error).toContain("No target");
+  });
+
+  it("auto-adds headStatusInfo when isDynamic=true without one", async () => {
+    vi.stubGlobal("fetch", async (url: any) => {
+      const u = typeof url === "string" ? url : url.url;
+      if (u.includes("apptoken"))
+        return new Response(JSON.stringify({ errCode: 0, errMsg: "", data: { appToken: "tok", expiresIn: 7200 } }), { headers: { "content-type": "application/json" } });
+      return new Response(JSON.stringify({ errCode: 0, errMsg: "", data: { msgId: "m1" } }), { headers: { "content-type": "application/json" } });
+    });
+    const params = { bodyTitle: "Approval", isDynamic: true, to: "chat-1" };
+    const result = await api._tools["lansenger_send_app_card"].execute("tc1", params);
+    const parsed = parseResult(result);
+    expect(parsed.success).toBe(true);
+    vi.restoreAllMocks();
+  });
+
+  it("keeps provided headStatusInfo when isDynamic=true", async () => {
+    vi.stubGlobal("fetch", async (url: any) => {
+      const u = typeof url === "string" ? url : url.url;
+      if (u.includes("apptoken"))
+        return new Response(JSON.stringify({ errCode: 0, errMsg: "", data: { appToken: "tok", expiresIn: 7200 } }), { headers: { "content-type": "application/json" } });
+      return new Response(JSON.stringify({ errCode: 0, errMsg: "", data: { msgId: "m1" } }), { headers: { "content-type": "application/json" } });
+    });
+    const params = { bodyTitle: "Approval", isDynamic: true, headStatusInfo: { description: "Custom", colour: "#FFB116" }, to: "chat-1" };
+    const result = await api._tools["lansenger_send_app_card"].execute("tc1", params);
+    const parsed = parseResult(result);
+    expect(parsed.success).toBe(true);
+    vi.restoreAllMocks();
+  });
+});
+
+describe("lansenger_update_dynamic_card", () => {
+  let api: any;
+  beforeEach(() => { api = makeMockApi(); mockRunning(); registerLansengerTools(api); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it("returns error when msgId missing", async () => {
+    const result = await api._tools["lansenger_update_dynamic_card"].execute("tc1", {});
+    expect(parseResult(result).error).toContain("msgId is required");
+  });
+});
+
+describe("lansenger_query_groups", () => {
+  let api: any;
+  beforeEach(() => { api = makeMockApi(); mockRunning(); registerLansengerTools(api); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it("returns error when account not running", async () => {
+    mockNotRunning();
+    const api2 = makeMockApi();
+    registerLansengerTools(api2);
+    const tool = api2._tools["lansenger_query_groups"];
+    expect(tool).toBeDefined();
+    const result = await tool.execute("tc1", {});
+    expect(parseResult(result).error).toContain("not configured or not running");
+  });
+});
+
+describe("multi-account support", () => {
+  const mockAccountA = { ...mockAccount, accountId: "account-A", appId: "app-A" };
+  const mockAccountB = { ...mockAccount, accountId: "account-B", appId: "app-B" };
+
+  it("uses accountId from params when provided", async () => {
+    const mockClientSpy = { sendText: vi.fn().mockResolvedValue({ success: true, messageId: "m1" }) };
+    vi.spyOn(runtime, "getRunningClientByAccountId").mockImplementation((id) => {
+      if (id === "account-A") return mockClientSpy as any;
+      return null;
+    });
+    vi.spyOn(runtime, "getRunningAccountByAccountId").mockImplementation((id) => {
+      if (id === "account-A") return mockAccountA;
+      return null;
+    });
+    vi.spyOn(runtime, "getRunningClient").mockReturnValue(null);
+    vi.spyOn(runtime, "getRunningAccount").mockReturnValue(null);
+    vi.spyOn(runtime, "getLastInboundChatId").mockReturnValue("chat-1");
+    vi.spyOn(runtime, "getSessionAccountId").mockReturnValue(undefined);
+
+    const api = makeMockApi();
+    registerLansengerTools(api);
+
+    const result = await api._tools["lansenger_send_text"].execute("tc1", { content: "hello", to: "chat-1", accountId: "account-A" });
+    expect(parseResult(result).success).toBe(true);
+
+    expect(runtime.getRunningClientByAccountId).toHaveBeenCalledWith("account-A");
+    expect(runtime.getRunningAccountByAccountId).toHaveBeenCalledWith("account-A");
+    expect(mockClientSpy.sendText).toHaveBeenCalledWith("chat-1", "hello", undefined);
+
+    vi.restoreAllMocks();
+  });
+
+  it("resolves accountId from sessionKey when not provided in params", async () => {
+    const mockClientSpy = { sendText: vi.fn().mockResolvedValue({ success: true, messageId: "m1" }) };
+    vi.spyOn(runtime, "getRunningClient").mockReturnValue(null);
+    vi.spyOn(runtime, "getRunningAccount").mockReturnValue(null);
+    vi.spyOn(runtime, "getRunningClientByAccountId").mockImplementation((id) => {
+      if (id === "account-B") return mockClientSpy as any;
+      return null;
+    });
+    vi.spyOn(runtime, "getRunningAccountByAccountId").mockImplementation((id) => {
+      if (id === "account-B") return mockAccountB;
+      return null;
+    });
+    vi.spyOn(runtime, "getLastInboundChatId").mockReturnValue("chat-1");
+    vi.spyOn(runtime, "getSessionAccountId").mockImplementation((sessionKey) => {
+      if (sessionKey === "agent:main:lansenger:dm:user1") return "account-B";
+      return undefined;
+    });
+
+    const api = makeMockApi();
+    registerLansengerTools(api);
+
+    const result = await api._tools["lansenger_send_text"].execute("tc1", { content: "hello", to: "chat-1", _sessionKey: "agent:main:lansenger:dm:user1" });
+    expect(parseResult(result).success).toBe(true);
+
+    expect(runtime.getSessionAccountId).toHaveBeenCalledWith("agent:main:lansenger:dm:user1");
+    expect(runtime.getRunningClientByAccountId).toHaveBeenCalledWith("account-B");
+    expect(mockClientSpy.sendText).toHaveBeenCalledWith("chat-1", "hello", undefined);
+
+    vi.restoreAllMocks();
+  });
+
+  it("falls back to getRunningClient when no accountId provided and no session mapping", async () => {
+    const mockClientSpy = { sendText: vi.fn().mockResolvedValue({ success: true, messageId: "m1" }) };
+    vi.spyOn(runtime, "getRunningClient").mockReturnValue(mockClientSpy as any);
+    vi.spyOn(runtime, "getRunningAccount").mockReturnValue(mockAccount);
+    vi.spyOn(runtime, "getRunningClientByAccountId").mockReturnValue(null);
+    vi.spyOn(runtime, "getRunningAccountByAccountId").mockReturnValue(null);
+    vi.spyOn(runtime, "getLastInboundChatId").mockReturnValue("chat-1");
+    vi.spyOn(runtime, "getSessionAccountId").mockReturnValue(undefined);
+
+    const api = makeMockApi();
+    registerLansengerTools(api);
+
+    const result = await api._tools["lansenger_send_text"].execute("tc1", { content: "hello", to: "chat-1" });
+    expect(parseResult(result).success).toBe(true);
+
+    expect(runtime.getRunningClient).toHaveBeenCalled();
+    expect(runtime.getRunningAccount).toHaveBeenCalled();
+    expect(mockClientSpy.sendText).toHaveBeenCalledWith("chat-1", "hello", undefined);
+
+    vi.restoreAllMocks();
+  });
+});

@@ -22,28 +22,15 @@ function convertPxToPt(str: string): string {
   });
 }
 
-const PX_TO_PT_FIELDS = new Set([
-  "bodyTitle", "bodyContent", "bodySubTitle", "headTitle", "signature",
-  "description", "value", "title",
-]);
-
-function convertPxToPtCard(card: AppCardData): AppCardData {
-  const result = { ...card };
-  for (const key of PX_TO_PT_FIELDS) {
-    if (typeof result[key as keyof AppCardData] === "string") {
-      (result as any)[key] = convertPxToPt(result[key as keyof AppCardData] as string);
-    }
+function convertPxToPtDeep(obj: unknown): unknown {
+  if (typeof obj === "string") return convertPxToPt(obj);
+  if (Array.isArray(obj)) return obj.map(convertPxToPtDeep);
+  if (obj && typeof obj === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(obj)) out[k] = convertPxToPtDeep(v);
+    return out;
   }
-  if (result.headStatusInfo?.description) {
-    result.headStatusInfo = { ...result.headStatusInfo, description: convertPxToPt(result.headStatusInfo.description) };
-  }
-  if (result.fields?.length) {
-    result.fields = result.fields.map((f) => ({ ...f, value: convertPxToPt(f.value) }));
-  }
-  if (result.buttons?.length) {
-    result.buttons = result.buttons.map((b) => ({ ...b, title: convertPxToPt(b.title) }));
-  }
-  return result;
+  return obj;
 }
 const RECONNECT_BACKOFF = [2, 5, 10, 30, 60];
 const HEARTBEAT_INTERVAL_MS = 30_000;
@@ -122,8 +109,6 @@ export class LansengerClient {
   private chatTypeMap = new Map<string, "group" | "dm">();
   private userLangMap = new Map<string, "zh" | "en">();
   private dangerouslyAllowPrivateNetwork: boolean = false;
-  /** Our bot's openId, captured from group @mention events */
-  private selfBotId: string | null = null;
 
   constructor(config: { appId: string; appSecret: string; apiGatewayUrl?: string; logger?: ClientLogger; dangerouslyAllowPrivateNetwork?: boolean | null }) {
     this.appId = config.appId;
@@ -144,7 +129,7 @@ export class LansengerClient {
 
   isWsAlive(): boolean {
     if (!this.ws) return false;
-    return this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING;
+    return this.ws.readyState === WebSocket.OPEN;
   }
 
   wsState(): string {
@@ -180,11 +165,11 @@ export class LansengerClient {
     }
   }
 
-  async sendText(chatId: string, content: string, reminder?: ReminderParams, refMsgId?: string): Promise<ApiResult> {
+  async sendText(chatId: string, content: string, reminder?: ReminderParams): Promise<ApiResult> {
     const token = await this.getAppToken();
     if (!token) return { success: false, error: "No access token" };
     try {
-      const { url, wrap } = this.msgTarget(chatId, refMsgId);
+      const { url, wrap } = this.msgTarget(chatId);
       const textData: Record<string, unknown> = { content };
       if (reminder) textData.reminder = reminder;
       const payload = wrap({ text: textData, msgType: "text" });
@@ -200,11 +185,11 @@ export class LansengerClient {
     }
   }
 
-  async sendFormatText(chatId: string, content: string, reminder?: ReminderParams, refMsgId?: string): Promise<ApiResult> {
+  async sendFormatText(chatId: string, content: string, reminder?: ReminderParams): Promise<ApiResult> {
     const token = await this.getAppToken();
     if (!token) return { success: false, error: "No access token" };
     try {
-      const { url, wrap } = this.msgTarget(chatId, refMsgId);
+      const { url, wrap } = this.msgTarget(chatId);
       const fmtData: Record<string, unknown> = { formatType: 1, text: content };
       if (reminder) fmtData.reminder = reminder;
       const payload = wrap({ formatText: fmtData, msgType: "formatText" });
@@ -230,11 +215,11 @@ export class LansengerClient {
     }
   }
 
-  async sendTextWithMedia(chatId: string, content: string, mediaType: number, mediaIds: string[], reminder?: ReminderParams, refMsgId?: string): Promise<ApiResult> {
+  async sendTextWithMedia(chatId: string, content: string, mediaType: number, mediaIds: string[], reminder?: ReminderParams): Promise<ApiResult> {
     const token = await this.getAppToken();
     if (!token) return { success: false, error: "No access token" };
     try {
-      const { url, wrap } = this.msgTarget(chatId, refMsgId);
+      const { url, wrap } = this.msgTarget(chatId);
       const textData: Record<string, unknown> = { content, mediaType, mediaIds };
       if (reminder) textData.reminder = reminder;
       const payload = wrap({ text: textData, msgType: "text" });
@@ -386,11 +371,25 @@ export class LansengerClient {
     }
   }
 
+  async sendApproveCard(chatId: string, cardData: ApproveCardData): Promise<ApiResult> {
+    const token = await this.getAppToken();
+    if (!token) return { success: false, error: "No access token" };
+    try {
+      const { url, wrap } = this.msgTarget(chatId);
+      const payload = wrap({ approveCard: cardData, msgType: "approveCard" });
+      const data = await this.postJson(`${url}?app_token=${token}`, payload);
+      if (data.errCode !== 0) return { success: false, error: data.errMsg ?? undefined };
+      return { success: true, messageId: data.data?.msgId ?? undefined, rawResponse: data };
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
+  }
+
   async sendAppCard(chatId: string, cardData: AppCardData): Promise<ApiResult> {
     const token = await this.getAppToken();
     if (!token) return { success: false, error: "No access token" };
     try {
-      const resolvedCard: AppCardData = convertPxToPtCard(cardData);
+      const resolvedCard: AppCardData = convertPxToPtDeep(cardData) as AppCardData;
       if (resolvedCard.isDynamic && !resolvedCard.headStatusInfo) {
         resolvedCard.headStatusInfo = {
           description: '<div style="color:rgba(0,0,0,.47);text-align:left">Active</div>',
@@ -431,7 +430,7 @@ export class LansengerClient {
     }
   }
 
-  async updateCardStatus(messageId: string, status: "pending" | "approved" | "denied", lang?: "zh" | "en"): Promise<ApiResult> {
+  async updateCardStatus(messageId: string, status: "pending" | "approved" | "denied", lang?: "zh" | "en", strategyKind?: "allow-once" | "allow-session" | "deny"): Promise<ApiResult> {
     const token = await this.getAppToken();
     if (!token) return { success: false, error: "No access token" };
     const detectedLang = lang ?? "zh";
@@ -442,18 +441,33 @@ export class LansengerClient {
     };
     const cfg = statusConfig[status] ?? statusConfig["pending"]!;
     const statusText = cfg[detectedLang] ?? cfg.en;
+    const isZh = detectedLang === "zh";
+    const resolved = status === "approved" || status === "denied";
+
+    const strategyLabels: Record<string, { zh: string; en: string }> = {
+      "allow-once": { zh: "已允许执行一次", en: "Allow Once" },
+      "allow-session": { zh: "已允许本会话有效", en: "Allow Session" },
+      "deny": { zh: "已拒绝执行", en: "Denied" },
+    };
+    const strategyCfg = strategyLabels[strategyKind ?? "deny"] ?? strategyLabels["deny"]!;
+
     try {
       const url = `${this.apiGatewayUrl}${API_ENDPOINTS.dynamicUpdate}?app_token=${token}`;
       const payload = {
         msgId: messageId,
-        msgType: "appCard",
+        msgType: "approveCard",
         msgData: {
-          appCardUpdateMsg: {
-            isLastUpdate: status !== "pending",
-            headStatusInfo: {
-              description: `<div style="color:${cfg.color};text-align:left">${statusText}</div>`,
+          approveCardUpdateMsg: {
+            headStatus: {
+              describe: statusText,
               colour: cfg.color,
+              statusIcon: 1,
             },
+            ...(resolved ? {
+              buttons: [
+                { text: isZh ? strategyCfg.zh : strategyCfg.en, buttonTheme: 0, state: 1 },
+              ],
+            } : {}),
           },
         },
       };
@@ -487,7 +501,7 @@ export class LansengerClient {
     }
   }
 
-  async queryGroups(pageOffset: number = 0, pageSize: number = 100): Promise<{ totalGroupIds: number; groupIds: string[] } | { error: string }> {
+  async queryGroups(pageOffset: number = 1, pageSize: number = 100): Promise<{ totalGroupIds: number; groupIds: string[] } | { error: string }> {
     const token = await this.getAppToken();
     if (!token) return { error: "No access token" };
     try {
@@ -587,78 +601,45 @@ export class LansengerClient {
     const events = wsMsg.events ?? [];
     const results: InboundEvent[] = [];
     for (const ev of events) {
-      const eventData = ev.data ?? {};
+      const msgData = ev.data ?? {};
       const eventType = ev.type ?? "";
-      const isGroup = eventType === "bot_group_message";
-
-      // learn our bot's openId from group @mention events (botId = target bot = us)
-      if (isGroup && !this.selfBotId && eventData.botId) {
-        this.selfBotId = eventData.botId as string;
-      }
-
-      // skip messages sent by our own bot to avoid self-echo
-      if (this.selfBotId && eventData.from === this.selfBotId) continue;
-
-      const senderId = (eventData.from ?? "") as string;
-      const chatId = isGroup ? ((eventData.groupId ?? eventData.from ?? "") as string) : senderId;
-      const senderFromType = typeof eventData.fromType === "number" ? (eventData.fromType as number) : undefined;
-
-      // extract inner message body: eventData.msgData.{msgType}.{content}
-      const extracted = await this.extractText(eventData);
-      if (!extracted.text) {
-        this.log.info(`processRawMessage: skipping message — msgType=${eventData.msgType ?? "n/a"} text=${JSON.stringify(extracted.text)} chatId=${chatId}`);
-        continue;
-      }
+      const extracted = await this.extractText(msgData);
+      if (!extracted.text) continue;
       if (extracted.mediaPaths?.length) {
-        this.log.info(`inbound media: msgType=${eventData.msgType ?? "n/a"} count=${extracted.mediaPaths.length} saved=${extracted.mediaPaths.join(",")}`);
+        this.log.info(`inbound media: msgType=${msgData.msgType ?? "n/a"} count=${extracted.mediaPaths.length} saved=${extracted.mediaPaths.join(",")}`);
       }
-
-      // messageId: use platform msgId when available (groups and DMs); fall back to UUID
-      const messageId = (eventData.msgId as string) ?? crypto.randomUUID();
-
-      // @mention info from eventData.reminder (top-level, not nested in msgData)
-      const reminder = (eventData.reminder ?? {}) as Record<string, any>;
-      const isAtMe = isGroup ? Boolean(reminder.isAtMe ?? false) : undefined;
-      const isAtAll = isGroup ? Boolean(reminder.isAtAll ?? false) : undefined;
-      const mentionedStaffs: Array<{ staffId?: string; staffName?: string }> = Array.isArray(reminder.staffs) ? reminder.staffs : [];
-      const mentionedBots: Array<{ botId: string; botName: string }> = Array.isArray(reminder.bots) ? reminder.bots : [];
-
-      // parse referenceMsg (quoted message)
-      let referenceMsg: ReferenceMsg | undefined;
-      const refData = eventData.referenceMsg as Record<string, any> | undefined;
-      if (refData && refData.msgType && refData.msgData) {
-        const refExtracted = await this.extractText(refData);
-        if (refExtracted.text) {
-          referenceMsg = {
-            from: (refData.from ?? "") as string,
-            fromType: (refData.fromType ?? 0) as number,
-            msgType: (refData.msgType ?? "text") as string,
-            msgData: refData.msgData as Record<string, any>,
-            content: refExtracted.text,
-          };
-        }
-      }
-
+      const messageId = msgData.messageId ?? msgData.msgId ?? crypto.randomUUID();
+      const chatType = msgData.chatType ?? "p2p";
+      const isGroup = chatType === "group" || eventType === "bot_group_message";
+      const senderId = msgData.from ?? "";
+      const chatId = msgData.groupId ?? msgData.conversationId ?? senderId;
+      
       this.cacheChatType(chatId, isGroup ? "group" : "dm");
       if (extracted.text) this.cacheUserLang(senderId, extracted.text);
+
+      const referenceMsg: ReferenceMsg | undefined = msgData.referenceMsg
+        ? this.parseReferenceMsg(msgData.referenceMsg)
+        : undefined;
 
       results.push({
         messageId,
         text: extracted.text,
         chatId,
-        chatName: isGroup ? ((eventData.groupName ?? undefined) as string | undefined) : undefined,
+        chatName: msgData.conversationTitle ?? msgData.groupName ?? undefined,
         isGroup,
         senderId,
-        userName: senderId,
-        rawMessage: eventData,
-        msgType: (eventData.msgType ?? "text") as string,
+        userName: msgData.senderName ?? senderId,
+        rawMessage: msgData,
+        msgType: msgData.msgType ?? "text",
         mediaPaths: extracted.mediaPaths,
-        isAtMe,
-        isAtAll,
-        senderFromType,
-        mentionedStaffs: mentionedStaffs.length > 0 ? mentionedStaffs : undefined,
-        mentionedBots: mentionedBots.length > 0 ? mentionedBots : undefined,
+        eventType,
         referenceMsg,
+        isAtMe: msgData.isAtMe ?? undefined,
+        isAtAll: msgData.isAtAll ?? undefined,
+        fromType: msgData.fromType ?? undefined,
+        groupName: msgData.groupName ?? undefined,
+        botCreator: msgData.botCreator ?? undefined,
+        botId: msgData.botId ?? undefined,
       });
     }
     return results;
@@ -728,9 +709,9 @@ export class LansengerClient {
       try {
         const ws = new WebSocket(currentUrl);
         this.ws = ws;
+        this.backoffIdx = 0;
 
         ws.onopen = () => {
-          this.backoffIdx = 0;
           this.log.info(`WS connected (url=${currentUrl.slice(0, 60)}...)`);
           this.startHeartbeat(ws);
           this.onWsOpen?.();
@@ -797,16 +778,11 @@ export class LansengerClient {
           this.pongTimeoutTimer = setTimeout(() => {
             if (Date.now() - this.lastPongAt > PONG_TIMEOUT_MS && ws.readyState === WebSocket.OPEN) {
               this.log.error("pong timeout — terminating zombie connection");
-              this.stopHeartbeat();
-              this.clearPongTimeout();
               ws.terminate();
             }
           }, PONG_TIMEOUT_MS);
         } catch {
-          this.log.error("heartbeat ping failed — terminating zombie connection");
-          this.stopHeartbeat();
-          this.clearPongTimeout();
-          try { ws.terminate(); } catch {}
+          this.log.error("heartbeat ping failed");
         }
       } else if (ws.readyState === WebSocket.CLOSING || ws.readyState === WebSocket.CLOSED) {
         this.log.error(`heartbeat: WS no longer open (state=${this.wsState()}) — forcing close to trigger reconnect`);
@@ -832,7 +808,7 @@ export class LansengerClient {
     this.clearPongTimeout();
   }
 
-  private msgTarget(chatId: string, refMsgId?: string): { url: string; wrap: (msgData: Record<string, unknown>) => Record<string, unknown> } {
+  private msgTarget(chatId: string): { url: string; wrap: (msgData: Record<string, unknown>) => Record<string, unknown> } {
     const isGroup = this.isGroupChat(chatId);
     const endpoint = isGroup ? API_ENDPOINTS.groupMessage : API_ENDPOINTS.privateMessage;
     const url = `${this.apiGatewayUrl}${endpoint}`;
@@ -841,24 +817,20 @@ export class LansengerClient {
         const mt = msgData.msgType ?? "text";
         const data: Record<string, unknown> = {};
         for (const [k, v] of Object.entries(msgData)) { if (k !== "msgType") data[k] = v; }
-        const payload: Record<string, unknown> = { groupId: chatId, msgType: mt, msgData: data };
-        if (refMsgId) payload.refMsgId = refMsgId;
-        return payload;
+        return { groupId: chatId, msgType: mt, msgData: data };
       } };
     }
     return { url, wrap: (msgData) => {
       const mt = msgData.msgType ?? "text";
       const data: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(msgData)) { if (k !== "msgType") data[k] = v; }
-      const payload: Record<string, unknown> = { userIdList: [chatId], msgType: mt, msgData: data };
-      if (refMsgId) payload.refMsgId = refMsgId;
-      return payload;
+      return { userIdList: [chatId], msgType: mt, msgData: data };
     } };
   }
 
-  private async extractText(eventData: Record<string, any>): Promise<{ text: string | null; mediaPaths?: string[] }> {
-    const msgType = eventData.msgType ?? "text";
-    const payload = eventData.msgData ?? {};
+  private async extractText(msgData: Record<string, any>): Promise<{ text: string | null; mediaPaths?: string[] }> {
+    const msgType = msgData.msgType ?? "text";
+    const payload = msgData.msgData ?? {};
 
     if (msgType === "text") return { text: payload.text?.content?.trim() ?? null };
 
@@ -894,13 +866,6 @@ export class LansengerClient {
       return { text: paths.length > 0 ? "[Voice]" : "[Voice]", mediaPaths: paths.length > 0 ? paths : undefined };
     }
     if (msgType === "formatText") return { text: payload.formatText?.text?.trim() ?? null };
-    if (msgType === "format") {
-      const raw = payload.format?.text?.trim();
-      if (!raw) return { text: null };
-      // Strip HTML tags (e.g. <br>) and @mention prefixes from the text
-      const stripped = raw.replace(/<[^>]*>/g, "").replace(/^@\S+\s*/, "").trim();
-      return { text: stripped || null };
-    }
     if (msgType === "position") {
       const pos = payload.position ?? {};
       const parts = [pos.name ?? "", pos.address ?? ""].filter(Boolean);
@@ -910,8 +875,47 @@ export class LansengerClient {
     }
     if (msgType === "card") return { text: `[Contact Card] ${payload.card?.staffId ?? ""}` };
     if (msgType === "sticker") return { text: `[Sticker] ${payload.sticker?.stickerId ?? ""}` };
-    this.log.info(`extractText: unhandled msgType=${msgType} payloadKeys=${Object.keys(payload).join(",")}`);
+    if (msgType === "approveCard") {
+      const body = payload.approveCard?.body ?? {};
+      const content = body.content?.text ?? body.title ?? "";
+      return { text: content ? `[Approval Card] ${content}` : "[Approval Card]" };
+    }
+    if (msgType === "i18nAppCard") {
+      const i18nBody = payload.i18nAppCard?.i18nBodyTitle ?? {};
+      const text = i18nBody.zhHans ?? i18nBody.en ?? "";
+      return { text: text ? `[i18n App Card] ${text}` : "[i18n App Card]" };
+    }
+    if (msgType === "systemAction") {
+      const sa = payload.systemAction ?? {};
+      return { text: `[System Action] ${sa.content ?? sa.extendContent?.selfContent ?? sa.extendContent?.otherContent ?? ""}` };
+    }
     return { text: null };
+  }
+
+  private parseReferenceMsg(rawRef: Record<string, any>): ReferenceMsg {
+    return {
+      from: rawRef.from,
+      senderName: rawRef.senderName,
+      fromType: rawRef.fromType,
+      msgType: rawRef.msgType,
+      msgData: rawRef.msgData,
+      referenceMsg: rawRef.referenceMsg ? this.parseReferenceMsg(rawRef.referenceMsg) : undefined,
+    };
+  }
+
+  async extractReferenceText(ref: ReferenceMsg): Promise<string> {
+    if (!ref.msgData) return "";
+    const msgType = ref.msgType ?? "text";
+    const senderLabel = ref.senderName ?? ref.from ?? "unknown";
+    const typeLabel = `[Quoted ${msgType}]`;
+    const extracted = await this.extractText({ msgType, msgData: ref.msgData });
+    const content = extracted.text ?? "";
+    let result = content ? `${typeLabel} from ${senderLabel}: ${content}` : `${typeLabel} from ${senderLabel}`;
+    if (ref.referenceMsg) {
+      const nested = await this.extractReferenceText(ref.referenceMsg);
+      if (nested) result = `${result}\n${nested}`;
+    }
+    return result;
   }
 
   private async downloadAllMedia(ids: string[], mediaKind: string): Promise<string[]> {
@@ -960,7 +964,8 @@ export type LinkCardOptions = {
 
 export type AppCardField = { key: string; value: string };
 export type AppCardLink = { title: string; url: string };
-export type AppCardButton = { title: string; action: string };
+export type AppCardButton = { title: string; action: string; buttonTheme?: number; state?: number; callbackInfo?: string };
+export type CardAction = { actionType: string; entryId?: string; args?: AppCardField[] };
 export type HeadStatusInfo = {
   iconLink?: string;
   description: string;
@@ -984,6 +989,7 @@ export type AppCardData = {
   cardLink?: string;
   pcCardLink?: string;
   padCardLink?: string;
+  cardAction?: CardAction;
 };
 
 export type AppCardOptions = {
@@ -1010,11 +1016,12 @@ export type ArticleCardOptions = {
 };
 
 export type ReferenceMsg = {
-  from: string;
-  fromType: number;
-  msgType: string;
-  msgData: Record<string, any>;
-  content: string;
+  from?: string;
+  senderName?: string;
+  fromType?: number;
+  msgType?: string;
+  msgData?: Record<string, any>;
+  referenceMsg?: ReferenceMsg;
 };
 
 export type InboundEvent = {
@@ -1028,16 +1035,14 @@ export type InboundEvent = {
   rawMessage: Record<string, any>;
   msgType: string;
   mediaPaths?: string[];
+  eventType?: string;
+  referenceMsg?: ReferenceMsg;
   isAtMe?: boolean;
   isAtAll?: boolean;
-  /** Sender type from eventData.fromType: 0=staff, 1=app/bot */
-  senderFromType?: number;
-  /** Staffs @mentioned (from eventData.reminder.staffs) */
-  mentionedStaffs?: Array<{ staffId?: string; staffName?: string }>;
-  /** Bots @mentioned (from eventData.reminder.bots) */
-  mentionedBots?: Array<{ botId: string; botName: string }>;
-  /** Quoted/referenced message (from eventData.referenceMsg) */
-  referenceMsg?: ReferenceMsg;
+  fromType?: number;
+  groupName?: string;
+  botCreator?: string;
+  botId?: string;
 };
 
 export type LansengerApiResponse = {
@@ -1054,6 +1059,48 @@ export type LansengerApiResponse = {
 
 export type LansengerWsMessage = {
   events?: Array<{ type?: string; data: Record<string, any> }>;
+};
+
+export type ApproveCardHead = {
+  title?: string;
+  iconLink?: string;
+  iconId?: string;
+  headStatus?: {
+    describe?: string;
+    statusIcon?: number;
+    iconLink?: string;
+    colour?: string;
+  };
+};
+
+export type ApproveCardBody = {
+  title: string;
+  content?: { formatType?: number; text?: string };
+  fields?: AppCardField[];
+};
+
+export type ApproveCardButton = {
+  text?: string;
+  buttonTheme?: number;
+  state?: number;
+  link?: string;
+  pcLink?: string;
+  padLink?: string;
+  callbackInfo?: string;
+  permissionScope?: {
+    permittedStaffs?: string[];
+    prohibitedStaffs?: string[];
+  };
+  prohibitedState?: number;
+};
+
+export type ApproveCardData = {
+  head?: ApproveCardHead;
+  body?: ApproveCardBody;
+  reminder?: ReminderParams;
+  cardLink?: { cardLink?: string; cardLinkForPc?: string; cardLinkForPad?: string };
+  buttons?: ApproveCardButton[];
+  expireTime?: number;
 };
 
 export type I18nObj = { zhHans: string; zhHant: string; zhHantHK: string; en: string; fr: string };

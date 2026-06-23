@@ -28,11 +28,3 @@ npm-debug.log*
 tmp/
 temp/
 *.tmp
-
-# Local-only tests (not for GitHub)
-src/client.test.ts
-src/setup-wizard.test.ts
-src/channel.test.ts
-src/runtime.test.ts
-src/tools.test.ts
-vitest.config.ts

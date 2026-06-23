@@ -356,6 +356,13 @@ openclaw config set channels.lansenger.dangerouslyAllowPrivateNetwork true
 11. **自动写配置** — 是否允许自动设置 homeChannel（默认开启，建议保持）
 12. **斜杠命令权限** — 允许用户在蓝信中执行 `/reset`、`/models` 等命令。需将用户的 lansenger staff ID 加入 `commands.ownerAllowFrom`（格式：`lansenger:<orgId>-<staffId>`）
 13. **多机器人** — 是否需要配置多个蓝信机器人账号
+14. **审批权限** — 允许蓝信用户在聊天中审批危险命令（非白名单 exec 命令）。开启后，bot owner 自动被设为审批人（从 `homeChannel` 检测），无需手动配置 ID。
+
+```bash
+openclaw config set approvals.exec.enabled true
+```
+
+> Gateway 启动时会自动将 `homeChannel` (bot owner) 写入 `approvals.exec.allowFrom.lansenger`。如果未自动配置，`resolveLansengerApprovers` 也会 fallback 到 owner。设置后可通过点击审批卡片按钮或手输 `/approve <id> allow-once|allow-session|deny` 完成审批。
 
 ```bash
 openclaw config set channels.lansenger.name "QAX Bot"

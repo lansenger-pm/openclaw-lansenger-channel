@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { lansengerPlugin, resolveAccount, pendingApprovalCards } from "./channel.js";
 import { LansengerClient, mediaTypeFromPath, uploadMediaTypeFromPath, buildI18n } from "./client.js";
-import { verifyChannelMessageReceiveAckPolicyAdapterProofs, listDeclaredReceiveAckPolicies } from "openclaw/plugin-sdk/channel-outbound";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -169,10 +168,13 @@ describe("processRawMessage", () => {
     const raw = JSON.stringify({
       events: [
         {
-          type: "bot_private_message",
           data: {
             msgType: "text",
+            messageId: "msg-123",
+            chatType: "p2p",
             from: "user-1",
+            conversationId: "conv-1",
+            senderName: "Alice",
             msgData: { text: { content: "Hello!" } },
           },
         },
@@ -190,15 +192,14 @@ describe("processRawMessage", () => {
     const raw = JSON.stringify({
       events: [
         {
-          type: "bot_group_message",
           data: {
             msgType: "text",
-            msgId: "msg-456",
-            groupId: "group-1",
-            botId: "bot-1",
+            messageId: "msg-456",
+            chatType: "group",
             from: "user-2",
-            groupName: "Team Chat",
-            reminder: { isAtMe: true, isAtAll: false, staffs: [], bots: [{ botId: "bot-1", botName: "Bot0456" }] },
+            conversationId: "group-1",
+            conversationTitle: "Team Chat",
+            senderName: "Bob",
             msgData: { text: { content: "Hi team!" } },
           },
         },
@@ -629,9 +630,9 @@ describe("actions.handleAction", () => {
 
 describe("resolveLansengerApprovers", () => {
   it("returns explicit ownerAllowFrom", () => {
-    const resolveLansengerApprovers = (lansengerPlugin as any).approvalCapability?.nativeRuntime?.availability?.isConfiguredAndAvailable;
+    const isConfigured = (lansengerPlugin as any).approvalCapability?.nativeRuntime?.availability?.isConfigured;
     const cfg = { channels: { lansenger: { appId: "id", appSecret: "secret" } }, commands: { ownerAllowFrom: ["approver-1"] } };
-    expect(resolveLansengerApprovers({ cfg, accountId: undefined })).toBe(true);
+    expect(isConfigured({ cfg, accountId: undefined })).toBe(true);
   });
 });
 
@@ -661,15 +662,15 @@ describe("approvalCapability", () => {
   it("resolveOriginTarget returns target from request", () => {
     const resolve = (lansengerPlugin as any).approvalCapability?.native?.resolveOriginTarget;
     const cfg = { channels: { lansenger: { appId: "id", appSecret: "secret" } } };
-    const result = resolve({ cfg, accountId: undefined, request: { turnSource: { target: { to: "chat-1" } } } });
+    const result = resolve({ cfg, accountId: undefined, request: { id: "test-id", request: { turnSourceTo: "chat-1" }, createdAtMs: 0, expiresAtMs: 0 } });
     expect(result).toBeDefined();
-    expect(result.to).toBe("chat-1");
+    expect(result!.to).toBe("chat-1");
   });
 
   it("resolveOriginTarget returns null when no target", () => {
     const resolve = (lansengerPlugin as any).approvalCapability?.native?.resolveOriginTarget;
     const cfg = { channels: { lansenger: { appId: "id", appSecret: "secret" } } };
-    const result = resolve({ cfg, accountId: undefined, request: {} });
+    const result = resolve({ cfg, accountId: undefined, request: { id: "test-id", request: { sessionKey: "s1" }, createdAtMs: 0, expiresAtMs: 0 } });
     expect(result).toBeNull();
   });
 
@@ -677,26 +678,26 @@ describe("approvalCapability", () => {
     const build = (lansengerPlugin as any).approvalCapability?.nativeRuntime?.presentation?.buildPendingPayload;
     const cfg = { channels: { lansenger: { appId: "id", appSecret: "secret" } } };
     const result = build({ cfg, request: { command: "rm -rf /", sessionKey: "sess-1" }, target: { to: "chat-1" }, nowMs: Date.now() });
-    expect(result.type).toBe("appCard");
+    expect(result.type).toBe("approveCard");
     expect(result.zh).toBeDefined();
     expect(result.en).toBeDefined();
-    expect(result.zh.isDynamic).toBe(true);
+    expect(result.isDynamic).toBe(true);
   });
 
-  it("buildResolvedPayload returns approved text", () => {
-    const build = (lansengerPlugin as any).approvalCapability?.nativeRuntime?.presentation?.buildResolvedPayload;
+  it("buildResolvedResult returns update action for approved", () => {
+    const build = (lansengerPlugin as any).approvalCapability?.nativeRuntime?.presentation?.buildResolvedResult;
     const cfg = { channels: { lansenger: { appId: "id", appSecret: "secret" } } };
-    const result = build({ cfg, resolved: { kind: "approved", actorLabel: "admin" }, target: { to: "chat-1" } });
-    expect(result.type).toBe("text");
-    expect(result.text).toContain("已批准");
+    const result = build({ cfg, resolved: { kind: "approved", actorLabel: "admin" }, entry: {} });
+    expect(result.kind).toBe("update");
+    expect(result.payload.status).toBe("approved");
   });
 
-  it("buildResolvedPayload returns denied text", () => {
-    const build = (lansengerPlugin as any).approvalCapability?.nativeRuntime?.presentation?.buildResolvedPayload;
+  it("buildResolvedResult returns update action for denied", () => {
+    const build = (lansengerPlugin as any).approvalCapability?.nativeRuntime?.presentation?.buildResolvedResult;
     const cfg = { channels: { lansenger: { appId: "id", appSecret: "secret" } } };
-    const result = build({ cfg, resolved: { kind: "denied" }, target: { to: "chat-1" } });
-    expect(result.type).toBe("text");
-    expect(result.text).toContain("已拒绝");
+    const result = build({ cfg, resolved: { kind: "denied" }, entry: {} });
+    expect(result.kind).toBe("update");
+    expect(result.payload.status).toBe("denied");
   });
 });
 
@@ -805,53 +806,5 @@ describe("pendingApprovalCards", () => {
     pendingApprovalCards.set("chat-1", { messageId: "msg-123", lang: "zh" });
     pendingApprovalCards.delete("chat-1");
     expect(pendingApprovalCards.get("chat-1")).toBeUndefined();
-  });
-});
-
-describe("message adapter receive ack policy", () => {
-  const messageAdapter = (lansengerPlugin as any).message;
-
-  it("declares receive adapter with defaultAckPolicy after_agent_dispatch", () => {
-    expect(messageAdapter).toBeDefined();
-    const receive = messageAdapter.receive;
-    expect(receive).toBeDefined();
-    expect(receive.defaultAckPolicy).toBe("after_agent_dispatch");
-  });
-
-  it("declares all four supported ack policies", () => {
-    const receive = messageAdapter.receive;
-    expect(receive.supportedAckPolicies).toEqual([
-      "after_receive_record",
-      "after_agent_dispatch",
-      "after_durable_send",
-      "manual",
-    ]);
-  });
-
-  it("passes verifyChannelMessageReceiveAckPolicyAdapterProofs", async () => {
-    const proofs = {
-      after_receive_record: () => {},
-      after_agent_dispatch: () => {},
-      after_durable_send: () => {},
-      manual: () => {},
-    };
-    const results = await verifyChannelMessageReceiveAckPolicyAdapterProofs({
-      adapterName: "lansenger",
-      adapter: messageAdapter,
-      proofs,
-    });
-    for (const policy of ["after_receive_record", "after_agent_dispatch", "after_durable_send", "manual"]) {
-      const result = results.find((r) => r.policy === policy);
-      expect(result).toBeDefined();
-      expect(result?.status).toBe("verified");
-    }
-  });
-
-  it("lists declared ack policies via listDeclaredReceiveAckPolicies", () => {
-    const policies = listDeclaredReceiveAckPolicies(messageAdapter.receive);
-    expect(policies).toContain("after_agent_dispatch");
-    expect(policies).toContain("after_receive_record");
-    expect(policies).toContain("after_durable_send");
-    expect(policies).toContain("manual");
   });
 });

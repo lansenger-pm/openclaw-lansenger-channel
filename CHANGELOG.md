@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.16.4] - 2026-06-23
+
+### Added
+
+- **Native approval cards for exec commands**: Non-whitelist exec commands now trigger interactive approval cards. Users approve or deny via button clicks or `/approve <id>` slash commands. Cards update status in-place after resolution.
+- **`lansenger_send_approve_card`** Agent tool for sending interactive approval cards.
+- **`accountId` parameter** on all send tools (`lansenger_send_*`) for correct bot routing in multi-account setups.
+- **`command-i18n.ts`** centralized i18n descriptions for built-in slash commands (zhHans / zhHant / zhHantHK / en / fr).
+- **Auto-configured approvers**: Bot owner from `homeChannel` is automatically used when `approvals.exec.allowFrom.lansenger` is not set.
+
+### Changed
+
+- **`reminderUserIds` description**: Updated to reflect that `@姓名` must be written in the message text (Lansenger API no longer auto-prepends names).
+- **Tool client resolution**: Simplified from `ClientResolverChain` to direct `makeToolClient(accountId)` lookup.
+
 ## [3.16.3] - 2026-06-22
 
 ### Fixed
