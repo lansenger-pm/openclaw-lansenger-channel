@@ -11,13 +11,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - **Native approval cards for exec commands**: Non-whitelist exec commands now trigger interactive approval cards. Users approve or deny via button clicks or `/approve <id>` slash commands. Cards update status in-place after resolution.
 - **`lansenger_send_approve_card`** Agent tool for sending interactive approval cards.
 - **`accountId` parameter** on all send tools (`lansenger_send_*`) for correct bot routing in multi-account setups.
-- **`command-i18n.ts`** centralized i18n descriptions for built-in slash commands (zhHans / zhHant / zhHantHK / en / fr), auto-synced to Lansenger via `/v1/bot/commands/create` on gateway startup so commands appear in the client command picker.
+- **Auto-register native slash commands**: Built-in commands (`/help`, `/models`, `/reset`, etc.) are now auto-synced to Lansenger via `/v1/bot/commands/create` on gateway startup so they appear in the client command picker. Includes multi-language descriptions (zhHans/zhHant/zhHantHK/en/fr) via new `command-i18n.ts`.
 - **Auto-configured approvers**: Bot owner from `homeChannel` is automatically used when `approvals.exec.allowFrom.lansenger` is not set.
+- **`commands` block** in plugin manifest (`nativeCommandsAutoEnabled: true`, `nativeSkillsAutoEnabled: true`).
 
 ### Changed
 
+- **Tool registration**: Refactored from inline factory arrays to declarative schema objects with `makeToolClient` lookup.
 - **`reminderUserIds` description**: Updated to reflect that `@姓名` must be written in the message text (Lansenger API no longer auto-prepends names).
-- **Tool client resolution**: Simplified from `ClientResolverChain` to direct `makeToolClient(accountId)` lookup.
+- **Multi-level config section fallback**: `dmPolicy`, `allowFrom`, `homeChannel`, and `apiGatewayUrl` in `resolveAccount` now fall back from account → section level (previously only account-level values were read).
+- **Documentation**: All 5 README config tables, `lansenger-setup` SKILL, and `lansenger-messaging` SKILL updated with missing config keys and approval workflow notes.
+
+### Fixed
+
+- **@BotName stripping broken for mid-message mentions**: Changed `endsWith` to `includes` so `"/models@bot openai"` is correctly normalized to `"/models openai"`.
+- **Blocked commands silently dropped**: Reply "此命令需要授权。"/"This command requires authorization." when an unauthorized user attempts a slash command.
 
 ## [3.16.3] - 2026-06-22
 

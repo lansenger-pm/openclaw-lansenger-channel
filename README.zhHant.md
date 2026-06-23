@@ -184,6 +184,8 @@ openclaw pairing approve lansenger <配對碼>
 | `mediaLocalRoots` | 透過媒體傳送本地檔案時允許的根目錄列表；空陣列預設為工作區 + `/tmp` | `[cwd, /tmp]` |
 | `ackMessageTextZh` | 中文確認訊息文案 | `收到，正在處理...` |
 | `ackMessageTextEn` | 英文確認訊息文案 | `Received, processing...` |
+| `requireMention` | 羣聊中是否需要 @機器人才會觸發。設為 `false` 則任何訊息都會觸發。 | `true` |
+| `dangerouslyAllowPrivateNetwork` | 允許 `sendImageUrl` 從內網地址獲取圖片（RFC1918、鏈路本地、metadata IP）。預設禁用以防止 SSRF 攻擊。 | `false` |
 
 ### 入站防抖合併（訊息合併）
 

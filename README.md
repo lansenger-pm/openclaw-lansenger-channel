@@ -176,6 +176,8 @@ Credentials can also be provided via `openclaw.json` config (see Optional Config
 | `mediaLocalRoots` | Allowed root directories for sending local files via media; empty array defaults to workspace + `/tmp` | `[cwd, /tmp]` |
 | `ackMessageTextZh` | Chinese ack message text | `收到，正在处理...` |
 | `ackMessageTextEn` | English ack message text | `Received, processing...` |
+| `requireMention` | Require `@botName` mention to trigger in groups. Set `false` to respond to all messages. | `true` |
+| `dangerouslyAllowPrivateNetwork` | Allow `sendImageUrl` to fetch images from private/internal networks (RFC1918, link-local, metadata IPs). Disabled by default for SSRF protection. | `false` |
 
 ### Inbound Debounce (Message Merging)
 

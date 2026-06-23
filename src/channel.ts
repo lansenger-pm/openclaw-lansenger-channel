@@ -129,10 +129,10 @@ function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): Resolve
       `Migrate to SecretRef for better security: run 'openclaw secrets configure'`
     );
   }
-  const apiGatewayUrl = account?.apiGatewayUrl ?? process.env.LANSENGER_API_GATEWAY_URL ?? DEFAULT_API_GATEWAY_URL;
-  const allowFrom: string[] = account?.allowFrom ?? [];
-  const dmPolicy = account?.dmPolicy ?? account?.dmSecurity;
-  const homeChannel = account?.homeChannel;
+  const apiGatewayUrl = account?.apiGatewayUrl ?? section?.apiGatewayUrl ?? process.env.LANSENGER_API_GATEWAY_URL ?? DEFAULT_API_GATEWAY_URL;
+  const allowFrom: string[] = account?.allowFrom ?? section?.allowFrom ?? [];
+  const dmPolicy = account?.dmPolicy ?? account?.dmSecurity ?? section?.dmPolicy ?? section?.dmSecurity;
+  const homeChannel = account?.homeChannel ?? section?.homeChannel;
   const enabled = Boolean(appId && appSecret);
   const ackMessage = account?.ackMessage !== undefined ? account.ackMessage : (section?.ackMessage ?? false);
   const ackMessageTextZh = account?.ackMessageTextZh ?? section?.ackMessageTextZh ?? "收到，正在处理...";
@@ -961,6 +961,11 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
       } as any,
     } as any,
   }),
+
+  commands: {
+    nativeCommandsAutoEnabled: true,
+    nativeSkillsAutoEnabled: true,
+  },
 
   actions: {
     describeMessageTool: ({ cfg, accountId, senderIsOwner }: any) => {

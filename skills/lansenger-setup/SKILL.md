@@ -21,6 +21,12 @@ metadata: {"openclaw":{"requires":{"cli":["openclaw"]},"primaryEnv":"LANSENGER_A
 - 用户必须能访问**蓝信桌面端**（移动端不支持查看机器人凭证）。
 - Agent 的 shell 环境中必须可用 `openclaw` CLI。
 
+> **私有部署版本差异**：企业私有部署的蓝信服务版本可能与公有云不同，并非所有配置项均可用。例如：
+> - `/v2/groups/fetch` 接口在部分旧版本私有部署中可能返回 `errCode=10005 无权限`
+> - `autoQuoteReply`、`autoMentionReply` 等依赖新版 API 的功能可能需要较新的服务端版本
+>
+> 遇到"无权限"或功能不生效时，提示用户联系蓝信管理员确认服务端版本是否支持对应 API。
+
 ---
 
 ## 配置参数速查表
@@ -470,6 +476,7 @@ openclaw plugins install @lansenger-pm/openclaw-lansenger-channel
 
 - **不要编造或猜测凭证。** 仅使用用户明确提供的值。
 - **绝对不要完整显示 App Secret。** 任何消息中都必须脱敏处理。
+- **私有部署版本差异**：并非所有配置项在所有蓝信服务端版本上都可用。如遇 API 返回"无权限"或功能不生效，应提醒用户联系蓝信管理员确认服务端版本。
 - **任何 `channels.lansenger` 配置变更后必须重启 gateway**（`openclaw gateway restart`）。
 - **蓝信频道工具**（`lansenger_send_*`）在频道配置完成且 gateway 运行后才可用。
 - **个人机器人只能接收主人的私聊。** 与非主人账号配对将失败。

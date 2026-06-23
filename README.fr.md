@@ -184,6 +184,8 @@ Les identifiants peuvent aussi être fournis via la configuration `openclaw.json
 | `mediaLocalRoots` | Répertoires racine autorisés pour l'envoi de fichiers locaux via média ; tableau vide par défaut = workspace + `/tmp` | `[cwd, /tmp]` |
 | `ackMessageTextZh` | Texte du message ack en chinois | `收到，正在处理...` |
 | `ackMessageTextEn` | Texte du message ack en anglais | `Received, processing...` |
+| `requireMention` | Nécessite une mention `@nom_du_bot` pour déclencher dans les groupes. Mettre `false` pour répondre à tous les messages. | `true` |
+| `dangerouslyAllowPrivateNetwork` | Permettre à `sendImageUrl` de récupérer des images depuis des réseaux privés/internes (RFC1918, link-local, IP metadata). Désactivé par défaut pour la protection SSRF. | `false` |
 
 ### Debounce entrant (fusion de messages)
 

@@ -68,6 +68,10 @@
     "lansenger": {
       "label": "Lansenger (蓝信)",
       "description": "Lansenger enterprise messaging channel / 蓝信企业即时通讯频道",
+      "commands": {
+        "nativeCommandsAutoEnabled": true,
+        "nativeSkillsAutoEnabled": true
+      },
       "schema": {
         "type": "object",
         "additionalProperties": false,

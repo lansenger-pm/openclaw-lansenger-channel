@@ -46,7 +46,9 @@ const API_ENDPOINTS = {
   fetchMedia: "/v1/medias",
   revokeMessage: "/v1/messages/revoke",
   dynamicUpdate: "/v1/messages/dynamic/update",
-  botCommandsCreate: "/v1/bot/commands/create",
+  commandsCreate: "/v1/bot/commands/create",
+  commandsFetch: "/v1/bot/commands/fetch",
+  commandsDelete: "/v1/bot/commands/delete",
 };
 
 export type ApiResult = {
@@ -480,29 +482,63 @@ export class LansengerClient {
     }
   }
 
+  // ---- Bot Commands API (4.37) ----
+
   /**
-   * Sync bot slash commands to the Lansenger API so they appear in
-   * the client command picker with i18n descriptions.
+   * Create bot Commands on Lansenger.
+   * scopeType: 4=all private chats, 5=all groups, 7=global default.
    */
-  async syncBotCommands(commands: Array<{
-    command: string;
-    description: string;
-    icon?: string;
-    description_i18n: { zhHans: string; zhHant: string; zhHantHK: string; en: string; fr: string };
-  }>): Promise<ApiResult> {
+  async createCommands(scopeType: number, commands: LansengerCommand[]): Promise<ApiResult> {
     const token = await this.getAppToken();
     if (!token) return { success: false, error: "No access token" };
     try {
-      const url = `${this.apiGatewayUrl}${API_ENDPOINTS.botCommandsCreate}?app_token=${token}`;
-      const payload = {
-        scopeType: 7, // default global
-        commands,
-      };
+      const url = `${this.apiGatewayUrl}${API_ENDPOINTS.commandsCreate}?app_token=${token}`;
+      const payload = { scopeType, commands };
       const data = await this.postJson(url, payload);
-      if (data.errCode !== 0) return { success: false, error: data.errMsg ?? undefined };
-      return { success: true, rawResponse: data };
+      if (data.errCode !== 0) {
+        this.log.error(`createCommands: errCode=${data.errCode} errMsg=${data.errMsg ?? "n/a"} scopeType=${scopeType}`);
+        return { success: false, error: data.errMsg ?? undefined };
+      }
+      this.log.info(`createCommands: registered ${commands.length} command(s) scopeType=${scopeType}`);
+      return { success: true };
     } catch (e: any) {
+      this.log.error(`createCommands: ${e.message}`);
       return { success: false, error: e.message };
+    }
+  }
+
+  async deleteCommands(scopeType: number): Promise<ApiResult> {
+    const token = await this.getAppToken();
+    if (!token) return { success: false, error: "No access token" };
+    try {
+      const url = `${this.apiGatewayUrl}${API_ENDPOINTS.commandsDelete}?app_token=${token}`;
+      const data = await this.postJson(url, { scopeType });
+      if (data.errCode !== 0) {
+        this.log.error(`deleteCommands: errCode=${data.errCode} errMsg=${data.errMsg ?? "n/a"} scopeType=${scopeType}`);
+        return { success: false, error: data.errMsg ?? undefined };
+      }
+      this.log.info(`deleteCommands: cleared commands scopeType=${scopeType}`);
+      return { success: true };
+    } catch (e: any) {
+      this.log.error(`deleteCommands: ${e.message}`);
+      return { success: false, error: e.message };
+    }
+  }
+
+  async fetchCommands(scopeType: number): Promise<LansengerCommand[] | null> {
+    const token = await this.getAppToken();
+    if (!token) return null;
+    try {
+      const url = `${this.apiGatewayUrl}${API_ENDPOINTS.commandsFetch}?app_token=${token}`;
+      const data = await this.postJson(url, { scopeType });
+      if (data.errCode !== 0) {
+        this.log.error(`fetchCommands: errCode=${data.errCode} errMsg=${data.errMsg ?? "n/a"} scopeType=${scopeType}`);
+        return null;
+      }
+      return data.data?.commands ?? [];
+    } catch (e: any) {
+      this.log.error(`fetchCommands: ${e.message}`);
+      return null;
     }
   }
 
@@ -1070,6 +1106,23 @@ export type InboundEvent = {
   groupName?: string;
   botCreator?: string;
   botId?: string;
+  /** Staffs @mentioned (from eventData.reminder.staffs) */
+  mentionedStaffs?: Array<{ staffId?: string; staffName?: string }>;
+  /** Bots @mentioned (from eventData.reminder.bots) */
+  mentionedBots?: Array<{ botId: string; botName: string }>;
+};
+
+export type LansengerCommand = {
+  command: string;
+  description: string;
+  icon?: string;
+  description_i18n?: {
+    zhHans?: string;
+    zhHant?: string;
+    zhHantHK?: string;
+    en?: string;
+    fr?: string;
+  };
 };
 
 export type LansengerApiResponse = {
@@ -1081,6 +1134,7 @@ export type LansengerApiResponse = {
     wsEndpoint?: string;
     msgId?: string;
     mediaId?: string;
+    commands?: LansengerCommand[];
   };
 };
 

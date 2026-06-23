@@ -6,10 +6,12 @@ import { CHANNEL_APPROVAL_NATIVE_RUNTIME_CONTEXT_CAPABILITY } from "openclaw/plu
 import { registerChannelRuntimeContext } from "openclaw/plugin-sdk/channel-runtime-context";
 import { createChannelInboundDebouncer, shouldDebounceTextInbound, resolveInboundDebounceMs } from "openclaw/plugin-sdk/channel-inbound";
 import { LansengerClient } from "./client.js";
-import type { InboundEvent, ClientLogger, ApiResult, ApproveCardData } from "./client.js";
+import type { InboundEvent, ClientLogger, ApiResult, ApproveCardData, LansengerCommand } from "./client.js";
 import { resolveAccount, makeClient, isPathAllowed } from "./channel.js";
 import type { ResolvedAccount } from "./channel.js";
 import { errorShape } from "openclaw/plugin-sdk/gateway-runtime";
+import { listNativeCommandSpecsForConfig } from "openclaw/plugin-sdk/native-command-registry";
+import { resolveNativeCommandsEnabled } from "openclaw/plugin-sdk/native-command-config-runtime";
 import { pendingApprovalCards } from "./channel.js";
 import { BUILTIN_COMMAND_I18N } from "./command-i18n.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -151,6 +153,12 @@ async function startAccount(api: OpenClawPluginApi, accountId?: string | null): 
   }
 
   runningAccounts.set(key, { accountId: account.accountId, account, client, debouncer });
+
+  // Sync native slash commands to Lansenger (fire-and-forget — don't block connection)
+  syncLansengerNativeCommands(client, api, key).catch((e) =>
+    log.error(`syncCommands: unhandled error — ${e instanceof Error ? e.message : String(e)} (key=${key})`),
+  );
+
   log.info(`auto-started: key=${key} (accountId=${account.accountId})`);
   return true;
 }
@@ -464,25 +472,90 @@ async function autoConfigureApprovalAllowFrom(cfg: any, account: ResolvedAccount
 }
 
 /**
- * Sync built-in slash commands to the Lansenger client command picker.
- * Uses the OpenAPI /v1/bot/commands/create endpoint with scopeType=7 (global).
+ * Sync native slash commands built from OpenClaw's native command registry.
+ * Respects `commands.native` config flag. Syncs to both private (scopeType=4)
+ * and group (scopeType=5) scopes separately.
  */
-async function syncLansengerBotCommands(client: LansengerClient): Promise<void> {
+const COMMAND_SCOPE_PRIVATE = 4;
+const COMMAND_SCOPE_GROUP = 5;
+
+function buildLansengerCommands(api: OpenClawPluginApi): LansengerCommand[] {
+  const nativeSpecs = listNativeCommandSpecsForConfig(api.config, { provider: "lansenger" });
+  return nativeSpecs
+    .filter((spec) => !spec.isAlias)
+    .map((spec) => {
+      const name = spec.name.startsWith("/") ? spec.name.slice(1) : spec.name;
+      const cmd: LansengerCommand = {
+        command: `/${name}`,
+        description: spec.description,
+      };
+
+      const i18n: NonNullable<LansengerCommand["description_i18n"]> = {};
+      const enDesc = spec.descriptionLocalizations?.["en"] ?? spec.description;
+      if (enDesc) i18n.en = enDesc;
+
+      const zhHansDesc = spec.descriptionLocalizations?.["zh-Hans"]
+        ?? spec.descriptionLocalizations?.["zh"]
+        ?? BUILTIN_COMMAND_I18N[name]?.zhHans;
+      if (zhHansDesc) i18n.zhHans = zhHansDesc;
+
+      const zhHantDesc = spec.descriptionLocalizations?.["zh-Hant"]
+        ?? spec.descriptionLocalizations?.["zh-TW"]
+        ?? BUILTIN_COMMAND_I18N[name]?.zhHant;
+      if (zhHantDesc) i18n.zhHant = zhHantDesc;
+
+      const zhHantHKDesc = spec.descriptionLocalizations?.["zh-Hant-HK"]
+        ?? BUILTIN_COMMAND_I18N[name]?.zhHantHK
+        ?? zhHantDesc;
+      if (zhHantHKDesc) i18n.zhHantHK = zhHantHKDesc;
+
+      const frDesc = spec.descriptionLocalizations?.["fr"]
+        ?? BUILTIN_COMMAND_I18N[name]?.fr;
+      if (frDesc) i18n.fr = frDesc;
+
+      if (Object.keys(i18n).length > 0) cmd.description_i18n = i18n;
+      return cmd;
+    });
+}
+
+async function syncLansengerNativeCommands(
+  client: LansengerClient,
+  api: OpenClawPluginApi,
+  key: string,
+): Promise<void> {
   try {
-    const commands = Object.entries(BUILTIN_COMMAND_I18N).map(([command, i18n]) => ({
-      command: `/${command}`,
-      description: i18n.en,
-      description_i18n: i18n,
-    }));
-    if (commands.length === 0) return;
-    const result = await client.syncBotCommands(commands);
-    if (result.success) {
-      log.info(`syncLansengerBotCommands: synced ${commands.length} commands`);
-    } else {
-      log.warn(`syncLansengerBotCommands: failed — ${result.error}`);
+    const nativeEnabled = resolveNativeCommandsEnabled({
+      providerId: "lansenger",
+      config: api.config,
+      autoDefault: true,
+    });
+    if (!nativeEnabled) {
+      log.info(`syncCommands: native commands disabled (key=${key}), skipping`);
+      return;
     }
-  } catch (e: any) {
-    log.warn(`syncLansengerBotCommands: ${e.message}`);
+
+    const commands = buildLansengerCommands(api);
+    if (commands.length === 0) {
+      log.info(`syncCommands: no native commands to register (key=${key}), skipping`);
+      return;
+    }
+    log.info(`syncCommands: built ${commands.length} native command(s) (key=${key})`);
+
+    await client.deleteCommands(COMMAND_SCOPE_PRIVATE);
+    const privResult = await client.createCommands(COMMAND_SCOPE_PRIVATE, commands);
+    if (!privResult.success) {
+      log.error(`syncCommands: private scope registration failed — ${privResult.error} (key=${key})`);
+    }
+
+    await client.deleteCommands(COMMAND_SCOPE_GROUP);
+    const groupResult = await client.createCommands(COMMAND_SCOPE_GROUP, commands);
+    if (!groupResult.success) {
+      log.error(`syncCommands: group scope registration failed — ${groupResult.error} (key=${key})`);
+    }
+
+    log.info(`syncCommands: done — ${commands.length} command(s) → private + groups (key=${key})`);
+  } catch (e: unknown) {
+    log.error(`syncCommands: failed — ${e instanceof Error ? e.message : String(e)} (key=${key})`);
   }
 }
 
@@ -564,8 +637,12 @@ export async function gatewayStartAccount(ctx: ChannelGatewayContext<ResolvedAcc
     });
     // Auto-configure approvals.exec.allowFrom.lansenger from homeChannel if not set
     await autoConfigureApprovalAllowFrom(ctx.cfg, account);
-    // Sync built-in slash commands to Lansenger client command picker
-    await syncLansengerBotCommands(client);
+    // Sync native slash commands (fire-and-forget — don't block gateway startup)
+    if (pluginApi) {
+      syncLansengerNativeCommands(client, pluginApi, key).catch((e) =>
+        log.error(`syncCommands: unhandled error — ${e instanceof Error ? e.message : String(e)} (key=${key})`),
+      );
+    }
   }
 
   return waitUntilAbort(ctx.abortSignal, async () => {
@@ -750,6 +827,21 @@ async function handleInbound(
   }
 
   const rawText = event.text;
+
+  // Strip @botName from group chat messages.
+  // Lansenger appends @botName when the bot is @mentioned (e.g. "/models@bot" or
+  // "/models@bot openai"). This breaks slash command detection because
+  // isControlCommandMessage requires text to start with a registered command alias.
+  if (event.isGroup && event.isAtMe) {
+    const ourBotId = event.rawMessage?.botId as string | undefined;
+    const ourMention = ourBotId ? event.mentionedBots?.find(b => b.botId === ourBotId) : undefined;
+    if (ourMention) {
+      const atName = `@${ourMention.botName}`;
+      if (event.text.includes(atName)) {
+        event.text = event.text.split(atName).join("").trim();
+      }
+    }
+  }
   let allowTextCommands = false;
   let shouldComputeAuth = false;
   let hasCommand = false;
@@ -811,6 +903,13 @@ async function handleInbound(
 
   if (allowTextCommands && hasCommand && commandAuthorized !== true) {
     log.info(`inbound: command blocked — sender=${event.senderId} not authorized: ${rawText.slice(0, 60)}`);
+    // Reply with an unauthorized message instead of silently dropping
+    const replyClient = runningAccounts.get(runningKey)?.client ?? makeClient(account, sdkLogger());
+    const lang = replyClient.getUserLang(event.senderId);
+    const denyText = lang === "en"
+      ? "This command requires authorization."
+      : "此命令需要授权。";
+    replyClient.sendFormatText(event.chatId, denyText).catch(() => {});
     return;
   }
 
@@ -864,7 +963,7 @@ async function handleInbound(
             ctxPayload: {
               Body: event.text,
               BodyForAgent: agentText,
-              CommandBody: rawText,
+              ...(hasCommand ? { CommandBody: rawText } : {}),
               CommandAuthorized: commandAuthorized,
               CommandSource: "text",
               From: event.senderId,
