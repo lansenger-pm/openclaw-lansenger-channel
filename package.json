@@ -88,7 +88,7 @@
       "quickstartAllowFrom": true
     },
     "install": {
-      "npmSpec": "@lansenger-pm/openclaw-lansenger-channel@3.16.4",
+      "npmSpec": "@lansenger-pm/openclaw-lansenger-channel@3.16.5",
       "localPath": ".",
       "defaultChoice": "npm"
     },
