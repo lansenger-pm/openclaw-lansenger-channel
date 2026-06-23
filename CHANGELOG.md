@@ -11,7 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - **Native approval cards for exec commands**: Non-whitelist exec commands now trigger interactive approval cards. Users approve or deny via button clicks or `/approve <id>` slash commands. Cards update status in-place after resolution.
 - **`lansenger_send_approve_card`** Agent tool for sending interactive approval cards.
 - **`accountId` parameter** on all send tools (`lansenger_send_*`) for correct bot routing in multi-account setups.
-- **`command-i18n.ts`** centralized i18n descriptions for built-in slash commands (zhHans / zhHant / zhHantHK / en / fr).
+- **`command-i18n.ts`** centralized i18n descriptions for built-in slash commands (zhHans / zhHant / zhHantHK / en / fr), auto-synced to Lansenger via `/v1/bot/commands/create` on gateway startup so commands appear in the client command picker.
 - **Auto-configured approvers**: Bot owner from `homeChannel` is automatically used when `approvals.exec.allowFrom.lansenger` is not set.
 
 ### Changed

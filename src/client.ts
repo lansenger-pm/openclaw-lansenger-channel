@@ -46,6 +46,7 @@ const API_ENDPOINTS = {
   fetchMedia: "/v1/medias",
   revokeMessage: "/v1/messages/revoke",
   dynamicUpdate: "/v1/messages/dynamic/update",
+  botCommandsCreate: "/v1/bot/commands/create",
 };
 
 export type ApiResult = {
@@ -470,6 +471,32 @@ export class LansengerClient {
             } : {}),
           },
         },
+      };
+      const data = await this.postJson(url, payload);
+      if (data.errCode !== 0) return { success: false, error: data.errMsg ?? undefined };
+      return { success: true, rawResponse: data };
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
+  }
+
+  /**
+   * Sync bot slash commands to the Lansenger API so they appear in
+   * the client command picker with i18n descriptions.
+   */
+  async syncBotCommands(commands: Array<{
+    command: string;
+    description: string;
+    icon?: string;
+    description_i18n: { zhHans: string; zhHant: string; zhHantHK: string; en: string; fr: string };
+  }>): Promise<ApiResult> {
+    const token = await this.getAppToken();
+    if (!token) return { success: false, error: "No access token" };
+    try {
+      const url = `${this.apiGatewayUrl}${API_ENDPOINTS.botCommandsCreate}?app_token=${token}`;
+      const payload = {
+        scopeType: 7, // default global
+        commands,
       };
       const data = await this.postJson(url, payload);
       if (data.errCode !== 0) return { success: false, error: data.errMsg ?? undefined };

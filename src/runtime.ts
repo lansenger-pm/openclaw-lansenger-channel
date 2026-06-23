@@ -11,6 +11,7 @@ import { resolveAccount, makeClient, isPathAllowed } from "./channel.js";
 import type { ResolvedAccount } from "./channel.js";
 import { errorShape } from "openclaw/plugin-sdk/gateway-runtime";
 import { pendingApprovalCards } from "./channel.js";
+import { BUILTIN_COMMAND_I18N } from "./command-i18n.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -462,6 +463,29 @@ async function autoConfigureApprovalAllowFrom(cfg: any, account: ResolvedAccount
   }
 }
 
+/**
+ * Sync built-in slash commands to the Lansenger client command picker.
+ * Uses the OpenAPI /v1/bot/commands/create endpoint with scopeType=7 (global).
+ */
+async function syncLansengerBotCommands(client: LansengerClient): Promise<void> {
+  try {
+    const commands = Object.entries(BUILTIN_COMMAND_I18N).map(([command, i18n]) => ({
+      command: `/${command}`,
+      description: i18n.en,
+      description_i18n: i18n,
+    }));
+    if (commands.length === 0) return;
+    const result = await client.syncBotCommands(commands);
+    if (result.success) {
+      log.info(`syncLansengerBotCommands: synced ${commands.length} commands`);
+    } else {
+      log.warn(`syncLansengerBotCommands: failed — ${result.error}`);
+    }
+  } catch (e: any) {
+    log.warn(`syncLansengerBotCommands: ${e.message}`);
+  }
+}
+
 export async function gatewayStartAccount(ctx: ChannelGatewayContext<ResolvedAccount>): Promise<unknown> {
   const statusSink = createAccountStatusSink({ accountId: ctx.accountId, setStatus: ctx.setStatus });
   const account = ctx.account;
@@ -540,6 +564,8 @@ export async function gatewayStartAccount(ctx: ChannelGatewayContext<ResolvedAcc
     });
     // Auto-configure approvals.exec.allowFrom.lansenger from homeChannel if not set
     await autoConfigureApprovalAllowFrom(ctx.cfg, account);
+    // Sync built-in slash commands to Lansenger client command picker
+    await syncLansengerBotCommands(client);
   }
 
   return waitUntilAbort(ctx.abortSignal, async () => {
