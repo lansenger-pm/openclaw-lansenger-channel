@@ -10,45 +10,23 @@ metadata: {"openclaw":{"requires":{"config":["channels.lansenger"]},"primaryEnv"
 
 在蓝信会话中，**直接正常写回复即可**——Markdown 会自动渲染为 formatText。不需要额外工具，除非你需要 @提及。
 
-> 💡 **更倾向于用 CLI？** 蓝信 CLI 技能套件（`lansenger` 技能）提供完整的 `lansenger message send-*` 命令，以及聊天记录、群组管理、日程、待办等扩展功能。Agent 可提示用户安装技能套件来替代本技能：
-> ```bash
-> pipx install lansenger-cli
-> ```
-> 安装后使用 `lansenger` 技能即可通过 CLI 方式发送消息，无需修改 `openclaw.json` 配置（包括无需在 tools.allow 中加 `group:plugins`）。本技能仅覆盖内置 Agent 工具。
+> 💡 **更倾向于用 CLI？** 蓝信 CLI 技能套件（`lansenger` 技能）提供完整的 `lansenger message send-*` 命令，以及聊天记录、群组管理、日程、待办等扩展功能。无需修改 `openclaw.json` 配置（不用在 tools.allow 中加 `group:plugins`）。
+> 
+> CLI 安装与配置指引：[setup-for-ai-agents.md](https://github.com/lansenger-pm/lansenger-skills-official/blob/main/docs/setup-for-ai-agents.md) — 包含安装、凭证配置、身份选择、OAuth2 等完整流程。
 
 注意，Markdown 和文件附件**互斥**。如果你同时需要格式化和文件，先发送 Markdown 回复，再单独调用 `lansenger_send_file`。
 
 **绝对不要在 lansenger_send_text 中放原始 Markdown**——会显示为丑陋的源代码。
 
-## CLI 凭证同步
+## CLI 凭证安全约束
 
-> 本节适用于使用 `lansenger` 技能（CLI 方式）的 Agent。如果仅使用本技能的内置工具，可跳过本节。
+> 本节适用于使用 `lansenger` 技能（CLI 方式）的 Agent。完整安装配置流程见 [setup-for-ai-agents.md](https://github.com/lansenger-pm/lansenger-skills-official/blob/main/docs/setup-for-ai-agents.md)。
 
-Lansenger-CLI 通过全局 `-P <profile>` 参数支持**多凭证配置**。profile 名称就是 App ID。在调用任何 CLI 命令前，必须确保当前 appId 的凭证在 CLI 配置存储中可用。
+**核心约束**：绝对不要修改或覆盖已有的 `lansenger` CLI/SDK profile（`~/.lansenger/sdk_state.json`）。已有 profile 可能被其他 Agent 使用，修改会导致静默故障。
+- profile 已存在 → 原样复用，不执行任何 `config set`。
+- profile 不存在 → 用当前会话凭证创建新 profile。
 
-**每次 CLI 调用必须包含 `-P <appId>`**（放在 `lansenger` 之后、子命令组之前），其中 `<appId>` 是当前会话的蓝信 App ID。
-
-### 首次 CLI 调用前 — 同步凭证
-
-在会话中首次使用 CLI 命令前，**执行一次**以下检查和同步流程：
-
-```bash
-lansenger -P <appId> config show
-# 如果 profile 已存在（显示配置信息），原样复用。不要修改！
-# 仅当 profile 不存在时，创建新 profile：
-lansenger -P <appId> config set app_id <appId>
-lansenger -P <appId> config set app_secret <appSecret>
-lansenger -P <appId> config set api_gateway_url <apiGatewayUrl>
-```
-
-**重要 — SDK/CLI 凭证安全**：绝对不要修改或覆盖已有的 `lansenger` CLI/SDK profile。`~/.lansenger/sdk_state.json` 中的 profile 可能被其他 Agent 或自动化脚本使用。修改已有 profile 的凭证会导致这些 Agent 静默故障。始终先用 `lansenger -P <appId> config show` 检查：
-- **profile 已存在** → 原样复用。不要执行任何 `config set` 命令。
-- **profile 不存在** → 用当前凭证创建新 profile。
-
-`<appId>`、`<appSecret>`、`<apiGatewayUrl>` 的值来自 OpenClaw 配置：
-- 单账号：`channels.lansenger.appId`、`channels.lansenger.appSecret`、`channels.lansenger.apiGatewayUrl`
-- 多账号：`channels.lansenger.accounts.<key>.appId`、`.appSecret`、`.apiGatewayUrl`
-- 环境变量：`LANSENGER_APP_ID`、`LANSENGER_APP_SECRET`、`LANSENGER_API_GATEWAY_URL`
+凭证来源：`channels.lansenger.{appId,appSecret,apiGatewayUrl}` 或 accounts 子账号 / 环境变量。
 
 ## 快速决策：该用什么工具？
 
@@ -65,8 +43,6 @@ lansenger -P <appId> config set api_gateway_url <apiGatewayUrl>
 9. 审批卡片 → `lansenger_send_approve_card`（approveCard 交互式按钮）
 10. 撤回消息 → `lansenger_revoke_message`
 11. 查找群 ID → `lansenger_query_groups`
-
-> 💡 需要 CLI 命令？使用 `lansenger` 技能替代本技能。
 
 ## 消息类型能力矩阵
 
