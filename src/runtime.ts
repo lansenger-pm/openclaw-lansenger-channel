@@ -752,14 +752,34 @@ async function handleInbound(
 
   if (event.isGroup) {
     try {
+      const channelCfg = (api.config as Record<string, unknown>)?.channels as Record<string, unknown> | undefined;
+      const lansengerCfg = channelCfg?.lansenger as Record<string, unknown> | undefined;
+      const accountCfg = (lansengerCfg?.accounts as Record<string, Record<string, unknown>> | undefined)?.[account.accountId ?? "default"];
+      const channelGroupAllowFrom = (lansengerCfg?.groupAllowFrom as unknown[]) ?? [];
+      const accountGroupAllowFrom = (accountCfg?.groupAllowFrom as unknown[]) ?? [];
+      const hasGroupAllowFrom = channelGroupAllowFrom.length > 0 || accountGroupAllowFrom.length > 0;
+      const groupPolicyMode: string | undefined = (accountCfg?.groupPolicy ?? lansengerCfg?.groupPolicy) as string | undefined;
+
       const groupPolicy = api.runtime.channel.groups.resolveGroupPolicy({
         cfg: api.config,
         channel: "lansenger",
         groupId: event.chatId,
         accountId: account.accountId,
+        hasGroupAllowFrom,
       });
       if (!groupPolicy.allowed) {
-        log.info(`inbound: group dropped — groupPolicy not allowed for chatId=${event.chatId}`);
+        // Workaround SDK bug: open + groups with entries → allowlistEnabled=true →
+        // groups NOT in the groups map are incorrectly blocked.
+        // In open mode, unlisted groups should be allowed (only explicit enabled:false blocks).
+        if (groupPolicyMode === "open" && !groupPolicy.groupConfig) {
+          // pass through — open mode allows unlisted groups
+        } else {
+          log.info(`inbound: group dropped — groupPolicy not allowed for chatId=${event.chatId}`);
+          return;
+        }
+      }
+      if ((groupPolicy.groupConfig as Record<string, unknown> | undefined)?.enabled === false) {
+        log.info(`inbound: group dropped — enabled=false for chatId=${event.chatId}`);
         return;
       }
       const requireMention = api.runtime.channel.groups.resolveRequireMention({

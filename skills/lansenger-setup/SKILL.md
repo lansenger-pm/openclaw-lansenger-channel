@@ -68,13 +68,30 @@ metadata: {"openclaw":{"requires":{"cli":["openclaw"]},"primaryEnv":"LANSENGER_A
 
 ### 群聊设置
 
+群聊接入有两层独立的过滤机制：**用户级**（谁能在群里触发）和**群级**（哪些群允许接入），两者是**与关系**——必须同时满足才能入站。
+
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `groupPolicy` | enum | `open` | 群聊策略。可选值：`open`（所有群可触发）、`allowlist`（仅 groups 中 enabled:true 的群）、`disabled`（禁止群消息） |
-| `groups` | object | `{}` | 单群配置（key 为群 chatId），可设置 `enabled`、`requireMention`、`autoMentionReply`、`autoQuoteReply`、`allowFrom`。allowlist 模式下设置 `enabled:true` 加入白名单。 |
+| `groupPolicy` | enum | `open` | 群级策略。可选值：`open`（所有群可触发）、`allowlist`（仅 groups 中 enabled:true 的群）、`disabled`（禁止群消息） |
+| `groupAllowFrom` | string[] | `[]` | **用户级过滤**：只有列表中的蓝信用户 ID 在群聊中发消息才会触发 bot。注意，此项填的是**用户 ID**（发消息的人），不是群 ID。蓝信用户 ID 和群 ID 格式相同，无法靠格式区分，请从蓝信消息日志或 API 确认。 |
+| `groups` | object | `{}` | 单群配置（key 为群 chatId），可设置 `enabled`、`requireMention`、`autoMentionReply`、`autoQuoteReply`、`allowFrom` |
 | `requireMention` | boolean | `true` | 群聊中是否需要 `@机器人名称` 才会触发。设为 `false` 则任何消息都会触发。 |
 | `autoMentionReply` | boolean | `false` | 群聊自动回复时是否 @入站消息发送者。蓝信 API 会根据 staffId 自动拼接名字，无需 Agent 手动写 `@姓名`。支持按群、按账号覆盖。 |
 | `autoQuoteReply` | boolean | `false` | 群聊和私聊回复时是否自动引用入站消息。支持按群、按账号覆盖。私聊时 per-group 配置不生效。 |
+
+**`groups.<chatId>.enabled` 语义：**
+
+`enabled` 是一个 **opt-out（主动封禁）** 机制，不是 opt-in。默认未设置时（`undefined`）不会触发拦截。
+
+| groupPolicy | 群在 groups 中？ | enabled 值 | 结果 |
+|:--:|:--:|-----------|:--:|
+| `disabled` | 不限 | 不限 | ❌ 拦截。**不可被 per-group 覆盖** |
+| `open` | 否 | — | ✅ 放行 |
+| `open` | 是 | 未设置 / `true` | ✅ 放行 |
+| `open` | 是 | `false` | ❌ 拦截 |
+| `allowlist` | 否 | — | ❌ 拦截 |
+| `allowlist` | 是 | 未设置 / `true` | ✅ 放行（仅列出即可） |
+| `allowlist` | 是 | `false` | ❌ 拦截 |
 
 **按群粒度微调** — 优先使用 account 级路径 `channels.lansenger.accounts.<appId>.groups.<chatId>` 避免影响其他机器人：
 
@@ -141,7 +158,7 @@ openclaw config set channels.lansenger.accounts.<appId>.enabled true
 openclaw config set channels.lansenger.accounts.<appId>.dmPolicy pairing
 
 # 每个账号独立支持以上所有设置：
-# name, apiGatewayUrl, groupPolicy, requireMention,
+# name, apiGatewayUrl, groupPolicy, groupAllowFrom, requireMention,
 # ackMessage, revokeAckMessage, ackMessageTextZh, ackMessageTextEn,
 # mediaLocalRoots, dangerouslyAllowPrivateNetwork
 # （allowFrom / dmPolicy=allowlist/open 对个人机器人无实际意义）
@@ -307,7 +324,10 @@ openclaw config set channels.lansenger.accounts.<appId>.dmPolicy disabled
    - `allowlist` — 仅白名单群可触发（配合 `groups.<chatId>.enabled: true` 使用）
    - `disabled` — 禁止所有群消息
 3. **群聊 @提及** — 默认需要 @机器人才会触发，是否需要关闭？
-4. **群白名单** — 如果群聊策略设为 `allowlist`，需要在 `groups` 中启用允许的群。
+4. **群白名单** — 如果群聊策略设为 `allowlist`，需要在 `groups` 中启用允许的群。`open` 模式下也可以 `enabled: false` 封禁特定群。
+5. **群聊用户过滤** — 是否只允许特定用户在群聊中触发 bot？设置 `groupAllowFrom`（**注意填用户 ID，不是群 ID**）。蓝信用户 ID 和群 ID 格式相同，请从日志或 API 确认。
+
+> **两层过滤是"与"关系**：`groupAllowFrom` 控制**谁能发**（用户级），`groupPolicy` + `groups` 控制**哪些群**能收（群级）。两者独立，必须同时满足。
 
 > **多账号环境 → 使用 account 级路径**：`channels.lansenger.accounts.<appId>.groupPolicy`，仅影响该机器人。
 
@@ -325,6 +345,9 @@ openclaw config set channels.lansenger.accounts.<appId>.groupPolicy disabled
 
 # 不需要 @提及
 openclaw config set channels.lansenger.accounts.<appId>.requireMention false
+
+# 仅允许特定用户（填用户 ID，不是群 ID）
+openclaw config set channels.lansenger.accounts.<appId>.groupAllowFrom '["<userId1>","<userId2>"]'
 ```
 
 #### 批次 C：确认消息
@@ -455,12 +478,16 @@ openclaw plugins install @lansenger-pm/openclaw-lansenger-channel
    ```bash
    openclaw config get channels.lansenger.groupPolicy
    ```
-2. 如果 `groupPolicy` 是 `allowlist`，确认群已在 `groups.<chatId>.enabled: true` 中配置。
-3. 检查 `requireMention`——如果为 `true`，用户必须 `@机器人名称` 才能触发：
+2. 如果 `groupPolicy` 是 `allowlist`，确认群已在 `groups.<chatId>.enabled: true` 中配置。`open` 模式下也可能被 `groups.<chatId>.enabled: false` 封禁。
+3. 检查 `groupAllowFrom` — 如果设置了用户白名单，确认发消息的人在该列表中（蓝信用户 ID 和群 ID 格式相同，请确认填的是用户 ID 而非群 ID）：
+   ```bash
+   openclaw config get channels.lansenger.groupAllowFrom
+   ```
+4. 检查 `requireMention`——如果为 `true`，用户必须 `@机器人名称` 才能触发：
    ```bash
    openclaw config get channels.lansenger.requireMention
    ```
-4. 检查 `groups.<chatId>` 下的按群覆盖设置——它们优先于顶层设置。
+5. 检查 `groups.<chatId>` 下的按群覆盖设置——它们优先于顶层设置。
 
 ### 确认消息不显示
 

@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.16.6] - 2026-06-23
+
+### Fixed
+
+- **Per-group `enabled: false` not honored**: Groups in the `groups` map with `enabled: false` were still allowed inbound because neither the SDK's `resolveChannelGroupPolicy` nor the channel plugin checked the `enabled` field. Now explicitly blocks groups with `enabled: false` regardless of `groupPolicy` mode.
+- **`groupAllowFrom` bypass not passed to SDK**: When `groupAllowFrom` is configured as a sender allowlist, the `hasGroupAllowFrom` signal was not forwarded to `resolveChannelGroupPolicy`, potentially blocking all groups under `groupPolicy: "allowlist"` without a `groups` map.
+- **`groupPolicy: "open"` + `groups` incorrectly blocks unlisted groups**: The SDK treats any non-empty `groups` map as an implicit allowlist, causing groups not listed in `groups` to be blocked even under `open` mode. Worked around by bypassing the SDK check in `open` mode for unlisted groups.
+
+### Changed
+
+- **`lansenger-setup` SKILL**: Added comprehensive `groupAllowFrom` documentation (user-level sender filtering vs. group-level filtering), complete `enabled` × `groupPolicy` truth table, and updated troubleshooting guide.
+
 ## [3.16.5] - 2026-06-23
 
 ### Added
