@@ -160,7 +160,8 @@
                 "requireMention": { "type": "boolean", "description": "Require @mention to trigger / 是否需要 @提及才触发" },
                 "autoMentionReply": { "type": "boolean", "description": "Auto @mention the sender when replying in this group / 该群自动回复时是否 @发送者" },
                 "autoQuoteReply": { "type": "boolean", "description": "Auto quote the inbound message when replying in this group / 该群回复时是否自动引用入站消息" },
-                "enabled": { "type": "boolean", "description": "Enable/disable this group / 启用/禁用该群" }
+                "enabled": { "type": "boolean", "description": "Enable/disable this group / 启用/禁用该群" },
+                "allowFrom": { "type": "array", "items": { "type": "string" }, "description": "Sender IDs allowed in this group. If set, only these users can trigger the bot in this group. / 该群允许的发送者 ID。设置后仅这些用户可在该群触发机器人。" }
               }
             }
           },
@@ -221,7 +222,8 @@
                       "enabled": { "type": "boolean", "description": "Enable/disable this group for this account / 启用/禁用该群" },
                       "requireMention": { "type": "boolean", "description": "Require @mention to trigger / 是否需要 @提及才触发" },
                       "autoMentionReply": { "type": "boolean", "description": "Auto @mention the sender when replying / 自动回复时是否 @发送者" },
-                      "autoQuoteReply": { "type": "boolean", "description": "Auto quote the inbound message when replying / 回复时是否自动引用入站消息" }
+                      "autoQuoteReply": { "type": "boolean", "description": "Auto quote the inbound message when replying / 回复时是否自动引用入站消息" },
+                      "allowFrom": { "type": "array", "items": { "type": "string" }, "description": "Sender IDs allowed in this group / 该群允许的发送者 ID" }
                     }
                   }
                 }
@@ -331,7 +333,7 @@
         "groups": {
           "label": "Per-Group Config / 单群配置",
           "sensitive": false,
-          "help": "Enable/disable individual groups and fine-tune per-group settings (requireMention, autoMentionReply, enabled). Key is group chatId. For allowlist mode (groupPolicy=allowlist), add groups with enabled: true. / 逐群启用/禁用和微调设置。key 为群聊 chatId。allowlist 模式时配置 enabled: true 加入白名单。"
+          "help": "Enable/disable individual groups and fine-tune per-group settings (requireMention, autoMentionReply, enabled, allowFrom). Key is group chatId. For allowlist mode (groupPolicy=allowlist), add groups with enabled: true. / 逐群启用/禁用和微调设置。key 为群聊 chatId。allowlist 模式时配置 enabled: true 加入白名单。"
         },
         "accounts": {
           "label": "Multi-Bot Accounts / 多机器人账号",
@@ -422,7 +424,7 @@
         "accounts.*.groups": {
           "label": "Per-Group Config / 单群配置",
           "sensitive": false,
-          "help": "Per-group configuration for this account (requireMention, enabled). Overrides section-level groups. / 该账号的单群配置，覆盖顶级 groups 设置。"
+          "help": "Per-group configuration for this account (requireMention, enabled, allowFrom). Overrides section-level groups. / 该账号的单群配置，覆盖顶级 groups 设置。"
         }
       }
     }

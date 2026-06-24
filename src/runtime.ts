@@ -782,6 +782,13 @@ async function handleInbound(
         log.info(`inbound: group dropped — enabled=false for chatId=${event.chatId}`);
         return;
       }
+      const perGroupAllowFrom = (groupPolicy.groupConfig as Record<string, unknown> | undefined)?.allowFrom as string[] | undefined;
+      if (perGroupAllowFrom && perGroupAllowFrom.length > 0) {
+        if (!perGroupAllowFrom.includes(event.senderId)) {
+          log.info(`inbound: group dropped — sender=${event.senderId} not in per-group allowFrom for chatId=${event.chatId}`);
+          return;
+        }
+      }
       const requireMention = api.runtime.channel.groups.resolveRequireMention({
         cfg: api.config,
         channel: "lansenger",

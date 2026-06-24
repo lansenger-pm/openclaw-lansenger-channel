@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.16.8] - 2026-06-23
+
+### Added
+
+- **Per-group `allowFrom`**: `groups.<chatId>.allowFrom` now restricts which users can trigger the bot in a specific group. When set, only listed sender IDs are accepted for that group. Works independently from channel-level `groupAllowFrom` — both layers are AND logic. Schema, docs, and UI hints restored with full bilingual descriptions.
+
 ## [3.16.7] - 2026-06-23
 
 ### Changed

@@ -176,7 +176,7 @@ openclaw pairing approve lansenger <配對碼>
 | `name` | 此帳戶的顯示名稱 | — |
 | `accounts` | 多機械人設定 | — |
 | `groupPolicy` | 羣聊策略：`open`（所有羣）、`allowlist`（僅允許列表羣）、`disabled`（禁止羣訊息） | `open` |
-| `groups` | 羣級設定：`enabled`、`requireMention`、`autoMentionReply`、`autoQuoteReply`。key 為羣 `chatId`。allowlist 模式設 `groups.<chatId>.enabled: true`。 | — |
+| `groups` | 羣級設定：`enabled`、`requireMention`、`autoMentionReply`、`autoQuoteReply`、`allowFrom`。key 為羣 `chatId`。allowlist 模式設 `groups.<chatId>.enabled: true`。 | — |
 | `autoMentionReply` | 羣聊回覆時自動 @發送者 | `false` |
 | `autoQuoteReply` | 回覆時自動引用入站訊息（羣聊和私聊） | `false` |
 | `ackMessage` | 在代理處理前發送確認訊息 | `true` |
