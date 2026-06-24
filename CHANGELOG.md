@@ -14,29 +14,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - **Auto-register native slash commands**: Built-in commands (`/help`, `/models`, `/reset`, etc.) auto-synced to Lansenger on gateway startup so they appear in the client command picker. Multi-language descriptions (zhHans/zhHant/zhHantHK/en/fr) via `command-i18n.ts`.
 - **Auto-configured approvers**: Bot owner from `homeChannel` is automatically used when `approvals.exec.allowFrom.lansenger` is not set.
 - **Per-group `allowFrom`**: `groups.<chatId>.allowFrom` restricts which users can trigger the bot in a specific group. Works independently from channel-level `groupAllowFrom` — both layers are AND logic.
-- **`autoQuoteReply`**: Auto-quote the inbound message when replying. Supports per-group > account > section fallback, applies to both groups and DMs. Default `false`.
-- **`autoMentionReply`**: Auto-@ the sender when replying in group chats. Supports per-group > account > section fallback. Default `false`.
+- **`autoQuoteReply`**: Auto-quote the inbound message when replying. Supports per-group > account > section fallback, applies to both groups and DMs.
+- **`autoMentionReply`**: Auto-@ the sender when replying in group chats. Supports per-group > account > section fallback.
 
 ### Changed
 
 - **Tool registration**: Refactored from inline factory arrays to declarative schema objects with `makeToolClient` lookup.
-- **`reminderUserIds` description**: Updated to reflect that Lansenger API auto-prepends @姓名 — Agent no longer needs to include mention names in message text.
-- **Multi-level config section fallback**: `dmPolicy`, `allowFrom`, `homeChannel`, `apiGatewayUrl`, `autoMentionReply`, and `autoQuoteReply` in `resolveAccount` now fall back account → section level.
+- **`reminderUserIds` description**: Lansenger API auto-prepends @姓名 — Agent no longer needs to include mention names in message text.
+- **Multi-level config section fallback**: `dmPolicy`, `allowFrom`, `homeChannel`, `apiGatewayUrl`, `autoMentionReply`, and `autoQuoteReply` now fall back account → section level.
 - **`sendText`/`sendFormatText` API**: Changed from `(chatId, content, reminder?)` to `(chatId, content, opts?)` with `{ reminder?, refMsgId? }` to support `autoQuoteReply`.
-- **`groupAllowFrom` added to GUI config schema**: Now exposed in the plugin config schema and UI hints with bilingual descriptions.
-- **`msgData` → `eventData` rename**: Eliminated confusing `msgData.msgData` double naming in the inbound parser.
-- **Group policy docs**: Updated from "two-layer" to "three-layer" filtering with comprehensive `enabled` × `groupPolicy` truth table.
-- **Documentation**: All 5 README config tables updated. `lansenger-setup` SKILL updated with group policy truth table, `groupAllowFrom`, and per-group `allowFrom`. `lansenger-messaging` SKILL stripped of CLI command reference, now points to `lansenger` skill and official setup docs. CLI credential safety section added.
-- **Removed misleading health check**: `lansenger/group-config-unused` deleted — group config IS fully functional.
+- **`groupAllowFrom`** added to GUI config schema with bilingual UI hints.
+- **`msgData` → `eventData`** rename to eliminate confusing double-naming in the inbound parser.
+- **Group policy docs**: Three-layer filtering model with comprehensive `enabled` × `groupPolicy` truth table. All 5 READMEs and both SKILLs updated.
+- **`lansenger-messaging` SKILL** stripped of CLI command reference, now points to `lansenger` skill and official setup docs.
 
 ### Fixed
 
-- **`isAtMe`/`isAtAll`/`mentionedBots` read from wrong path**: Group message @-mention data is nested inside `data.reminder` (per Lansenger OpenAPI spec), but was being read from `data` top level. This caused `isAtMe` to always be `false`, breaking `requireMention` checks and `@BotName` stripping in group chats.
 - **Per-group `enabled: false` not honored**: Groups with `enabled: false` were still allowed inbound. Now explicitly blocked regardless of `groupPolicy` mode.
-- **`groupAllowFrom` bypass not passed to SDK**: When `groupAllowFrom` is configured, the `hasGroupAllowFrom` signal was not forwarded to `resolveChannelGroupPolicy`, potentially blocking all groups under `groupPolicy: "allowlist"` without a `groups` map.
-- **`groupPolicy: "open"` + `groups` incorrectly blocks unlisted groups**: SDK treats any non-empty `groups` map as an implicit allowlist. Worked around by bypassing the SDK check in `open` mode for unlisted groups.
-- **@BotName stripping mutated `event.text`**: Stripping for slash command detection was mutating `event.text` in-place, losing @botName context for the Agent and breaking command detection. Fixed with local `textForCommands` variable.
-- **Blocked commands silently dropped**: Now replies "此命令需要授权。/ This command requires authorization." when unauthorized.
+- **`groupAllowFrom` bypass not passed to SDK**: `hasGroupAllowFrom` signal was not forwarded to `resolveChannelGroupPolicy`, blocking groups under `groupPolicy: "allowlist"` without a `groups` map.
+- **`groupPolicy: "open"` + `groups` blocks unlisted groups**: SDK treats any non-empty `groups` map as an implicit allowlist. Worked around by bypassing the SDK check in `open` mode for unlisted groups.
+- **Blocked commands now reply**: Unauthorized slash command attempts get "此命令需要授权。/ This command requires authorization." instead of silent drops.
 
 ## [3.16.1] - 2026-06-22
 
