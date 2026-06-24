@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [3.16.10] - 2026-06-24
+## [3.16.11] - 2026-06-24
 
 ### Added
 
@@ -20,7 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 ### Changed
 
 - **Tool registration**: Refactored from inline factory arrays to declarative schema objects with `makeToolClient` lookup.
-- **`reminderUserIds` description**: Updated to reflect that `@姓名` must be written in the message text (Lansenger API no longer auto-prepends names).
+- **`reminderUserIds` description**: Updated to reflect that Lansenger API auto-prepends @姓名 — Agent no longer needs to include mention names in message text.
 - **Multi-level config section fallback**: `dmPolicy`, `allowFrom`, `homeChannel`, `apiGatewayUrl`, `autoMentionReply`, and `autoQuoteReply` in `resolveAccount` now fall back account → section level.
 - **`sendText`/`sendFormatText` API**: Changed from `(chatId, content, reminder?)` to `(chatId, content, opts?)` with `{ reminder?, refMsgId? }` to support `autoQuoteReply`.
 - **`groupAllowFrom` added to GUI config schema**: Now exposed in the plugin config schema and UI hints with bilingual descriptions.
