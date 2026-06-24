@@ -26,6 +26,7 @@
       "lansenger_send_link_card",
       "lansenger_send_app_articles",
       "lansenger_send_app_card",
+      "lansenger_send_approve_card",
       "lansenger_update_dynamic_card",
       "lansenger_query_groups"
     ]
@@ -53,6 +54,9 @@
       "configSignals": [{ "rootPath": "channels.lansenger", "requiredAny": ["appId", "accounts"] }]
     },
     "lansenger_send_app_card": {
+      "configSignals": [{ "rootPath": "channels.lansenger", "requiredAny": ["appId", "accounts"] }]
+    },
+    "lansenger_send_approve_card": {
       "configSignals": [{ "rootPath": "channels.lansenger", "requiredAny": ["appId", "accounts"] }]
     },
     "lansenger_update_dynamic_card": {

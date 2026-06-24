@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.16.12] - 2026-06-24
+
+### Fixed
+
+- **`groupAllowFrom` sender filter was never applied**: Section- and account-level `groupAllowFrom` lists were read but never checked against `senderId`. Only per-group `allowFrom` actually filtered senders. Now properly enforced with replace semantics — per-group `allowFrom` replaces global `groupAllowFrom` when set.
+- **`groupPolicy: "allowlist"` bypassed in multi-account configs**: Gateway injects default `groupPolicy: "open"` into accounts. The `account?.groupPolicy ?? section?.groupPolicy` pattern picked up the injected default, overriding the user's section-level `allowlist`. Changed to section-first resolution.
+- **Gateway-injected defaults overriding section-level config**: All `account?.xxx ?? section?.xxx` patterns in `resolveAccount` changed to `section?.xxx ?? account?.xxx` for `allowFrom`, `dmPolicy`, `homeChannel`, `dangerouslyAllowPrivateNetwork`, and `mediaLocalRoots`. Prevents Gateway-injected account defaults from silently overriding user-configured section values.
+- **Missing `lansenger_send_approve_card` contract declaration**: Added to `contracts.tools` and `toolMetadata` in plugin manifest.
+
 ## [3.16.11] - 2026-06-24
 
 ### Added

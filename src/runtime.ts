@@ -781,7 +781,7 @@ async function handleInbound(
       const channelGroupAllowFrom = (lansengerCfg?.groupAllowFrom as unknown[]) ?? [];
       const accountGroupAllowFrom = (accountCfg?.groupAllowFrom as unknown[]) ?? [];
       const hasGroupAllowFrom = channelGroupAllowFrom.length > 0 || accountGroupAllowFrom.length > 0;
-      const groupPolicyMode: string | undefined = (accountCfg?.groupPolicy ?? lansengerCfg?.groupPolicy) as string | undefined;
+      const groupPolicyMode = lansengerCfg?.groupPolicy as string | undefined;
 
       const groupPolicy = api.runtime.channel.groups.resolveGroupPolicy({
         cfg: api.config,
@@ -790,6 +790,16 @@ async function handleInbound(
         accountId: account.accountId,
         hasGroupAllowFrom,
       });
+      log.info(
+        `inbound: groupPolicy resolved — chatId=${event.chatId} ` +
+        `mode=${groupPolicyMode} ` +
+        `allowlistEnabled=${groupPolicy.allowlistEnabled} ` +
+        `allowed=${groupPolicy.allowed} ` +
+        `hasGroupConfig=${Boolean(groupPolicy.groupConfig)} ` +
+        `hasDefaultConfig=${Boolean(groupPolicy.defaultConfig)} ` +
+        `hasGroupAllowFrom=${hasGroupAllowFrom} ` +
+        `accountId=${account.accountId}`
+      );
       if (!groupPolicy.allowed) {
         // Workaround SDK bug: open + groups with entries → allowlistEnabled=true →
         // groups NOT in the groups map are incorrectly blocked.
@@ -801,17 +811,22 @@ async function handleInbound(
           return;
         }
       }
+      // Sender filter: per-group allowFrom replaces global groupAllowFrom.
+      // Fallback priority:
+      //   account.groups.<id>.allowFrom > section.groups.<id>.allowFrom  (SDK handled)
+      //   > account.groupAllowFrom > section.groupAllowFrom
       const groupConfig = groupPolicy.groupConfig as Record<string, unknown> | undefined;
+      const perGroupAllowFrom = groupConfig?.allowFrom as string[] | undefined;
+      const effectiveGroupAllowFrom = perGroupAllowFrom && perGroupAllowFrom.length > 0
+        ? perGroupAllowFrom
+        : (accountGroupAllowFrom.length > 0 ? accountGroupAllowFrom : channelGroupAllowFrom);
+      if (effectiveGroupAllowFrom.length > 0 && !effectiveGroupAllowFrom.includes(event.senderId)) {
+        log.info(`inbound: group dropped — sender=${event.senderId} not in allowFrom for chatId=${event.chatId}`);
+        return;
+      }
       if (groupConfig?.enabled === false) {
         log.info(`inbound: group dropped — enabled=false for chatId=${event.chatId}`);
         return;
-      }
-      const perGroupAllowFrom = groupConfig?.allowFrom as string[] | undefined;
-      if (perGroupAllowFrom && perGroupAllowFrom.length > 0) {
-        if (!perGroupAllowFrom.includes(event.senderId)) {
-          log.info(`inbound: group dropped — sender=${event.senderId} not in per-group allowFrom for chatId=${event.chatId}`);
-          return;
-        }
       }
 
       // autoMentionReply / autoQuoteReply: per-group > account > section

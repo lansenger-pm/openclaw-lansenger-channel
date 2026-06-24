@@ -144,16 +144,16 @@ function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): Resolve
     );
   }
   const apiGatewayUrl = account?.apiGatewayUrl ?? section?.apiGatewayUrl ?? process.env.LANSENGER_API_GATEWAY_URL ?? DEFAULT_API_GATEWAY_URL;
-  const allowFrom: string[] = account?.allowFrom ?? section?.allowFrom ?? [];
-  const dmPolicy = account?.dmPolicy ?? account?.dmSecurity ?? section?.dmPolicy ?? section?.dmSecurity;
-  const homeChannel = account?.homeChannel ?? section?.homeChannel;
+  const allowFrom: string[] = section?.allowFrom ?? account?.allowFrom ?? [];
+  const dmPolicy = section?.dmPolicy ?? section?.dmSecurity ?? account?.dmPolicy ?? account?.dmSecurity;
+  const homeChannel = section?.homeChannel ?? account?.homeChannel;
   const enabled = Boolean(appId && appSecret);
   const ackMessage = account?.ackMessage !== undefined ? account.ackMessage : (section?.ackMessage ?? false);
   const ackMessageTextZh = account?.ackMessageTextZh ?? section?.ackMessageTextZh ?? "收到，正在处理...";
   const ackMessageTextEn = account?.ackMessageTextEn ?? section?.ackMessageTextEn ?? "Received, processing...";
   const revokeAckMessage = account?.revokeAckMessage !== undefined ? account.revokeAckMessage : (section?.revokeAckMessage ?? true);
-  const dangerouslyAllowPrivateNetwork = isPrivateNetworkOptInEnabled(account?.dangerouslyAllowPrivateNetwork ?? section?.dangerouslyAllowPrivateNetwork ?? section?.allowPrivateNetwork ?? null);
-  const mediaLocalRoots: string[] = account?.mediaLocalRoots ?? section?.mediaLocalRoots ?? [];
+  const dangerouslyAllowPrivateNetwork = isPrivateNetworkOptInEnabled(section?.dangerouslyAllowPrivateNetwork ?? section?.allowPrivateNetwork ?? account?.dangerouslyAllowPrivateNetwork ?? null);
+  const mediaLocalRoots: string[] = section?.mediaLocalRoots ?? account?.mediaLocalRoots ?? [];
   const autoMentionReply = account?.autoMentionReply !== undefined ? account.autoMentionReply : (section?.autoMentionReply ?? false);
   const autoQuoteReply = account?.autoQuoteReply !== undefined ? account.autoQuoteReply : (section?.autoQuoteReply ?? false);
 
