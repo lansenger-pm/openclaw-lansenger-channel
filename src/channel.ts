@@ -18,7 +18,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as crypto from "node:crypto";
 import { LansengerClient, DEFAULT_API_GATEWAY_URL } from "./client.js";
-import type { ApproveCardData, I18nAppCardData, ClientLogger } from "./client.js";
+import type { ApproveCardData, ApproveCardButton, I18nAppCardData, ClientLogger } from "./client.js";
 import { getRunningClient, getRunningClientByAccountId, getLastInboundTime, getLastInboundTimeByAccountId, stripOpenClawUuidSuffix, gatewayStartAccount, gatewayStopAccount } from "./runtime.js";
 import { lansengerSetupWizard } from "./setup-wizard.js";
 
@@ -830,6 +830,10 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
           const sessionKey = req?.sessionKey ?? "unknown";
           const requestId = request?.id ?? req?.id ?? "unknown";
           const shortId = requestId.length > 8 ? requestId.slice(0, 8) : requestId;
+          const approverIds = resolveLansengerApprovers({ cfg, accountId: target?.accountId ?? null });
+          const buttonScope: ApproveCardButton["permissionScope"] = approverIds.length > 0
+            ? { permittedStaffs: approverIds }
+            : undefined;
           const zhCard: ApproveCardData = {
             head: {
               title: "⚠️ 命令审批",
@@ -871,9 +875,9 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
               },
             },
             buttons: [
-              { text: "执行一次", buttonTheme: 1 },
-              { text: "本会话有效", buttonTheme: 2 },
-              { text: "拒绝执行", buttonTheme: 4 },
+              { text: "执行一次", buttonTheme: 1, permissionScope: buttonScope },
+              { text: "本会话有效", buttonTheme: 2, permissionScope: buttonScope },
+              { text: "拒绝执行", buttonTheme: 4, permissionScope: buttonScope },
             ],
           };
           const enCard: ApproveCardData = {
@@ -917,9 +921,9 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
               },
             },
             buttons: [
-              { text: "Approve Once", buttonTheme: 1 },
-              { text: "This Session", buttonTheme: 2 },
-              { text: "Deny", buttonTheme: 4 },
+              { text: "Approve Once", buttonTheme: 1, permissionScope: buttonScope },
+              { text: "This Session", buttonTheme: 2, permissionScope: buttonScope },
+              { text: "Deny", buttonTheme: 4, permissionScope: buttonScope },
             ],
           };
           return { type: "approveCard", zh: zhCard, en: enCard, isDynamic: true };
