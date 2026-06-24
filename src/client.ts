@@ -22,15 +22,28 @@ function convertPxToPt(str: string): string {
   });
 }
 
-function convertPxToPtDeep(obj: unknown): unknown {
-  if (typeof obj === "string") return convertPxToPt(obj);
-  if (Array.isArray(obj)) return obj.map(convertPxToPtDeep);
-  if (obj && typeof obj === "object") {
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(obj)) out[k] = convertPxToPtDeep(v);
-    return out;
+const PX_TO_PT_FIELDS = new Set([
+  "bodyTitle", "bodyContent", "bodySubTitle", "headTitle", "signature",
+  "description", "value", "title",
+]);
+
+function convertPxToPtCard(card: AppCardData): AppCardData {
+  const result = { ...card };
+  for (const key of PX_TO_PT_FIELDS) {
+    if (typeof result[key as keyof AppCardData] === "string") {
+      (result as any)[key] = convertPxToPt(result[key as keyof AppCardData] as string);
+    }
   }
-  return obj;
+  if (result.headStatusInfo?.description) {
+    result.headStatusInfo = { ...result.headStatusInfo, description: convertPxToPt(result.headStatusInfo.description) };
+  }
+  if (result.fields?.length) {
+    result.fields = result.fields.map((f) => ({ ...f, value: convertPxToPt(f.value) }));
+  }
+  if (result.buttons?.length) {
+    result.buttons = result.buttons.map((b) => ({ ...b, title: convertPxToPt(b.title) }));
+  }
+  return result;
 }
 const RECONNECT_BACKOFF = [2, 5, 10, 30, 60];
 const HEARTBEAT_INTERVAL_MS = 30_000;
@@ -132,7 +145,7 @@ export class LansengerClient {
 
   isWsAlive(): boolean {
     if (!this.ws) return false;
-    return this.ws.readyState === WebSocket.OPEN;
+    return this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING;
   }
 
   wsState(): string {
@@ -168,14 +181,15 @@ export class LansengerClient {
     }
   }
 
-  async sendText(chatId: string, content: string, reminder?: ReminderParams): Promise<ApiResult> {
+  async sendText(chatId: string, content: string, opts?: { reminder?: ReminderParams; refMsgId?: string }): Promise<ApiResult> {
     const token = await this.getAppToken();
     if (!token) return { success: false, error: "No access token" };
     try {
       const { url, wrap } = this.msgTarget(chatId);
       const textData: Record<string, unknown> = { content };
-      if (reminder) textData.reminder = reminder;
+      if (opts?.reminder) textData.reminder = opts.reminder;
       const payload = wrap({ text: textData, msgType: "text" });
+      if (opts?.refMsgId) payload.refMsgId = opts.refMsgId;
       const data = await this.postJson(`${url}?app_token=${token}`, payload);
       if (data.errCode !== 0) {
         this.log.error(`sendText: errCode=${data.errCode} errMsg=${data.errMsg ?? "n/a"}`);
@@ -188,18 +202,20 @@ export class LansengerClient {
     }
   }
 
-  async sendFormatText(chatId: string, content: string, reminder?: ReminderParams): Promise<ApiResult> {
+  async sendFormatText(chatId: string, content: string, opts?: { reminder?: ReminderParams; refMsgId?: string }): Promise<ApiResult> {
     const token = await this.getAppToken();
     if (!token) return { success: false, error: "No access token" };
     try {
       const { url, wrap } = this.msgTarget(chatId);
       const fmtData: Record<string, unknown> = { formatType: 1, text: content };
-      if (reminder) fmtData.reminder = reminder;
+      if (opts?.reminder) fmtData.reminder = opts.reminder;
       const payload = wrap({ formatText: fmtData, msgType: "formatText" });
+      if (opts?.refMsgId) payload.refMsgId = opts.refMsgId;
       const data = await this.postJson(`${url}?app_token=${token}`, payload);
-      if (data.errCode !== 0 && reminder) {
+      if (data.errCode !== 0 && opts?.reminder) {
         this.log.info(`sendFormatText with reminder failed (${data.errMsg ?? "unknown"}), retrying without reminder`);
         const retryPayload = wrap({ formatText: { formatType: 1, text: content }, msgType: "formatText" });
+        if (opts?.refMsgId) retryPayload.refMsgId = opts.refMsgId;
         const retryData = await this.postJson(`${url}?app_token=${token}`, retryPayload);
         if (retryData.errCode !== 0) {
           this.log.error(`sendFormatText: errCode=${retryData.errCode} errMsg=${retryData.errMsg ?? "n/a"}`);
@@ -392,7 +408,7 @@ export class LansengerClient {
     const token = await this.getAppToken();
     if (!token) return { success: false, error: "No access token" };
     try {
-      const resolvedCard: AppCardData = convertPxToPtDeep(cardData) as AppCardData;
+      const resolvedCard: AppCardData = convertPxToPtCard(cardData);
       if (resolvedCard.isDynamic && !resolvedCard.headStatusInfo) {
         resolvedCard.headStatusInfo = {
           description: '<div style="color:rgba(0,0,0,.47);text-align:left">Active</div>',
@@ -564,7 +580,7 @@ export class LansengerClient {
     }
   }
 
-  async queryGroups(pageOffset: number = 1, pageSize: number = 100): Promise<{ totalGroupIds: number; groupIds: string[] } | { error: string }> {
+  async queryGroups(pageOffset: number = 0, pageSize: number = 100): Promise<{ totalGroupIds: number; groupIds: string[] } | { error: string }> {
     const token = await this.getAppToken();
     if (!token) return { error: "No access token" };
     try {
@@ -773,9 +789,9 @@ export class LansengerClient {
       try {
         const ws = new WebSocket(currentUrl);
         this.ws = ws;
-        this.backoffIdx = 0;
 
         ws.onopen = () => {
+          this.backoffIdx = 0;
           this.log.info(`WS connected (url=${currentUrl.slice(0, 60)}...)`);
           this.startHeartbeat(ws);
           this.onWsOpen?.();

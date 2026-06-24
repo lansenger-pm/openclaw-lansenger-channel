@@ -363,7 +363,7 @@ async execute(_toolCallId: string, params: any) {
       const reminder = (params.reminderAll || (params.reminderUserIds && params.reminderUserIds.length > 0) || (params.reminderBotIds && params.reminderBotIds.length > 0))
         ? { all: Boolean(params.reminderAll), userIds: params.reminderUserIds ?? [], botIds: params.reminderBotIds ?? [] }
         : undefined;
-      const result = await client.sendText(to, content, reminder);
+      const result = await client.sendText(to, content, reminder ? { reminder } : undefined);
       return jsonResult({ success: result.success, messageId: result.messageId ?? null });
     },
   });
@@ -382,7 +382,7 @@ async execute(_toolCallId: string, params: any) {
       const reminder = (params.reminderAll || (params.reminderUserIds && params.reminderUserIds.length > 0) || (params.reminderBotIds && params.reminderBotIds.length > 0))
         ? { all: Boolean(params.reminderAll), userIds: params.reminderUserIds ?? [], botIds: params.reminderBotIds ?? [] }
         : undefined;
-      const result = await tc.client.sendFormatText(to, content, reminder);
+      const result = await tc.client.sendFormatText(to, content, reminder ? { reminder } : undefined);
       return jsonResult({ success: result.success, messageId: result.messageId ?? null });
     },
   });
@@ -533,6 +533,8 @@ async execute(_toolCallId: string, params: any) {
       if (!tc) return jsonResult({ error: "Lansenger account not configured or not running." });
       const to = resolveTarget(params.to);
       if (!to) return jsonResult({ error: "No target specified. Provide a 'to' parameter (chat ID)." });
+      if (!params.head) return jsonResult({ error: "head is required" });
+      if (!params.body) return jsonResult({ error: "body is required" });
       const cardData: ApproveCardData = {
         head: params.head,
         body: params.body,

@@ -330,3 +330,680 @@ describe("mergeInboundEvents", () => {
     expect(result.eventType).toBe("bot_group_message");
   });
 });
+
+// ---------------------------------------------------------------------------
+// handleInbound policy tests (exercised via the webhook route registered by
+// startLansengerGateway)
+// ---------------------------------------------------------------------------
+
+describe("handleInbound policies (via webhook)", () => {
+  // Helpers
+
+  function dmWebhookBody(overrides?: {
+    senderId?: string;
+    text?: string;
+    messageId?: string;
+    isAtMe?: boolean;
+    isAtAll?: boolean;
+    botId?: string;
+    mentionedBots?: Array<{ botId: string; botName: string }>;
+  }) {
+    return {
+      events: [{
+        type: "bot_p2p_message",
+        data: {
+          msgType: "text",
+          msgData: { text: { content: overrides?.text ?? "hello" } },
+          messageId: overrides?.messageId ?? "msg-dm-1",
+          chatType: "p2p",
+          from: overrides?.senderId ?? "user-1",
+          senderName: "Alice",
+          conversationId: overrides?.senderId ?? "user-1",
+          reminder: {
+            isAtMe: overrides?.isAtMe ?? false,
+            isAtAll: overrides?.isAtAll ?? false,
+            ...(overrides?.mentionedBots ? { bots: overrides.mentionedBots } : {}),
+          },
+          ...(overrides?.botId ? { botId: overrides.botId } : {}),
+        },
+      }],
+    };
+  }
+
+  function groupWebhookBody(overrides?: {
+    senderId?: string;
+    text?: string;
+    groupId?: string;
+    groupName?: string;
+    messageId?: string;
+    isAtMe?: boolean;
+    isAtAll?: boolean;
+    botId?: string;
+    mentionedBots?: Array<{ botId: string; botName: string }>;
+  }) {
+    return {
+      events: [{
+        type: "bot_group_message",
+        data: {
+          msgType: "text",
+          msgData: { text: { content: overrides?.text ?? "hello" } },
+          messageId: overrides?.messageId ?? "msg-group-1",
+          chatType: "group",
+          from: overrides?.senderId ?? "user-1",
+          senderName: "Alice",
+          groupId: overrides?.groupId ?? "group:group-1",
+          groupName: overrides?.groupName ?? "Test Group",
+          reminder: {
+            isAtMe: overrides?.isAtMe ?? false,
+            isAtAll: overrides?.isAtAll ?? false,
+            ...(overrides?.mentionedBots ? { bots: overrides.mentionedBots } : {}),
+          },
+          ...(overrides?.botId ? { botId: overrides.botId } : {}),
+        },
+      }],
+    };
+  }
+
+  function makeReq(body: any): any {
+    const json = Buffer.from(JSON.stringify(body));
+    return {
+      method: "POST",
+      [Symbol.asyncIterator]: async function* () {
+        yield json;
+      },
+    };
+  }
+
+  function makeRes(): any {
+    return { statusCode: 0, end: vi.fn() };
+  }
+
+  /**
+   * Create an api with NO credentials (appId="", appSecret="") so that
+   * autoStart does NOT actually connect.  Policy fields can be overridden
+   * via channelOverrides.
+   */
+  function makeNoCredApi(channelOverrides?: Record<string, any>): any {
+    return makeApi({
+      config: {
+        channels: {
+          lansenger: {
+            appId: "",
+            appSecret: "",
+            dmPolicy: "pairing",
+            allowFrom: [] as string[],
+            autoMentionReply: false,
+            autoQuoteReply: false,
+            ...(channelOverrides ?? {}),
+          },
+        },
+      },
+    });
+  }
+
+  let api: any;
+
+  beforeEach(() => {
+    vi.stubGlobal("fetch", async (url: string | Request) => {
+      const u = typeof url === "string" ? url : url.url;
+      if (u.includes("apptoken"))
+        return new Response(
+          JSON.stringify({ errCode: 0, errMsg: "", data: { appToken: "tok", expiresIn: 7200 } }),
+          { headers: { "content-type": "application/json" } },
+        );
+      if (u.includes("ws/endpoint"))
+        return new Response(
+          JSON.stringify({ errCode: 0, errMsg: "", data: { url: "wss://fake.ws" } }),
+          { headers: { "content-type": "application/json" } },
+        );
+      return new Response(
+        JSON.stringify({ errCode: 0, errMsg: "", data: { msgId: "m1" } }),
+        { headers: { "content-type": "application/json" } },
+      );
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // =====================================================================
+  // 1. DM Policy
+  // =====================================================================
+  describe("DM Policy", () => {
+    it("disabled → inbound.run not called", async () => {
+      api = makeNoCredApi({ dmPolicy: "disabled" });
+      startLansengerGateway(api);
+      const inboundRun = vi.fn().mockResolvedValue(undefined);
+      api.runtime.channel.inbound.run = inboundRun;
+
+      const route = api._httpRoutes[0];
+      await route.handler(makeReq(dmWebhookBody()), makeRes());
+
+      expect(inboundRun).not.toHaveBeenCalled();
+    });
+
+    it("open → inbound.run called", async () => {
+      api = makeNoCredApi({ dmPolicy: "open" });
+      startLansengerGateway(api);
+      const inboundRun = vi.fn().mockResolvedValue(undefined);
+      api.runtime.channel.inbound.run = inboundRun;
+
+      const route = api._httpRoutes[0];
+      await route.handler(makeReq(dmWebhookBody()), makeRes());
+
+      expect(inboundRun).toHaveBeenCalledTimes(1);
+    });
+
+    it("allowlist: sender in allowFrom → inbound.run called", async () => {
+      api = makeNoCredApi({ dmPolicy: "allowlist", allowFrom: ["user-1", "user-3"] });
+      startLansengerGateway(api);
+      const inboundRun = vi.fn().mockResolvedValue(undefined);
+      api.runtime.channel.inbound.run = inboundRun;
+
+      const route = api._httpRoutes[0];
+      await route.handler(makeReq(dmWebhookBody({ senderId: "user-1" })), makeRes());
+
+      expect(inboundRun).toHaveBeenCalledTimes(1);
+    });
+
+    it("allowlist: sender NOT in allowFrom → inbound.run not called", async () => {
+      api = makeNoCredApi({ dmPolicy: "allowlist", allowFrom: ["user-2"] });
+      startLansengerGateway(api);
+      const inboundRun = vi.fn().mockResolvedValue(undefined);
+      api.runtime.channel.inbound.run = inboundRun;
+
+      const route = api._httpRoutes[0];
+      await route.handler(makeReq(dmWebhookBody({ senderId: "user-1" })), makeRes());
+
+      expect(inboundRun).not.toHaveBeenCalled();
+    });
+
+    it("pairing: paired (sender in allowFrom) → inbound.run called", async () => {
+      api = makeNoCredApi({ dmPolicy: "pairing", allowFrom: ["user-1"] });
+      startLansengerGateway(api);
+      const inboundRun = vi.fn().mockResolvedValue(undefined);
+      api.runtime.channel.inbound.run = inboundRun;
+
+      const route = api._httpRoutes[0];
+      await route.handler(makeReq(dmWebhookBody({ senderId: "user-1" })), makeRes());
+
+      expect(inboundRun).toHaveBeenCalledTimes(1);
+    });
+
+    it("pairing: not paired → inbound.run not called", async () => {
+      api = makeNoCredApi({ dmPolicy: "pairing", allowFrom: [] });
+      startLansengerGateway(api);
+      const inboundRun = vi.fn().mockResolvedValue(undefined);
+      api.runtime.channel.inbound.run = inboundRun;
+
+      const route = api._httpRoutes[0];
+      await route.handler(makeReq(dmWebhookBody({ senderId: "user-1" })), makeRes());
+
+      expect(inboundRun).not.toHaveBeenCalled();
+    });
+  });
+
+  // =====================================================================
+  // 2. Group Policy
+  // =====================================================================
+  describe("Group Policy", () => {
+    it("disabled → inbound.run not called", async () => {
+      api = makeNoCredApi();
+      startLansengerGateway(api);
+      // resolveGroupPolicy says not allowed → messages from this group dropped
+      api.runtime.channel.groups.resolveGroupPolicy = vi.fn().mockReturnValue({ allowed: false });
+      const inboundRun = vi.fn().mockResolvedValue(undefined);
+      api.runtime.channel.inbound.run = inboundRun;
+
+      const route = api._httpRoutes[0];
+      await route.handler(makeReq(groupWebhookBody()), makeRes());
+
+      expect(inboundRun).not.toHaveBeenCalled();
+    });
+
+    it("open → inbound.run called", async () => {
+      api = makeNoCredApi();
+      startLansengerGateway(api);
+      api.runtime.channel.groups.resolveGroupPolicy = vi.fn().mockReturnValue({ allowed: true });
+      const inboundRun = vi.fn().mockResolvedValue(undefined);
+      api.runtime.channel.inbound.run = inboundRun;
+
+      const route = api._httpRoutes[0];
+      await route.handler(makeReq(groupWebhookBody()), makeRes());
+
+      expect(inboundRun).toHaveBeenCalledTimes(1);
+    });
+
+    it("allowlist: group allowed → inbound.run called", async () => {
+      api = makeNoCredApi();
+      startLansengerGateway(api);
+      api.runtime.channel.groups.resolveGroupPolicy = vi.fn().mockReturnValue({ allowed: true });
+      const inboundRun = vi.fn().mockResolvedValue(undefined);
+      api.runtime.channel.inbound.run = inboundRun;
+
+      const route = api._httpRoutes[0];
+      await route.handler(makeReq(groupWebhookBody()), makeRes());
+
+      expect(inboundRun).toHaveBeenCalledTimes(1);
+    });
+
+    it("allowlist: group NOT in list → inbound.run not called", async () => {
+      api = makeNoCredApi();
+      startLansengerGateway(api);
+      api.runtime.channel.groups.resolveGroupPolicy = vi.fn().mockReturnValue({ allowed: false });
+      const inboundRun = vi.fn().mockResolvedValue(undefined);
+      api.runtime.channel.inbound.run = inboundRun;
+
+      const route = api._httpRoutes[0];
+      await route.handler(makeReq(groupWebhookBody()), makeRes());
+
+      expect(inboundRun).not.toHaveBeenCalled();
+    });
+
+    it("groupConfig enabled=false → inbound.run not called", async () => {
+      api = makeNoCredApi();
+      startLansengerGateway(api);
+      api.runtime.channel.groups.resolveGroupPolicy = vi
+        .fn()
+        .mockReturnValue({ allowed: true, groupConfig: { enabled: false } });
+      const inboundRun = vi.fn().mockResolvedValue(undefined);
+      api.runtime.channel.inbound.run = inboundRun;
+
+      const route = api._httpRoutes[0];
+      await route.handler(makeReq(groupWebhookBody()), makeRes());
+
+      expect(inboundRun).not.toHaveBeenCalled();
+    });
+
+    it("per-group allowFrom matching → inbound.run called", async () => {
+      api = makeNoCredApi();
+      startLansengerGateway(api);
+      api.runtime.channel.groups.resolveGroupPolicy = vi
+        .fn()
+        .mockReturnValue({ allowed: true, groupConfig: { allowFrom: ["user-1"] } });
+      const inboundRun = vi.fn().mockResolvedValue(undefined);
+      api.runtime.channel.inbound.run = inboundRun;
+
+      const route = api._httpRoutes[0];
+      await route.handler(makeReq(groupWebhookBody({ senderId: "user-1" })), makeRes());
+
+      expect(inboundRun).toHaveBeenCalledTimes(1);
+    });
+
+    it("per-group allowFrom not matching → inbound.run not called", async () => {
+      api = makeNoCredApi();
+      startLansengerGateway(api);
+      api.runtime.channel.groups.resolveGroupPolicy = vi
+        .fn()
+        .mockReturnValue({ allowed: true, groupConfig: { allowFrom: ["user-2"] } });
+      const inboundRun = vi.fn().mockResolvedValue(undefined);
+      api.runtime.channel.inbound.run = inboundRun;
+
+      const route = api._httpRoutes[0];
+      await route.handler(makeReq(groupWebhookBody({ senderId: "user-1" })), makeRes());
+
+      expect(inboundRun).not.toHaveBeenCalled();
+    });
+  });
+
+  // =====================================================================
+  // 3. requireMention
+  // =====================================================================
+  describe("requireMention", () => {
+    it("requireMention=true, isAtMe=true, isAtAll=false → dispatched", async () => {
+      api = makeNoCredApi();
+      startLansengerGateway(api);
+      api.runtime.channel.groups.resolveGroupPolicy = vi.fn().mockReturnValue({ allowed: true });
+      api.runtime.channel.groups.resolveRequireMention = vi.fn().mockReturnValue(true);
+      const inboundRun = vi.fn().mockResolvedValue(undefined);
+      api.runtime.channel.inbound.run = inboundRun;
+
+      const route = api._httpRoutes[0];
+      await route.handler(makeReq(groupWebhookBody({ isAtMe: true })), makeRes());
+
+      expect(inboundRun).toHaveBeenCalledTimes(1);
+    });
+
+    it("requireMention=true, isAtMe=false, isAtAll=false → not dispatched", async () => {
+      api = makeNoCredApi();
+      startLansengerGateway(api);
+      api.runtime.channel.groups.resolveGroupPolicy = vi.fn().mockReturnValue({ allowed: true });
+      api.runtime.channel.groups.resolveRequireMention = vi.fn().mockReturnValue(true);
+      const inboundRun = vi.fn().mockResolvedValue(undefined);
+      api.runtime.channel.inbound.run = inboundRun;
+
+      const route = api._httpRoutes[0];
+      await route.handler(makeReq(groupWebhookBody({ isAtMe: false, isAtAll: false })), makeRes());
+
+      expect(inboundRun).not.toHaveBeenCalled();
+    });
+
+    it("requireMention=true, isAtMe=false, isAtAll=true → dispatched", async () => {
+      api = makeNoCredApi();
+      startLansengerGateway(api);
+      api.runtime.channel.groups.resolveGroupPolicy = vi.fn().mockReturnValue({ allowed: true });
+      api.runtime.channel.groups.resolveRequireMention = vi.fn().mockReturnValue(true);
+      const inboundRun = vi.fn().mockResolvedValue(undefined);
+      api.runtime.channel.inbound.run = inboundRun;
+
+      const route = api._httpRoutes[0];
+      await route.handler(makeReq(groupWebhookBody({ isAtMe: false, isAtAll: true })), makeRes());
+
+      expect(inboundRun).toHaveBeenCalledTimes(1);
+    });
+
+    it("requireMention=false → dispatched without @", async () => {
+      api = makeNoCredApi();
+      startLansengerGateway(api);
+      api.runtime.channel.groups.resolveGroupPolicy = vi.fn().mockReturnValue({ allowed: true });
+      api.runtime.channel.groups.resolveRequireMention = vi.fn().mockReturnValue(false);
+      const inboundRun = vi.fn().mockResolvedValue(undefined);
+      api.runtime.channel.inbound.run = inboundRun;
+
+      const route = api._httpRoutes[0];
+      await route.handler(makeReq(groupWebhookBody({ isAtMe: false, isAtAll: false })), makeRes());
+
+      expect(inboundRun).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // =====================================================================
+  // 4. textForCommands stripping
+  // =====================================================================
+  describe("textForCommands stripping", () => {
+    it("@botName is stripped from textForCommands (group, isAtMe)", async () => {
+      api = makeNoCredApi();
+      startLansengerGateway(api);
+      api.runtime.channel.groups.resolveGroupPolicy = vi.fn().mockReturnValue({ allowed: true });
+      api.runtime.channel.groups.resolveRequireMention = vi.fn().mockReturnValue(false);
+      const inboundRun = vi.fn().mockResolvedValue(undefined);
+      api.runtime.channel.inbound.run = inboundRun;
+
+      const route = api._httpRoutes[0];
+      await route.handler(
+        makeReq(
+          groupWebhookBody({
+            text: "/help@MyBot hello",
+            isAtMe: true,
+            botId: "bot-123",
+            mentionedBots: [{ botId: "bot-123", botName: "MyBot" }],
+          }),
+        ),
+        makeRes(),
+      );
+
+      expect(inboundRun).toHaveBeenCalledTimes(1);
+      const params = inboundRun.mock.calls[0]![0] as any;
+      const ingest = params.adapter.ingest();
+      expect(ingest.textForCommands).toBe("/help hello");
+      // rawText and textForAgent preserve the original text (with @botName)
+      expect(ingest.rawText).toBe("/help@MyBot hello");
+      expect(ingest.textForAgent).toContain("/help@MyBot hello");
+    });
+
+    it("textForCommands unchanged for private messages", async () => {
+      api = makeNoCredApi({ dmPolicy: "open" });
+      startLansengerGateway(api);
+      const inboundRun = vi.fn().mockResolvedValue(undefined);
+      api.runtime.channel.inbound.run = inboundRun;
+
+      const route = api._httpRoutes[0];
+      await route.handler(
+        makeReq(dmWebhookBody({ text: "/help@MyBot" })),
+        makeRes(),
+      );
+
+      expect(inboundRun).toHaveBeenCalledTimes(1);
+      const params = inboundRun.mock.calls[0]![0] as any;
+      const ingest = params.adapter.ingest();
+      expect(ingest.textForCommands).toBe("/help@MyBot");
+    });
+  });
+
+  // =====================================================================
+  // 5. autoMentionReply / autoQuoteReply
+  // =====================================================================
+  describe("autoMentionReply / autoQuoteReply", () => {
+    /**
+     * For these tests we need handleInbound to actually reach the delivery
+     * callback.  We override inbound.run to invoke the delivery callback,
+     * and we spy on fetch to check what sendFormatText passes as opts.
+     */
+    it("autoMentionReply passes reminder to delivery", async () => {
+      api = makeNoCredApi({
+        dmPolicy: "open",
+        autoMentionReply: true,
+      });
+      startLansengerGateway(api);
+
+      // Override inbound.run to invoke the delivery callback
+      const fetchCalls: Array<{ url: string; body: any }> = [];
+      const inboundRun = vi.fn().mockImplementation(async (params: any) => {
+        const turn = params.adapter.resolveTurn();
+        await turn.delivery.deliver(
+          { text: "Hello from bot", to: "user-1" },
+          { kind: "final" },
+        );
+      });
+      api.runtime.channel.inbound.run = inboundRun;
+
+      vi.stubGlobal("fetch", async (url: string | Request, init?: any) => {
+        const u = typeof url === "string" ? url : url.url;
+        if (u.includes("apptoken"))
+          return new Response(
+            JSON.stringify({ errCode: 0, errMsg: "", data: { appToken: "tok", expiresIn: 7200 } }),
+            { headers: { "content-type": "application/json" } },
+          );
+        if (u.includes("bot/messages/create") || u.includes("messages/group/create")) {
+          const body = init?.body ? JSON.parse(init.body.toString()) : {};
+          fetchCalls.push({ url: u, body });
+        }
+        return new Response(
+          JSON.stringify({ errCode: 0, errMsg: "", data: { msgId: "m1" } }),
+          { headers: { "content-type": "application/json" } },
+        );
+      });
+
+      const route = api._httpRoutes[0];
+      await route.handler(makeReq(dmWebhookBody({ senderId: "user-1" })), makeRes());
+
+      expect(inboundRun).toHaveBeenCalledTimes(1);
+
+      // The delivery should have sent a formatText (or text) message
+      const deliveryCalls = fetchCalls.filter(
+        (c) =>
+          c.body.msgType === "formatText" || c.body.msgType === "text",
+      );
+      expect(deliveryCalls.length).toBeGreaterThanOrEqual(1);
+
+      // Check that reminder is present in the first delivery call
+      const firstDelivery = deliveryCalls[0]!;
+      const msgData =
+        firstDelivery.body.msgData?.formatText ??
+        firstDelivery.body.msgData?.text;
+      expect(msgData?.reminder).toBeDefined();
+      expect(msgData.reminder).toEqual({ userIds: ["user-1"] });
+    });
+
+    it("autoQuoteReply passes refMsgId to delivery", async () => {
+      api = makeNoCredApi({
+        dmPolicy: "open",
+        autoQuoteReply: true,
+      });
+      startLansengerGateway(api);
+
+      const fetchCalls: Array<{ url: string; body: any }> = [];
+      const inboundRun = vi.fn().mockImplementation(async (params: any) => {
+        const turn = params.adapter.resolveTurn();
+        await turn.delivery.deliver(
+          { text: "Reply text", to: "user-1" },
+          { kind: "final" },
+        );
+      });
+      api.runtime.channel.inbound.run = inboundRun;
+
+      vi.stubGlobal("fetch", async (url: string | Request, init?: any) => {
+        const u = typeof url === "string" ? url : url.url;
+        if (u.includes("apptoken"))
+          return new Response(
+            JSON.stringify({ errCode: 0, errMsg: "", data: { appToken: "tok", expiresIn: 7200 } }),
+            { headers: { "content-type": "application/json" } },
+          );
+        if (u.includes("bot/messages/create") || u.includes("messages/group/create")) {
+          const body = init?.body ? JSON.parse(init.body.toString()) : {};
+          fetchCalls.push({ url: u, body });
+        }
+        return new Response(
+          JSON.stringify({ errCode: 0, errMsg: "", data: { msgId: "m1" } }),
+          { headers: { "content-type": "application/json" } },
+        );
+      });
+
+      const route = api._httpRoutes[0];
+      await route.handler(
+        makeReq(dmWebhookBody({ senderId: "user-1", messageId: "dm-msg-abc" })),
+        makeRes(),
+      );
+
+      const deliveryCalls = fetchCalls.filter(
+        (c) =>
+          c.body.msgType === "formatText" || c.body.msgType === "text",
+      );
+      expect(deliveryCalls.length).toBeGreaterThanOrEqual(1);
+
+      // The payload should carry refMsgId
+      expect(deliveryCalls[0]!.body.refMsgId).toBe("dm-msg-abc");
+    });
+
+    it("autoMentionReply and autoQuoteReply both disabled → no reminder or refMsgId", async () => {
+      api = makeNoCredApi({
+        dmPolicy: "open",
+        autoMentionReply: false,
+        autoQuoteReply: false,
+      });
+      startLansengerGateway(api);
+
+      const fetchCalls: Array<{ url: string; body: any }> = [];
+      const inboundRun = vi.fn().mockImplementation(async (params: any) => {
+        const turn = params.adapter.resolveTurn();
+        await turn.delivery.deliver(
+          { text: "Reply", to: "user-1" },
+          { kind: "final" },
+        );
+      });
+      api.runtime.channel.inbound.run = inboundRun;
+
+      vi.stubGlobal("fetch", async (url: string | Request, init?: any) => {
+        const u = typeof url === "string" ? url : url.url;
+        if (u.includes("apptoken"))
+          return new Response(
+            JSON.stringify({ errCode: 0, errMsg: "", data: { appToken: "tok", expiresIn: 7200 } }),
+            { headers: { "content-type": "application/json" } },
+          );
+        if (u.includes("bot/messages/create") || u.includes("messages/group/create")) {
+          const body = init?.body ? JSON.parse(init.body.toString()) : {};
+          fetchCalls.push({ url: u, body });
+        }
+        return new Response(
+          JSON.stringify({ errCode: 0, errMsg: "", data: { msgId: "m1" } }),
+          { headers: { "content-type": "application/json" } },
+        );
+      });
+
+      const route = api._httpRoutes[0];
+      await route.handler(makeReq(dmWebhookBody({ senderId: "user-1" })), makeRes());
+
+      const deliveryCalls = fetchCalls.filter(
+        (c) =>
+          c.body.msgType === "formatText" || c.body.msgType === "text",
+      );
+      expect(deliveryCalls.length).toBeGreaterThanOrEqual(1);
+
+      const msgData =
+        deliveryCalls[0]!.body.msgData?.formatText ??
+        deliveryCalls[0]!.body.msgData?.text;
+      expect(msgData?.reminder).toBeUndefined();
+      expect(deliveryCalls[0]!.body.refMsgId).toBeUndefined();
+    });
+  });
+
+  // =====================================================================
+  // 6. deliverReply formatText → text fallback
+  // =====================================================================
+  describe("deliverReply", () => {
+    it("formatText succeeds → returns success", async () => {
+      api = makeNoCredApi({ dmPolicy: "open" });
+      startLansengerGateway(api);
+
+      let deliveryResult: any = null;
+      const inboundRun = vi.fn().mockImplementation(async (params: any) => {
+        const turn = params.adapter.resolveTurn();
+        deliveryResult = await turn.delivery.deliver(
+          { text: "deliverReply formatText success", to: "user-1" },
+          { kind: "final" },
+        );
+      });
+      api.runtime.channel.inbound.run = inboundRun;
+
+      // Default mock: all messages succeed
+      const route = api._httpRoutes[0];
+      await route.handler(makeReq(dmWebhookBody({ senderId: "user-1" })), makeRes());
+
+      expect(deliveryResult).toBeDefined();
+      expect(deliveryResult.messageIds).toContain("m1");
+      expect(deliveryResult.visibleReplySent).toBe(true);
+    });
+
+    it("formatText fails → falls back to text", async () => {
+      api = makeNoCredApi({ dmPolicy: "open" });
+      startLansengerGateway(api);
+
+      let deliveryResult: any = null;
+      const inboundRun = vi.fn().mockImplementation(async (params: any) => {
+        const turn = params.adapter.resolveTurn();
+        deliveryResult = await turn.delivery.deliver(
+          { text: "Hello fallback", to: "user-1" },
+          { kind: "final" },
+        );
+      });
+      api.runtime.channel.inbound.run = inboundRun;
+
+      // Make formatText fail, text succeed
+      vi.stubGlobal("fetch", async (url: string | Request, init?: any) => {
+        const u = typeof url === "string" ? url : url.url;
+        if (u.includes("apptoken"))
+          return new Response(
+            JSON.stringify({ errCode: 0, errMsg: "", data: { appToken: "tok", expiresIn: 7200 } }),
+            { headers: { "content-type": "application/json" } },
+          );
+        if (u.includes("bot/messages/create") || u.includes("messages/group/create")) {
+          const body = init?.body ? JSON.parse(init.body.toString()) : {};
+          if (body.msgType === "formatText") {
+            return new Response(
+              JSON.stringify({ errCode: 1, errMsg: "format not supported" }),
+              { headers: { "content-type": "application/json" } },
+            );
+          }
+          // text succeeds
+          return new Response(
+            JSON.stringify({ errCode: 0, errMsg: "", data: { msgId: "fallback-msg" } }),
+            { headers: { "content-type": "application/json" } },
+          );
+        }
+        return new Response(
+          JSON.stringify({ errCode: 0, errMsg: "", data: { msgId: "m1" } }),
+          { headers: { "content-type": "application/json" } },
+        );
+      });
+
+      const route = api._httpRoutes[0];
+      await route.handler(makeReq(dmWebhookBody({ senderId: "user-1" })), makeRes());
+
+      expect(deliveryResult).toBeDefined();
+      // Falls back to text, gets "fallback-msg"
+      expect(deliveryResult.messageIds).toContain("fallback-msg");
+      expect(deliveryResult.visibleReplySent).toBe(true);
+    });
+  });
+});

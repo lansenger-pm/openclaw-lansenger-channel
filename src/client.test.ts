@@ -1,6 +1,56 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { LansengerClient, mediaTypeFromPath, uploadMediaTypeFromPath, buildI18n, DEFAULT_API_GATEWAY_URL, MAX_MESSAGE_LENGTH } from "./client.js";
 import type { ReferenceMsg } from "./client.js";
+import * as fs from "node:fs/promises";
+
+vi.mock("ws", () => {
+  class MockWebSocket {
+    static CONNECTING = 0;
+    static OPEN = 1;
+    static CLOSING = 2;
+    static CLOSED = 3;
+
+    readyState = 0;
+    onopen: (() => void) | null = null;
+    onclose: ((ev: { code: number; reason: string; wasClean: boolean }) => void) | null = null;
+    onerror: ((ev: unknown) => void) | null = null;
+    onmessage: ((ev: unknown) => void) | null = null;
+
+    private _events: Record<string, (...args: unknown[]) => void> = {};
+
+    constructor(_url: string) {
+      setTimeout(() => {
+        this.readyState = 1;
+        this.onopen?.();
+      }, 0);
+    }
+
+    on(event: string, cb: (...args: unknown[]) => void) {
+      this._events[event] = cb;
+    }
+
+    emitPong() {
+      this._events["pong"]?.();
+    }
+
+    ping() {}
+    close() {
+      this.readyState = 3;
+      this.onclose?.({ code: 1000, reason: "", wasClean: true });
+    }
+    terminate() {
+      this.readyState = 3;
+      this.onclose?.({ code: 1006, reason: "", wasClean: false });
+    }
+  }
+  return { default: MockWebSocket };
+});
+
+vi.mock("node:fs/promises", () => ({
+  readFile: vi.fn(),
+  writeFile: vi.fn(),
+  unlink: vi.fn(),
+}));
 
 function makeClient(): LansengerClient {
   return new LansengerClient({ appId: "test-id", appSecret: "test-secret" });
@@ -268,7 +318,7 @@ describe("LansengerClient with mocked fetch", () => {
       return successApi({ msgId: "m2" });
     });
     const client = new LansengerClient({ appId: "id", appSecret: "secret" });
-    const result = await client.sendFormatText("chat1", "hello", { all: true });
+    const result = await client.sendFormatText("chat1", "hello", { reminder: { all: true } });
     expect(result.success).toBe(true);
     expect(msgCallCount).toBe(2);
   });
@@ -282,7 +332,7 @@ describe("LansengerClient with mocked fetch", () => {
       return errorApi(40001, "error");
     });
     const client = new LansengerClient({ appId: "id", appSecret: "secret" });
-    const result = await client.sendFormatText("chat1", "hello", { all: true });
+    const result = await client.sendFormatText("chat1", "hello", { reminder: { all: true } });
     expect(result.success).toBe(false);
     expect(msgCallCount).toBe(2);
   });
@@ -525,7 +575,7 @@ describe("LansengerClient.sendText", () => {
 
   it("sends plain text with reminder", async () => {
     const client = new LansengerClient({ appId: "id", appSecret: "secret" });
-    const result = await client.sendText("user-1", "Hello", { all: true });
+    const result = await client.sendText("user-1", "Hello", { reminder: { all: true } });
     expect(result.success).toBe(true);
   });
 
@@ -728,5 +778,285 @@ describe("LansengerClient.extractReferenceText", () => {
     const ref: ReferenceMsg = { from: "user-2", msgType: "text", msgData: { text: { content: "Hello" } } };
     const text = await client.extractReferenceText(ref);
     expect(text).toContain("from user-2");
+  });
+});
+
+// ---- wsState ----
+
+describe("LansengerClient.wsState", () => {
+  it("returns NULL when no WebSocket", () => {
+    const client = makeClient();
+    expect(client.wsState()).toBe("NULL");
+  });
+
+  it("returns CONNECTING when ws readyState=0", () => {
+    const client = makeClient();
+    (client as any).ws = { readyState: 0 };
+    expect(client.wsState()).toBe("CONNECTING");
+  });
+
+  it("returns OPEN when ws readyState=1", () => {
+    const client = makeClient();
+    (client as any).ws = { readyState: 1 };
+    expect(client.wsState()).toBe("OPEN");
+  });
+
+  it("returns CLOSING when ws readyState=2", () => {
+    const client = makeClient();
+    (client as any).ws = { readyState: 2 };
+    expect(client.wsState()).toBe("CLOSING");
+  });
+
+  it("returns CLOSED when ws readyState=3", () => {
+    const client = makeClient();
+    (client as any).ws = { readyState: 3 };
+    expect(client.wsState()).toBe("CLOSED");
+  });
+});
+
+// ---- setWsLifecycleCallbacks ----
+
+describe("LansengerClient.setWsLifecycleCallbacks", () => {
+  it("stores onOpen and onClose callbacks", () => {
+    const client = makeClient();
+    const onOpen = () => {};
+    const onClose = () => {};
+    client.setWsLifecycleCallbacks({ onOpen, onClose });
+    expect((client as any).onWsOpen).toBe(onOpen);
+    expect((client as any).onWsClose).toBe(onClose);
+  });
+
+  it("stores null for missing callbacks", () => {
+    const client = makeClient();
+    client.setWsLifecycleCallbacks({});
+    expect((client as any).onWsOpen).toBeNull();
+    expect((client as any).onWsClose).toBeNull();
+  });
+
+  it("stores partial callbacks (onOpen only)", () => {
+    const client = makeClient();
+    const onOpen = () => {};
+    client.setWsLifecycleCallbacks({ onOpen });
+    expect((client as any).onWsOpen).toBe(onOpen);
+    expect((client as any).onWsClose).toBeNull();
+  });
+});
+
+// ---- Commands API ----
+
+describe("LansengerClient commands API", () => {
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it("createCommands succeeds", async () => {
+    vi.stubGlobal("fetch", async (url: string | Request) => {
+      const u = typeof url === "string" ? url : url.url;
+      if (u.includes("apptoken")) return successApi({ appToken: "tok", expiresIn: 7200 });
+      if (u.includes("commands/create")) return successApi({});
+      return successApi({});
+    });
+    const client = new LansengerClient({ appId: "id", appSecret: "secret" });
+    const result = await client.createCommands(4, [{ command: "/test", description: "A test command" }]);
+    expect(result.success).toBe(true);
+  });
+
+  it("deleteCommands succeeds", async () => {
+    vi.stubGlobal("fetch", async (url: string | Request) => {
+      const u = typeof url === "string" ? url : url.url;
+      if (u.includes("apptoken")) return successApi({ appToken: "tok", expiresIn: 7200 });
+      if (u.includes("commands/delete")) return successApi({});
+      return successApi({});
+    });
+    const client = new LansengerClient({ appId: "id", appSecret: "secret" });
+    const result = await client.deleteCommands(4);
+    expect(result.success).toBe(true);
+  });
+
+  it("fetchCommands returns commands array", async () => {
+    vi.stubGlobal("fetch", async (url: string | Request) => {
+      const u = typeof url === "string" ? url : url.url;
+      if (u.includes("apptoken")) return successApi({ appToken: "tok", expiresIn: 7200 });
+      if (u.includes("commands/fetch")) return successApi({ commands: [{ command: "/test", description: "Test command" }] });
+      return successApi({});
+    });
+    const client = new LansengerClient({ appId: "id", appSecret: "secret" });
+    const result = await client.fetchCommands(4);
+    expect(result).toEqual([{ command: "/test", description: "Test command" }]);
+  });
+
+  it("fetchCommands returns null on API error", async () => {
+    vi.stubGlobal("fetch", async (url: string | Request) => {
+      const u = typeof url === "string" ? url : url.url;
+      if (u.includes("apptoken")) return successApi({ appToken: "tok", expiresIn: 7200 });
+      if (u.includes("commands/fetch")) return errorApi(40001, "fetch error");
+      return successApi({});
+    });
+    const client = new LansengerClient({ appId: "id", appSecret: "secret" });
+    const result = await client.fetchCommands(4);
+    expect(result).toBeNull();
+  });
+
+  it("createCommands returns error when no token", async () => {
+    vi.stubGlobal("fetch", async () => errorApi(40001, "bad"));
+    const client = new LansengerClient({ appId: "id", appSecret: "secret" });
+    const result = await client.createCommands(4, [{ command: "/test", description: "Test" }]);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("No access token");
+  });
+});
+
+// ---- uploadMedia ----
+
+describe("LansengerClient.uploadMedia", () => {
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it("uploads image successfully", async () => {
+    vi.mocked(fs.readFile).mockResolvedValue(Buffer.from("fake-image-data"));
+    vi.stubGlobal("fetch", async (url: string | Request) => {
+      const u = typeof url === "string" ? url : url.url;
+      if (u.includes("apptoken")) return successApi({ appToken: "tok", expiresIn: 7200 });
+      if (u.includes("medias/create")) return successApi({ mediaId: "media-123" });
+      return successApi({});
+    });
+    const client = new LansengerClient({ appId: "id", appSecret: "secret" });
+    const result = await client.uploadMedia("/tmp/photo.jpg");
+    expect(result).toEqual({ mediaId: "media-123" });
+  });
+
+  it("returns error when fs.readFile fails", async () => {
+    vi.mocked(fs.readFile).mockRejectedValue(new Error("ENOENT: no such file"));
+    vi.stubGlobal("fetch", async (url: string | Request) => {
+      const u = typeof url === "string" ? url : url.url;
+      if (u.includes("apptoken")) return successApi({ appToken: "tok", expiresIn: 7200 });
+      return successApi({});
+    });
+    const client = new LansengerClient({ appId: "id", appSecret: "secret" });
+    const result = await client.uploadMedia("/tmp/nonexistent.jpg");
+    expect(result).toEqual({ error: "ENOENT: no such file" });
+  });
+
+  it("returns error when no token", async () => {
+    vi.stubGlobal("fetch", async () => errorApi(40001, "bad"));
+    const client = new LansengerClient({ appId: "id", appSecret: "secret" });
+    const result = await client.uploadMedia("/tmp/photo.jpg");
+    expect(result).toEqual({ error: "No access token" });
+  });
+
+  it("returns error on upload HTTP error", async () => {
+    vi.mocked(fs.readFile).mockResolvedValue(Buffer.from("data"));
+    vi.stubGlobal("fetch", async (url: string | Request) => {
+      const u = typeof url === "string" ? url : url.url;
+      if (u.includes("apptoken")) return successApi({ appToken: "tok", expiresIn: 7200 });
+      return new Response("Error", { status: 500 });
+    });
+    const client = new LansengerClient({ appId: "id", appSecret: "secret" });
+    const result = await client.uploadMedia("/tmp/photo.jpg");
+    expect(result).toEqual({ error: "Upload HTTP error: 500" });
+  });
+});
+
+// ---- sendFile ----
+
+describe("LansengerClient.sendFile", () => {
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it("sends image file successfully", async () => {
+    vi.mocked(fs.readFile).mockResolvedValue(Buffer.from("fake-image-data"));
+    vi.stubGlobal("fetch", async (url: string | Request) => {
+      const u = typeof url === "string" ? url : url.url;
+      if (u.includes("apptoken")) return successApi({ appToken: "tok", expiresIn: 7200 });
+      if (u.includes("medias/create")) return successApi({ mediaId: "media-456" });
+      if (u.includes("messages/create")) return successApi({ msgId: "msg-sendfile" });
+      return successApi({});
+    });
+    const client = new LansengerClient({ appId: "id", appSecret: "secret" });
+    const result = await client.sendFile("chat1", "/tmp/photo.png");
+    expect(result.success).toBe(true);
+    expect(result.messageId).toBe("msg-sendfile");
+  });
+
+  it("returns error when file not found", async () => {
+    vi.mocked(fs.readFile).mockRejectedValue(new Error("ENOENT: no such file or directory"));
+    vi.stubGlobal("fetch", async (url: string | Request) => {
+      const u = typeof url === "string" ? url : url.url;
+      if (u.includes("apptoken")) return successApi({ appToken: "tok", expiresIn: 7200 });
+      return successApi({});
+    });
+    const client = new LansengerClient({ appId: "id", appSecret: "secret" });
+    const result = await client.sendFile("chat1", "/tmp/missing.png");
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("ENOENT");
+  });
+
+  it("returns error for video without cover image", async () => {
+    vi.stubGlobal("fetch", async (url: string | Request) => {
+      const u = typeof url === "string" ? url : url.url;
+      if (u.includes("apptoken")) return successApi({ appToken: "tok", expiresIn: 7200 });
+      return successApi({});
+    });
+    const client = new LansengerClient({ appId: "id", appSecret: "secret" });
+    const result = await client.sendFile("chat1", "/tmp/video.mp4");
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("cover image");
+  });
+});
+
+// ---- connect / disconnect ----
+
+describe("LansengerClient connect/disconnect", () => {
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it("connect returns true and disconnect cleans up", async () => {
+    vi.stubGlobal("fetch", async (url: string | Request, init?: RequestInit) => {
+      const u = typeof url === "string" ? url : url.url;
+      if (u.includes("ws/endpoint")) {
+        return successApi({ wsEndpoint: "wss://test.example.com/ws" });
+      }
+      return successApi({});
+    });
+
+    const client = new LansengerClient({ appId: "id", appSecret: "secret" });
+    const ok = await client.connect();
+    expect(ok).toBe(true);
+
+    // Wait a tick for the mock WS to open
+    await new Promise((r) => setTimeout(r, 10));
+
+    // Verify ws is alive
+    expect(client.isWsAlive()).toBe(true);
+
+    // Disconnect and wait for cleanup
+    await client.disconnect();
+
+    expect((client as any).ws).toBeNull();
+    expect((client as any).running).toBe(false);
+    expect(client.isWsAlive()).toBe(false);
+    expect(client.wsState()).toBe("NULL");
+  });
+
+  it("connect returns false when WS endpoint fetch fails", async () => {
+    vi.stubGlobal("fetch", async (url: string | Request) => {
+      const u = typeof url === "string" ? url : url.url;
+      if (u.includes("ws/endpoint")) {
+        return errorApi(40001, "invalid credentials");
+      }
+      return successApi({});
+    });
+
+    const client = new LansengerClient({ appId: "id", appSecret: "secret" });
+    const ok = await client.connect();
+    expect(ok).toBe(false);
+  });
+
+  it("connect returns false when missing appId", async () => {
+    const client = new LansengerClient({ appId: "", appSecret: "" });
+    const ok = await client.connect();
+    expect(ok).toBe(false);
+  });
+
+  it("setMessageHandler stores and can be retrieved", () => {
+    const client = makeClient();
+    const handler = async (_event: any) => {};
+    client.setMessageHandler(handler);
+    expect((client as any).messageHandler).toBe(handler);
   });
 });

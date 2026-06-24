@@ -19,13 +19,23 @@ import * as path from "node:path";
 import * as crypto from "node:crypto";
 import { LansengerClient, DEFAULT_API_GATEWAY_URL } from "./client.js";
 import type { ApproveCardData, I18nAppCardData, ClientLogger } from "./client.js";
-import { getRunningClient, getLastInboundTime, stripOpenClawUuidSuffix, gatewayStartAccount, gatewayStopAccount } from "./runtime.js";
+import { getRunningClient, getRunningClientByAccountId, getLastInboundTime, getLastInboundTimeByAccountId, stripOpenClawUuidSuffix, gatewayStartAccount, gatewayStopAccount } from "./runtime.js";
 import { lansengerSetupWizard } from "./setup-wizard.js";
 
 const log = createSubsystemLogger("lansenger");
 const LANSENGER_TEXT_CHUNK_LIMIT = 4000;
 
-const pendingApprovalCards = new Map<string, { messageId: string; lang: "zh" | "en" }>();
+import { PersistentStore } from "./persistent-store.js";
+
+const APPROVAL_CARD_FILE = path.join(os.homedir(), ".openclaw", "lansenger-approval-cards.json");
+
+class PersistentApprovalCardStore extends PersistentStore<{ messageId: string; lang: "zh" | "en" }> {
+  constructor() {
+    super(APPROVAL_CARD_FILE, "approval cards");
+  }
+}
+
+const pendingApprovalCards = new PersistentApprovalCardStore();
 
 function isPathAllowed(filePath: string, roots: string[]): boolean {
   if (roots.length === 0) return true;
@@ -58,6 +68,8 @@ type LansengerAccount = {
   ackMessageTextEn?: string;
   dangerouslyAllowPrivateNetwork?: boolean;
   mediaLocalRoots?: string[];
+  autoMentionReply?: boolean;
+  autoQuoteReply?: boolean;
 }
 
 type ResolvedAccount = {
@@ -76,6 +88,8 @@ type ResolvedAccount = {
   revokeAckMessage: boolean;
   dangerouslyAllowPrivateNetwork: boolean;
   mediaLocalRoots: string[];
+  autoMentionReply: boolean;
+  autoQuoteReply: boolean;
 };
 
 function resolveSecretValue(raw: unknown): string {
@@ -140,6 +154,8 @@ function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): Resolve
   const revokeAckMessage = account?.revokeAckMessage !== undefined ? account.revokeAckMessage : (section?.revokeAckMessage ?? true);
   const dangerouslyAllowPrivateNetwork = isPrivateNetworkOptInEnabled(account?.dangerouslyAllowPrivateNetwork ?? section?.dangerouslyAllowPrivateNetwork ?? section?.allowPrivateNetwork ?? null);
   const mediaLocalRoots: string[] = account?.mediaLocalRoots ?? section?.mediaLocalRoots ?? [];
+  const autoMentionReply = account?.autoMentionReply !== undefined ? account.autoMentionReply : (section?.autoMentionReply ?? false);
+  const autoQuoteReply = account?.autoQuoteReply !== undefined ? account.autoQuoteReply : (section?.autoQuoteReply ?? false);
 
   return {
     accountId: resolvedAccountId || appId || null,
@@ -156,6 +172,8 @@ function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): Resolve
     revokeAckMessage,
     dangerouslyAllowPrivateNetwork,
     mediaLocalRoots,
+    autoMentionReply,
+    autoQuoteReply,
   };
 }
 
@@ -277,7 +295,12 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
           }
         }
         const hasCreds = Boolean(account?.appId && account?.appSecret) || Boolean(process.env.LANSENGER_APP_ID && process.env.LANSENGER_APP_SECRET);
+        const displayAppId = account?.appId ?? section?.appId ?? "";
+        const displayAccountId = accountId && accountId !== "default" && accountId !== DEFAULT_ACCOUNT_ID ? accountId : undefined;
         return {
+          name: displayAccountId ?? displayAppId,
+          appId: displayAppId,
+          accountId: displayAccountId,
           enabled: Boolean((account?.enabled ?? false) || hasCreds),
           configured: hasCreds,
           appIdStatus: account?.appId ? "available" : (process.env.LANSENGER_APP_ID ? "env" : "missing"),
@@ -508,14 +531,15 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
 
         if (hint?.kind === "approval-resolved") {
           const chatId = target?.to;
-          const cardInfo = pendingApprovalCards.get(chatId);
+          const cardKey = target?.accountId ? `${target.accountId}:${chatId}` : chatId;
+          const cardInfo = pendingApprovalCards.get(cardKey);
           if (cardInfo?.messageId) {
             const account = resolveAccount(params.cfg, target?.accountId ?? undefined);
             const client = makeClient(account);
             const status: "approved" | "denied" = payload?.text?.includes("✅") ? "approved" : "denied";
             try {
               await client.updateCardStatus(cardInfo.messageId, status, cardInfo.lang);
-              pendingApprovalCards.delete(chatId);
+              pendingApprovalCards.delete(cardKey);
             } catch (e: unknown) {
               log.error(`beforeDeliverPayload: card update failed — ${e instanceof Error ? e.message : String(e)}`);
             }
@@ -745,9 +769,9 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
       return await probeLansengerAccount(account);
     },
     buildAccountSnapshot: ({ account, runtime, probe }) => {
-      const liveClient = getRunningClient();
+      const liveClient = getRunningClientByAccountId(account.accountId ?? account.appId);
       const connected = liveClient?.isWsAlive() ?? false;
-      const lastInboundAt = getLastInboundTime();
+      const lastInboundAt = getLastInboundTimeByAccountId(account.accountId ?? account.appId);
       return {
         accountId: account.accountId ?? account.appId ?? DEFAULT_ACCOUNT_ID,
         enabled: account.enabled,
@@ -927,7 +951,8 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
             const approveCard = (lang === "zh" ? payload.zh : payload.en) ?? payload.en;
             const result = await client.sendApproveCard(target.to, approveCard as ApproveCardData);
             if (result.messageId) {
-              pendingApprovalCards.set(target.to, { messageId: result.messageId, lang: lang as "zh" | "en" });
+              const cardKey = account.accountId ? `${account.accountId}:${target.to}` : target.to;
+              pendingApprovalCards.set(cardKey, { messageId: result.messageId, lang: lang as "zh" | "en" });
             }
             return { delivered: result.success, messageId: result.messageId ?? null, to: target.to, lang };
           }

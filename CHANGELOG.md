@@ -6,98 +6,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [3.16.10] - 2026-06-24
 
-### Fixed
-
-- **`isAtMe`/`isAtAll`/`mentionedBots` read from wrong path**: Group message @-mention data is nested inside `data.reminder` (per Lansenger OpenAPI spec), but was being read from `data` top level. This caused `isAtMe` to always be `false`, breaking both `requireMention` checks and `@BotName` stripping in group chats.
-
-### Changed
-
-- **`msgData` → `eventData`**: Renamed the confusing `msgData` variable in the inbound parser to `eventData` to distinguish the event envelope from the nested `msgData` payload. The double `msgData.msgData` naming has been eliminated.
-
-## [3.16.9] - 2026-06-23
-
-### Fixed
-
-- **@BotName stripping incorrectly mutated message text**: The @botName stripping for slash command detection was mutating `event.text` in-place, causing two bugs: (1) command detection used the original text with @botName (`isControlCommandMessage(rawText)`), so `"/models@bot openai"` never matched; (2) the stripped text was passed to the Agent, losing @botName context. Fixed by computing a local `textForCommands` for command matching while preserving `event.text` for the Agent.
-- **Removed misleading health check**: `lansenger/group-config-unused` claimed `groupPolicy`/`groupAllowFrom` "have no effect". Removed — group config IS fully functional.
-
-### Changed
-
-- **Group policy docs**: Updated from "two-layer" to "three-layer" filtering (channel-level `groupAllowFrom` → group-level `enabled`/`groupPolicy` → per-group `allowFrom`). Added `groupAllowFrom` to all 5 README config tables. Added comprehensive AND-logic notes and per-group `allowFrom` troubleshooting step.
-
-## [3.16.8] - 2026-06-23
-
 ### Added
 
-- **Per-group `allowFrom`**: `groups.<chatId>.allowFrom` now restricts which users can trigger the bot in a specific group. When set, only listed sender IDs are accepted for that group. Works independently from channel-level `groupAllowFrom` — both layers are AND logic. Schema, docs, and UI hints restored with full bilingual descriptions.
-
-## [3.16.7] - 2026-06-23
-
-### Changed
-
-- **`groupAllowFrom` added to GUI config schema**: The `groupAllowFrom` field (user-level sender filter for group chats) is now exposed in the plugin config schema and UI hints with bilingual descriptions. Previously only settable via `openclaw config set`.
-- **Removed unimplemented per-group `allowFrom`**: The per-group `allowFrom` key was listed in documentation and schema but never implemented. Removed from all 5 READMEs, setup SKILL, and plugin schema to avoid confusion.
-
-## [3.16.6] - 2026-06-23
-
-### Fixed
-
-- **Per-group `enabled: false` not honored**: Groups in the `groups` map with `enabled: false` were still allowed inbound because neither the SDK's `resolveChannelGroupPolicy` nor the channel plugin checked the `enabled` field. Now explicitly blocks groups with `enabled: false` regardless of `groupPolicy` mode.
-- **`groupAllowFrom` bypass not passed to SDK**: When `groupAllowFrom` is configured as a sender allowlist, the `hasGroupAllowFrom` signal was not forwarded to `resolveChannelGroupPolicy`, potentially blocking all groups under `groupPolicy: "allowlist"` without a `groups` map.
-- **`groupPolicy: "open"` + `groups` incorrectly blocks unlisted groups**: The SDK treats any non-empty `groups` map as an implicit allowlist, causing groups not listed in `groups` to be blocked even under `open` mode. Worked around by bypassing the SDK check in `open` mode for unlisted groups.
-
-### Changed
-
-- **`lansenger-setup` SKILL**: Added comprehensive `groupAllowFrom` documentation (user-level sender filtering vs. group-level filtering), complete `enabled` × `groupPolicy` truth table, and updated troubleshooting guide.
-
-## [3.16.5] - 2026-06-23
-
-### Added
-
-- **Native approval cards for exec commands**: Non-whitelist exec commands now trigger interactive approval cards. Users approve or deny via button clicks or `/approve <id>` slash commands. Cards update status in-place after resolution.
+- **Native approval cards for exec commands**: Non-whitelist exec commands trigger interactive approval cards. Users approve or deny via button clicks or `/approve <id>` slash commands. Cards update status in-place after resolution.
 - **`lansenger_send_approve_card`** Agent tool for sending interactive approval cards.
 - **`accountId` parameter** on all send tools (`lansenger_send_*`) for correct bot routing in multi-account setups.
-- **Auto-register native slash commands**: Built-in commands (`/help`, `/models`, `/reset`, etc.) are now auto-synced to Lansenger via `/v1/bot/commands/create` on gateway startup so they appear in the client command picker. Includes multi-language descriptions (zhHans/zhHant/zhHantHK/en/fr) via new `command-i18n.ts`.
+- **Auto-register native slash commands**: Built-in commands (`/help`, `/models`, `/reset`, etc.) auto-synced to Lansenger on gateway startup so they appear in the client command picker. Multi-language descriptions (zhHans/zhHant/zhHantHK/en/fr) via `command-i18n.ts`.
 - **Auto-configured approvers**: Bot owner from `homeChannel` is automatically used when `approvals.exec.allowFrom.lansenger` is not set.
-- **`commands` block** in plugin manifest (`nativeCommandsAutoEnabled: true`, `nativeSkillsAutoEnabled: true`).
+- **Per-group `allowFrom`**: `groups.<chatId>.allowFrom` restricts which users can trigger the bot in a specific group. Works independently from channel-level `groupAllowFrom` — both layers are AND logic.
+- **`autoQuoteReply`**: Auto-quote the inbound message when replying. Supports per-group > account > section fallback, applies to both groups and DMs. Default `false`.
+- **`autoMentionReply`**: Auto-@ the sender when replying in group chats. Supports per-group > account > section fallback. Default `false`.
 
 ### Changed
 
 - **Tool registration**: Refactored from inline factory arrays to declarative schema objects with `makeToolClient` lookup.
 - **`reminderUserIds` description**: Updated to reflect that `@姓名` must be written in the message text (Lansenger API no longer auto-prepends names).
-- **Multi-level config section fallback**: `dmPolicy`, `allowFrom`, `homeChannel`, and `apiGatewayUrl` in `resolveAccount` now fall back from account → section level (previously only account-level values were read).
-- **Documentation**: All 5 README config tables, `lansenger-setup` SKILL, and `lansenger-messaging` SKILL updated with missing config keys and approval workflow notes.
+- **Multi-level config section fallback**: `dmPolicy`, `allowFrom`, `homeChannel`, `apiGatewayUrl`, `autoMentionReply`, and `autoQuoteReply` in `resolveAccount` now fall back account → section level.
+- **`sendText`/`sendFormatText` API**: Changed from `(chatId, content, reminder?)` to `(chatId, content, opts?)` with `{ reminder?, refMsgId? }` to support `autoQuoteReply`.
+- **`groupAllowFrom` added to GUI config schema**: Now exposed in the plugin config schema and UI hints with bilingual descriptions.
+- **`msgData` → `eventData` rename**: Eliminated confusing `msgData.msgData` double naming in the inbound parser.
+- **Group policy docs**: Updated from "two-layer" to "three-layer" filtering with comprehensive `enabled` × `groupPolicy` truth table.
+- **Documentation**: All 5 README config tables updated. `lansenger-setup` SKILL updated with group policy truth table, `groupAllowFrom`, and per-group `allowFrom`. `lansenger-messaging` SKILL stripped of CLI command reference, now points to `lansenger` skill and official setup docs. CLI credential safety section added.
+- **Removed misleading health check**: `lansenger/group-config-unused` deleted — group config IS fully functional.
 
 ### Fixed
 
-- **@BotName stripping broken for mid-message mentions**: Changed `endsWith` to `includes` so `"/models@bot openai"` is correctly normalized to `"/models openai"`.
-- **Blocked commands silently dropped**: Reply "此命令需要授权。"/"This command requires authorization." when an unauthorized user attempts a slash command.
-
-## [3.16.3] - 2026-06-22
-
-### Fixed
-
-- **`queryGroups` returns empty `groupIds`**: Default `pageOffset` was `1` but the API `page_offset` starts from `0`. With few groups, the first page was skipped entirely, returning `totalGroupIds > 0` but `groupIds: []`.
-
-## [3.16.2] - 2026-06-22
-
-### Added
-
-- **`autoQuoteReply`**: Auto-quote the inbound message when replying. Supports four-level config (account-per-group > section-group > account > section), applies to both groups and DMs. Default `false`.
-- **`botIds` in `ReminderParams` + `senderFromType` in `InboundEvent`**: `autoMentionReply` now correctly routes bot senders to `botIds` and human senders to `userIds` based on `fromType` (0=staff, 1=app/bot).
-- **`groups` at account level**: Per-group config (`enabled`, `requireMention`, `autoMentionReply`, `autoQuoteReply`, `allowFrom`) now supported under `accounts.<appId>.groups.<chatId>`, in addition to section-level `groups.<chatId>`.
-- **`msgType: "format"` inbound parsing**: Handles Lansenger markdown messages, stripping HTML tags (`<br>`) and leading `@name` prefixes.
-
-### Changed
-
-- **`groupAllowFrom` removed in favor of framework-native `groups.<chatId>.enabled`**: Group allowlisting now uses the OpenClaw framework's per-group config (`groups.<chatId>.enabled` + `groupPolicy`). The flat `groupAllowFrom` array has been removed from schema and config. **Migration**: use `openclaw config set channels.lansenger.groups.<chatId>.enabled true` instead.
-
-### Fixed
-
-- **DM auto-quote reply not working**: DM `messageId` was a random UUID instead of the platform's real `msgId`, so `refMsgId` was unrecognized by the Lansenger API.
-- **`requireMention` per-group config not working**: Switched to framework-native `resolveRequireMention` which respects the full config hierarchy (account-per-group > section-group > account > section).
-- **`resolveAutoMentionReply` missing account-per-group priority**: Added the missing top-level priority tier.
-- **Gateway stability**: `gatewayStartAccount` no longer creates duplicate WS connections when the connection is already alive; `gatewayStopAccount` skips disconnecting live connections to prevent premature shutdown loops.
+- **`isAtMe`/`isAtAll`/`mentionedBots` read from wrong path**: Group message @-mention data is nested inside `data.reminder` (per Lansenger OpenAPI spec), but was being read from `data` top level. This caused `isAtMe` to always be `false`, breaking `requireMention` checks and `@BotName` stripping in group chats.
+- **Per-group `enabled: false` not honored**: Groups with `enabled: false` were still allowed inbound. Now explicitly blocked regardless of `groupPolicy` mode.
+- **`groupAllowFrom` bypass not passed to SDK**: When `groupAllowFrom` is configured, the `hasGroupAllowFrom` signal was not forwarded to `resolveChannelGroupPolicy`, potentially blocking all groups under `groupPolicy: "allowlist"` without a `groups` map.
+- **`groupPolicy: "open"` + `groups` incorrectly blocks unlisted groups**: SDK treats any non-empty `groups` map as an implicit allowlist. Worked around by bypassing the SDK check in `open` mode for unlisted groups.
+- **@BotName stripping mutated `event.text`**: Stripping for slash command detection was mutating `event.text` in-place, losing @botName context for the Agent and breaking command detection. Fixed with local `textForCommands` variable.
+- **Blocked commands silently dropped**: Now replies "此命令需要授权。/ This command requires authorization." when unauthorized.
 
 ## [3.16.1] - 2026-06-22
 

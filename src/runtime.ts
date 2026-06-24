@@ -6,7 +6,7 @@ import { CHANNEL_APPROVAL_NATIVE_RUNTIME_CONTEXT_CAPABILITY } from "openclaw/plu
 import { registerChannelRuntimeContext } from "openclaw/plugin-sdk/channel-runtime-context";
 import { createChannelInboundDebouncer, shouldDebounceTextInbound, resolveInboundDebounceMs } from "openclaw/plugin-sdk/channel-inbound";
 import { LansengerClient } from "./client.js";
-import type { InboundEvent, ClientLogger, ApiResult, ApproveCardData, LansengerCommand } from "./client.js";
+import type { InboundEvent, ClientLogger, ApiResult, ApproveCardData, LansengerCommand, ReminderParams } from "./client.js";
 import { resolveAccount, makeClient, isPathAllowed } from "./channel.js";
 import type { ResolvedAccount } from "./channel.js";
 import { errorShape } from "openclaw/plugin-sdk/gateway-runtime";
@@ -205,6 +205,19 @@ export function getRunningAccountByAccountId(accountId?: string | null): Resolve
   }
   for (const [key, entry] of runningAccounts) {
     if (key === accountId) return entry.account;
+  }
+  return null;
+}
+
+export function getLastInboundTimeByAccountId(accountId?: string | null): number | null {
+  if (!accountId) return getLastInboundTime();
+  for (const [key, entry] of runningAccounts) {
+    if (entry.accountId === accountId || entry.account.appId === accountId) {
+      return lastInboundTimes.get(key) ?? null;
+    }
+  }
+  for (const [key] of runningAccounts) {
+    if (key === accountId) return lastInboundTimes.get(key) ?? null;
   }
   return null;
 }
@@ -696,6 +709,8 @@ async function handleInbound(
   const chatType = event.isGroup ? "group" : "dm";
   const turnTextDelivered = new Set<string>();
   const turnMediaDelivered = new Set<string>();
+  let reminder: ReminderParams | undefined;
+  let refMsgId: string | undefined;
 
   if (chatType === "dm") {
     const dmPolicy = account.dmPolicy ?? "pairing";
@@ -748,6 +763,14 @@ async function handleInbound(
         return;
       }
     }
+
+    // autoMentionReply / autoQuoteReply for DMs: account > section
+    if (account.autoMentionReply && event.senderId) {
+      reminder = { userIds: [event.senderId] };
+    }
+    if (account.autoQuoteReply && event.messageId) {
+      refMsgId = event.messageId;
+    }
   }
 
   if (event.isGroup) {
@@ -778,17 +801,31 @@ async function handleInbound(
           return;
         }
       }
-      if ((groupPolicy.groupConfig as Record<string, unknown> | undefined)?.enabled === false) {
+      const groupConfig = groupPolicy.groupConfig as Record<string, unknown> | undefined;
+      if (groupConfig?.enabled === false) {
         log.info(`inbound: group dropped — enabled=false for chatId=${event.chatId}`);
         return;
       }
-      const perGroupAllowFrom = (groupPolicy.groupConfig as Record<string, unknown> | undefined)?.allowFrom as string[] | undefined;
+      const perGroupAllowFrom = groupConfig?.allowFrom as string[] | undefined;
       if (perGroupAllowFrom && perGroupAllowFrom.length > 0) {
         if (!perGroupAllowFrom.includes(event.senderId)) {
           log.info(`inbound: group dropped — sender=${event.senderId} not in per-group allowFrom for chatId=${event.chatId}`);
           return;
         }
       }
+
+      // autoMentionReply / autoQuoteReply: per-group > account > section
+      const autoMentionReply = groupConfig?.autoMentionReply as boolean | undefined
+        ?? account.autoMentionReply ?? false;
+      const autoQuoteReply = groupConfig?.autoQuoteReply as boolean | undefined
+        ?? account.autoQuoteReply ?? false;
+      if (autoMentionReply && event.senderId) {
+        reminder = { userIds: [event.senderId] };
+      }
+      if (autoQuoteReply && event.messageId) {
+        refMsgId = event.messageId;
+      }
+
       const requireMention = api.runtime.channel.groups.resolveRequireMention({
         cfg: api.config,
         channel: "lansenger",
@@ -1028,7 +1065,7 @@ async function handleInbound(
                 if (text?.trim() && !turnTextDelivered.has(turnTextKey) && !sessionDeliveredSet.has(sessionTextKey)) {
                   turnTextDelivered.add(turnTextKey);
                   sessionDeliveredSet.add(sessionTextKey);
-                  const result = await deliverReply(client, to, text);
+                  const result = await deliverReply(client, to, text, { reminder, refMsgId });
                   if (result.messageId) messageIds.push(result.messageId);
                 }
 
@@ -1103,14 +1140,14 @@ async function handleInbound(
   }
 }
 
-async function deliverReply(client: LansengerClient, to: string, text: string): Promise<ApiResult> {
+async function deliverReply(client: LansengerClient, to: string, text: string, opts?: { reminder?: ReminderParams; refMsgId?: string }): Promise<ApiResult> {
   log.info(`deliverReply: to=${to} textLen=${text.length} preview="${text.slice(0, 100)}"`);
   if (!text.trim()) {
     log.warn(`deliverReply: empty text after OpenClaw MEDIA processing, skipping delivery`);
     return { success: true, messageId: undefined };
   }
-  const fmtResult = await client.sendFormatText(to, text);
+  const fmtResult = await client.sendFormatText(to, text, opts?.reminder ? { reminder: opts.reminder, refMsgId: opts.refMsgId } : (opts?.refMsgId ? { refMsgId: opts.refMsgId } : undefined));
   if (fmtResult.success) return fmtResult;
   log.info(`formatText failed (${fmtResult.error ?? "unknown"}), falling back to text`);
-  return client.sendText(to, text);
+  return client.sendText(to, text, opts?.reminder ? { reminder: opts.reminder, refMsgId: opts.refMsgId } : (opts?.refMsgId ? { refMsgId: opts.refMsgId } : undefined));
 }

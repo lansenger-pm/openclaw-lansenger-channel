@@ -43,6 +43,8 @@ const mockAccount = {
   revokeAckMessage: false,
   dangerouslyAllowPrivateNetwork: false,
   mediaLocalRoots: [] as string[],
+  autoMentionReply: false,
+  autoQuoteReply: false,
 };
 
 function mockRunning() {
@@ -395,5 +397,186 @@ describe("multi-account support", () => {
     expect(mockClientSpy.sendText).toHaveBeenCalledWith("chat-1", "hello", undefined);
 
     vi.restoreAllMocks();
+  });
+});
+
+describe("lansenger_send_approve_card", () => {
+  let api: any;
+  beforeEach(() => { api = makeMockApi(); mockRunning(); registerLansengerTools(api); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it("returns error when account not running", async () => {
+    mockNotRunning();
+    const api2 = makeMockApi();
+    registerLansengerTools(api2);
+    const tool = api2._tools["lansenger_send_approve_card"];
+    expect(tool).toBeDefined();
+    const result = await tool.execute("tc1", { head: { title: "T" }, body: { title: "B" }, to: "chat-1" });
+    expect(parseResult(result).error).toContain("not configured or not running");
+  });
+
+  it("returns error when head missing", async () => {
+    const result = await api._tools["lansenger_send_approve_card"].execute("tc1", { body: { title: "B" }, to: "chat-1" });
+    expect(parseResult(result).error).toContain("head is required");
+  });
+
+  it("returns error when body missing", async () => {
+    const result = await api._tools["lansenger_send_approve_card"].execute("tc1", { head: { title: "T" }, to: "chat-1" });
+    expect(parseResult(result).error).toContain("body is required");
+  });
+
+  it("returns error when to missing", async () => {
+    mockNoChatId();
+    const result = await api._tools["lansenger_send_approve_card"].execute("tc1", { head: { title: "T" }, body: { title: "B" } });
+    expect(parseResult(result).error).toContain("No target");
+  });
+
+  it("sends approve card with all params", async () => {
+    const sendSpy = vi.spyOn(mockClient, "sendApproveCard").mockResolvedValue({ success: true, messageId: "m1" });
+    const params = {
+      head: { title: "Approval" },
+      body: { title: "Details" },
+      to: "chat-1",
+      reminder: { all: true },
+      cardLink: { cardLink: "https://x.com" },
+      buttons: [{ text: "OK", buttonTheme: 1 }],
+      expireTime: 3600,
+    };
+    const result = await api._tools["lansenger_send_approve_card"].execute("tc1", params);
+    expect(parseResult(result).success).toBe(true);
+    expect(sendSpy).toHaveBeenCalledWith("chat-1", {
+      head: { title: "Approval" },
+      body: { title: "Details" },
+      reminder: { all: true },
+      cardLink: { cardLink: "https://x.com" },
+      buttons: [{ text: "OK", buttonTheme: 1 }],
+      expireTime: 3600,
+    });
+  });
+});
+
+describe("happy path: lansenger_send_text", () => {
+  let api: any;
+  beforeEach(() => { api = makeMockApi(); mockRunning(); registerLansengerTools(api); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it("sends text successfully", async () => {
+    const sendSpy = vi.spyOn(mockClient, "sendText").mockResolvedValue({ success: true, messageId: "m1" });
+    const result = await api._tools["lansenger_send_text"].execute("tc1", { content: "hello", to: "chat-1" });
+    expect(parseResult(result).success).toBe(true);
+    expect(sendSpy).toHaveBeenCalledWith("chat-1", "hello", undefined);
+  });
+});
+
+describe("happy path: lansenger_send_format_text", () => {
+  let api: any;
+  beforeEach(() => { api = makeMockApi(); mockRunning(); registerLansengerTools(api); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it("sends format text successfully", async () => {
+    const sendSpy = vi.spyOn(mockClient, "sendFormatText").mockResolvedValue({ success: true, messageId: "m1" });
+    const result = await api._tools["lansenger_send_format_text"].execute("tc1", { content: "**bold**", to: "chat-1" });
+    expect(parseResult(result).success).toBe(true);
+    expect(sendSpy).toHaveBeenCalledWith("chat-1", "**bold**", undefined);
+  });
+});
+
+describe("happy path: lansenger_send_image_url", () => {
+  let api: any;
+  beforeEach(() => { api = makeMockApi(); mockRunning(); registerLansengerTools(api); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it("sends image url successfully", async () => {
+    const sendSpy = vi.spyOn(mockClient, "sendImageUrl").mockResolvedValue({ success: true, messageId: "m1" });
+    const result = await api._tools["lansenger_send_image_url"].execute("tc1", { imageUrl: "https://img.com/x.jpg", to: "chat-1" });
+    expect(parseResult(result).success).toBe(true);
+    expect(sendSpy).toHaveBeenCalledWith("chat-1", "https://img.com/x.jpg", "");
+  });
+});
+
+describe("happy path: lansenger_send_file", () => {
+  let api: any;
+  beforeEach(() => { api = makeMockApi(); mockRunning(); registerLansengerTools(api); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it("sends file successfully", async () => {
+    const { fileURLToPath } = await import("node:url");
+    const testFilePath = fileURLToPath(import.meta.url);
+    const sendSpy = vi.spyOn(mockClient, "sendFile").mockResolvedValue({ success: true, messageId: "m1" });
+    const result = await api._tools["lansenger_send_file"].execute("tc1", { filePath: testFilePath, to: "chat-1" });
+    expect(parseResult(result).success).toBe(true);
+    expect(sendSpy).toHaveBeenCalledWith("chat-1", testFilePath, "", undefined, undefined, undefined, undefined, undefined, undefined);
+  });
+});
+
+describe("happy path: lansenger_revoke_message", () => {
+  let api: any;
+  beforeEach(() => { api = makeMockApi(); mockRunning(); registerLansengerTools(api); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it("revokes messages successfully", async () => {
+    const revokeSpy = vi.spyOn(mockClient, "revokeMessage").mockResolvedValue({ success: true });
+    const result = await api._tools["lansenger_revoke_message"].execute("tc1", { messageIds: ["m1"] });
+    expect(parseResult(result).success).toBe(true);
+    expect(revokeSpy).toHaveBeenCalledWith(["m1"], "bot", undefined);
+  });
+});
+
+describe("happy path: lansenger_send_link_card", () => {
+  let api: any;
+  beforeEach(() => { api = makeMockApi(); mockRunning(); registerLansengerTools(api); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it("sends link card successfully", async () => {
+    const sendSpy = vi.spyOn(mockClient, "sendLinkCard").mockResolvedValue({ success: true, messageId: "m1" });
+    const result = await api._tools["lansenger_send_link_card"].execute("tc1", { title: "T", link: "https://x.com", to: "chat-1" });
+    expect(parseResult(result).success).toBe(true);
+    expect(sendSpy).toHaveBeenCalledWith("chat-1", "T", "https://x.com", {
+      description: "",
+      iconLink: "",
+      pcLink: "",
+      fromName: "",
+      fromIconLink: "",
+    });
+  });
+});
+
+describe("happy path: lansenger_send_app_articles", () => {
+  let api: any;
+  beforeEach(() => { api = makeMockApi(); mockRunning(); registerLansengerTools(api); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it("sends app articles successfully", async () => {
+    const articles = [{ imgUrl: "i", title: "t", url: "u" }];
+    const sendSpy = vi.spyOn(mockClient, "sendAppArticles").mockResolvedValue({ success: true, messageId: "m1" });
+    const result = await api._tools["lansenger_send_app_articles"].execute("tc1", { articles, to: "chat-1" });
+    expect(parseResult(result).success).toBe(true);
+    expect(sendSpy).toHaveBeenCalledWith("chat-1", articles);
+  });
+});
+
+describe("happy path: lansenger_query_groups", () => {
+  let api: any;
+  beforeEach(() => { api = makeMockApi(); mockRunning(); registerLansengerTools(api); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it("queries groups successfully", async () => {
+    const querySpy = vi.spyOn(mockClient, "queryGroups").mockResolvedValue({ totalGroupIds: 5, groupIds: ["g1", "g2"] });
+    const result = await api._tools["lansenger_query_groups"].execute("tc1", {});
+    expect(parseResult(result).success).toBe(true);
+    expect(querySpy).toHaveBeenCalledWith(1, 100);
+  });
+});
+
+describe("happy path: lansenger_update_dynamic_card", () => {
+  let api: any;
+  beforeEach(() => { api = makeMockApi(); mockRunning(); registerLansengerTools(api); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it("updates dynamic card successfully", async () => {
+    const updateSpy = vi.spyOn(mockClient, "updateDynamicCard").mockResolvedValue({ success: true });
+    const result = await api._tools["lansenger_update_dynamic_card"].execute("tc1", { msgId: "m1" });
+    expect(parseResult(result).success).toBe(true);
+    expect(updateSpy).toHaveBeenCalledWith("m1", undefined, undefined, false);
   });
 });
