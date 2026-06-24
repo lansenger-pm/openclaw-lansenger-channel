@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.16.7] - 2026-06-23
+
+### Changed
+
+- **`groupAllowFrom` added to GUI config schema**: The `groupAllowFrom` field (user-level sender filter for group chats) is now exposed in the plugin config schema and UI hints with bilingual descriptions. Previously only settable via `openclaw config set`.
+- **Removed unimplemented per-group `allowFrom`**: The per-group `allowFrom` key was listed in documentation and schema but never implemented. Removed from all 5 READMEs, setup SKILL, and plugin schema to avoid confusion.
+
 ## [3.16.6] - 2026-06-23
 
 ### Fixed
