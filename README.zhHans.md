@@ -176,7 +176,7 @@ openclaw pairing approve lansenger <配对码>
 | `name` | 此账户的显示名称 | — |
 | `accounts` | 多机器人配置 | — |
 | `groupPolicy` | 群聊策略：`open`（所有群）、`allowlist`（仅允许列表群）、`disabled`（禁止群消息） | `open` |
-| `groups` | 群级配置：`enabled`、`requireMention`、`autoMentionReply`、`autoQuoteReply`、`allowFrom`。key 为群 `chatId`。allowlist 模式设 `groups.<chatId>.enabled: true`。 | — |
+| `groups` | 群级配置：`enabled`、`requireMention`、`autoMentionReply`、`autoQuoteReply`。key 为群 `chatId`。allowlist 模式设 `groups.<chatId>.enabled: true`。 | — |
 | `autoMentionReply` | 群聊回复时自动 @发送者 | `false` |
 | `autoQuoteReply` | 回复时自动引用入站消息（群聊和私聊） | `false` |
 | `ackMessage` | 在代理处理前发送确认消息 | `true` |

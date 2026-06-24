@@ -130,6 +130,12 @@
             "default": "open",
             "description": "Group chat policy / 群聊策略：open (所有群), allowlist (仅允许列表群), disabled (禁止群消息)"
           },
+          "groupAllowFrom": {
+            "type": "array",
+            "items": { "type": "string" },
+            "default": [],
+            "description": "User IDs allowed to trigger the bot in group chats (sender-level filter, NOT group IDs). Lansenger user IDs and group IDs share the same format — confirm via API or logs. / 群聊中允许触发机器人的用户 ID 列表（用户级过滤，不是群 ID）。蓝信用户 ID 和群 ID 格式相同，请从 API 或日志确认。"
+          },
           "requireMention": {
             "type": "boolean",
             "default": true,
@@ -154,8 +160,7 @@
                 "requireMention": { "type": "boolean", "description": "Require @mention to trigger / 是否需要 @提及才触发" },
                 "autoMentionReply": { "type": "boolean", "description": "Auto @mention the sender when replying in this group / 该群自动回复时是否 @发送者" },
                 "autoQuoteReply": { "type": "boolean", "description": "Auto quote the inbound message when replying in this group / 该群回复时是否自动引用入站消息" },
-                "enabled": { "type": "boolean", "description": "Enable/disable this group / 启用/禁用该群" },
-                "allowFrom": { "type": "array", "items": { "type": "string" }, "description": "Sender IDs allowed in this group / 该群允许的发送者 ID" }
+                "enabled": { "type": "boolean", "description": "Enable/disable this group / 启用/禁用该群" }
               }
             }
           },
@@ -199,6 +204,7 @@
                 "allowFrom": { "type": "array", "items": { "type": "string" }, "description": "Allowed user IDs / 允许的用户 ID 列表" },
                 "dmPolicy": { "type": "string", "enum": ["pairing", "allowlist", "open", "disabled"], "default": "pairing", "description": "DM security policy / 私聊安全策略" },
                 "groupPolicy": { "type": "string", "enum": ["open", "allowlist", "disabled"], "default": "open", "description": "Group chat policy / 群聊策略" },
+                "groupAllowFrom": { "type": "array", "items": { "type": "string" }, "default": [], "description": "User IDs allowed to trigger the bot in group chats (sender-level filter, NOT group IDs). Inherits from top-level if unset. / 群聊中允许触发机器人的用户 ID 列表（用户级过滤，不是群 ID）。未设置时继承顶层配置。" },
                 "requireMention": { "type": "boolean", "description": "Require @mention to trigger in groups (inherits from top-level if unset) / 群聊中是否需要 @提及才触发（未设置时继承顶层配置）" },
                 "autoMentionReply": { "type": "boolean", "description": "Auto @mention the sender when replying in groups (inherits from top-level if unset) / 群聊自动回复时是否 @发送者（未设置时继承顶层配置）" },
                 "autoQuoteReply": { "type": "boolean", "description": "Auto quote the inbound message when replying (inherits from top-level if unset, applies to groups and DMs) / 回复时是否自动引用入站消息（未设置时继承顶层配置，群聊和私聊均生效）" },
@@ -215,8 +221,7 @@
                       "enabled": { "type": "boolean", "description": "Enable/disable this group for this account / 启用/禁用该群" },
                       "requireMention": { "type": "boolean", "description": "Require @mention to trigger / 是否需要 @提及才触发" },
                       "autoMentionReply": { "type": "boolean", "description": "Auto @mention the sender when replying / 自动回复时是否 @发送者" },
-                      "autoQuoteReply": { "type": "boolean", "description": "Auto quote the inbound message when replying / 回复时是否自动引用入站消息" },
-                      "allowFrom": { "type": "array", "items": { "type": "string" }, "description": "Sender IDs allowed in this group / 该群允许的发送者 ID" }
+                      "autoQuoteReply": { "type": "boolean", "description": "Auto quote the inbound message when replying / 回复时是否自动引用入站消息" }
                     }
                   }
                 }
@@ -317,10 +322,16 @@
           },
           "help": "Controls which groups can trigger the bot. Recommended: open — for personal bots, the owner already controls who can add the bot to groups. / 控制哪些群可以触发机器人。推荐：open — 个人机器人由主人控制谁能把它拉到群里。"
         },
+        "groupAllowFrom": {
+          "label": "Group Allow From / 群聊允许的用户",
+          "placeholder": "Add user ID / 添加用户 ID",
+          "sensitive": false,
+          "help": "Lansenger user IDs allowed to trigger the bot in group chats (sender-level filter, NOT group IDs). Lansenger user IDs and group IDs share the same format — confirm via API or logs. / 群聊中允许触发机器人的蓝信用户 ID（用户级过滤，非群 ID）。蓝信用户 ID 和群 ID 格式相同，请从 API 或日志确认。"
+        },
         "groups": {
           "label": "Per-Group Config / 单群配置",
           "sensitive": false,
-          "help": "Enable/disable individual groups and fine-tune per-group settings (requireMention, autoMentionReply, enabled, allowFrom). Key is group chatId. For allowlist mode (groupPolicy=allowlist), add groups with enabled: true. / 逐群启用/禁用和微调设置。key 为群聊 chatId。allowlist 模式时配置 enabled: true 加入白名单。"
+          "help": "Enable/disable individual groups and fine-tune per-group settings (requireMention, autoMentionReply, enabled). Key is group chatId. For allowlist mode (groupPolicy=allowlist), add groups with enabled: true. / 逐群启用/禁用和微调设置。key 为群聊 chatId。allowlist 模式时配置 enabled: true 加入白名单。"
         },
         "accounts": {
           "label": "Multi-Bot Accounts / 多机器人账号",
@@ -384,6 +395,12 @@
           },
           "help": "Group chat policy for this bot / 该机器人的群聊策略"
         },
+        "accounts.*.groupAllowFrom": {
+          "label": "Group Allow From / 群聊允许的用户",
+          "placeholder": "Add user ID / 添加用户 ID",
+          "sensitive": false,
+          "help": "Lansenger user IDs allowed to trigger this bot in group chats (sender-level filter, NOT group IDs). Inherits from top-level if unset. / 群聊中允许触发该机器人的蓝信用户 ID（用户级过滤，非群 ID）。未设置时继承顶层配置。"
+        },
         "accounts.*.ackMessage": {
           "label": "Ack Message / 确认消息",
           "help": "Send ack message for this bot (inherits from top-level if unset) / 该机器人是否发送确认消息（未设置时继承顶层配置）"
@@ -405,7 +422,7 @@
         "accounts.*.groups": {
           "label": "Per-Group Config / 单群配置",
           "sensitive": false,
-          "help": "Per-group configuration for this account (requireMention, enabled, allowFrom). Overrides section-level groups. / 该账号的单群配置，覆盖顶级 groups 设置。"
+          "help": "Per-group configuration for this account (requireMention, enabled). Overrides section-level groups. / 该账号的单群配置，覆盖顶级 groups 设置。"
         }
       }
     }

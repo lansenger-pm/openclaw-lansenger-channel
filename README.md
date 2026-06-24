@@ -168,7 +168,7 @@ Credentials can also be provided via `openclaw.json` config (see Optional Config
 | `name` | Display name for this account | — |
 | `accounts` | Multi-bot configuration | — |
 | `groupPolicy` | Group policy: `open`, `allowlist`, `disabled` | `open` |
-| `groups` | Per-group configuration: `enabled`, `requireMention`, `autoMentionReply`, `autoQuoteReply`, `allowFrom`. Key is group `chatId`. Use `groups.<chatId>.enabled: true` for allowlist mode. | — |
+| `groups` | Per-group configuration: `enabled`, `requireMention`, `autoMentionReply`, `autoQuoteReply`. Key is group `chatId`. Use `groups.<chatId>.enabled: true` for allowlist mode. | — |
 | `autoMentionReply` | Auto @mention the sender when replying in groups | `false` |
 | `autoQuoteReply` | Auto quote the inbound message when replying (groups and DMs) | `false` |
 | `ackMessage` | Send a brief acknowledgment message before agent processing | `true` |

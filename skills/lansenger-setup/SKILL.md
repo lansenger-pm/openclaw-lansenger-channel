@@ -74,7 +74,7 @@ metadata: {"openclaw":{"requires":{"cli":["openclaw"]},"primaryEnv":"LANSENGER_A
 |--------|------|--------|------|
 | `groupPolicy` | enum | `open` | 群级策略。可选值：`open`（所有群可触发）、`allowlist`（仅 groups 中 enabled:true 的群）、`disabled`（禁止群消息） |
 | `groupAllowFrom` | string[] | `[]` | **用户级过滤**：只有列表中的蓝信用户 ID 在群聊中发消息才会触发 bot。注意，此项填的是**用户 ID**（发消息的人），不是群 ID。蓝信用户 ID 和群 ID 格式相同，无法靠格式区分，请从蓝信消息日志或 API 确认。 |
-| `groups` | object | `{}` | 单群配置（key 为群 chatId），可设置 `enabled`、`requireMention`、`autoMentionReply`、`autoQuoteReply`、`allowFrom` |
+| `groups` | object | `{}` | 单群配置（key 为群 chatId），可设置 `enabled`、`requireMention`、`autoMentionReply`、`autoQuoteReply` |
 | `requireMention` | boolean | `true` | 群聊中是否需要 `@机器人名称` 才会触发。设为 `false` 则任何消息都会触发。 |
 | `autoMentionReply` | boolean | `false` | 群聊自动回复时是否 @入站消息发送者。蓝信 API 会根据 staffId 自动拼接名字，无需 Agent 手动写 `@姓名`。支持按群、按账号覆盖。 |
 | `autoQuoteReply` | boolean | `false` | 群聊和私聊回复时是否自动引用入站消息。支持按群、按账号覆盖。私聊时 per-group 配置不生效。 |
@@ -105,9 +105,6 @@ openclaw config set channels.lansenger.accounts.<appId>.groups.<chatId>.autoQuot
 
 # 启用/禁用特定群
 openclaw config set channels.lansenger.accounts.<appId>.groups.<chatId>.enabled false
-
-# 限制特定群中的发送者
-openclaw config set channels.lansenger.accounts.<appId>.groups.<chatId>.allowFrom '["<userId1>","<userId2>"]'
 ```
 
 > 仅有一个机器人时可以用 section 级 `channels.lansenger.groups.<chatId>` 简化配置。
