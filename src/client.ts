@@ -664,45 +664,46 @@ export class LansengerClient {
     const events = wsMsg.events ?? [];
     const results: InboundEvent[] = [];
     for (const ev of events) {
-      const msgData = ev.data ?? {};
+      const eventData = ev.data ?? {};
       const eventType = ev.type ?? "";
-      const extracted = await this.extractText(msgData);
+      const extracted = await this.extractText(eventData);
       if (!extracted.text) continue;
       if (extracted.mediaPaths?.length) {
-        this.log.info(`inbound media: msgType=${msgData.msgType ?? "n/a"} count=${extracted.mediaPaths.length} saved=${extracted.mediaPaths.join(",")}`);
+        this.log.info(`inbound media: msgType=${eventData.msgType ?? "n/a"} count=${extracted.mediaPaths.length} saved=${extracted.mediaPaths.join(",")}`);
       }
-      const messageId = msgData.messageId ?? msgData.msgId ?? crypto.randomUUID();
-      const chatType = msgData.chatType ?? "p2p";
+      const messageId = eventData.messageId ?? eventData.msgId ?? crypto.randomUUID();
+      const chatType = eventData.chatType ?? "p2p";
       const isGroup = chatType === "group" || eventType === "bot_group_message";
-      const senderId = msgData.from ?? "";
-      const chatId = msgData.groupId ?? msgData.conversationId ?? senderId;
+      const senderId = eventData.from ?? "";
+      const chatId = eventData.groupId ?? eventData.conversationId ?? senderId;
       
       this.cacheChatType(chatId, isGroup ? "group" : "dm");
       if (extracted.text) this.cacheUserLang(senderId, extracted.text);
 
-      const referenceMsg: ReferenceMsg | undefined = msgData.referenceMsg
-        ? this.parseReferenceMsg(msgData.referenceMsg)
+      const referenceMsg: ReferenceMsg | undefined = eventData.referenceMsg
+        ? this.parseReferenceMsg(eventData.referenceMsg)
         : undefined;
 
       results.push({
         messageId,
         text: extracted.text,
         chatId,
-        chatName: msgData.conversationTitle ?? msgData.groupName ?? undefined,
+        chatName: eventData.conversationTitle ?? eventData.groupName ?? undefined,
         isGroup,
         senderId,
-        userName: msgData.senderName ?? senderId,
-        rawMessage: msgData,
-        msgType: msgData.msgType ?? "text",
+        userName: eventData.senderName ?? senderId,
+        rawMessage: eventData,
+        msgType: eventData.msgType ?? "text",
         mediaPaths: extracted.mediaPaths,
         eventType,
         referenceMsg,
-        isAtMe: msgData.isAtMe ?? undefined,
-        isAtAll: msgData.isAtAll ?? undefined,
-        fromType: msgData.fromType ?? undefined,
-        groupName: msgData.groupName ?? undefined,
-        botCreator: msgData.botCreator ?? undefined,
-        botId: msgData.botId ?? undefined,
+        isAtMe: eventData.reminder?.isAtMe ?? false,
+        isAtAll: eventData.reminder?.isAtAll ?? false,
+        mentionedBots: eventData.reminder?.bots as Array<{ botId: string; botName: string }> | undefined,
+        fromType: eventData.fromType ?? undefined,
+        groupName: eventData.groupName ?? undefined,
+        botCreator: eventData.botCreator ?? undefined,
+        botId: eventData.botId ?? undefined,
       });
     }
     return results;
@@ -891,9 +892,9 @@ export class LansengerClient {
     } };
   }
 
-  private async extractText(msgData: Record<string, any>): Promise<{ text: string | null; mediaPaths?: string[] }> {
-    const msgType = msgData.msgType ?? "text";
-    const payload = msgData.msgData ?? {};
+  private async extractText(eventData: Record<string, any>): Promise<{ text: string | null; mediaPaths?: string[] }> {
+    const msgType = eventData.msgType ?? "text";
+    const payload = eventData.msgData ?? {};
 
     if (msgType === "text") return { text: payload.text?.content?.trim() ?? null };
 

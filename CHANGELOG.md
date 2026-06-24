@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.16.10] - 2026-06-24
+
+### Fixed
+
+- **`isAtMe`/`isAtAll`/`mentionedBots` read from wrong path**: Group message @-mention data is nested inside `data.reminder` (per Lansenger OpenAPI spec), but was being read from `data` top level. This caused `isAtMe` to always be `false`, breaking both `requireMention` checks and `@BotName` stripping in group chats.
+
+### Changed
+
+- **`msgData` → `eventData`**: Renamed the confusing `msgData` variable in the inbound parser to `eventData` to distinguish the event envelope from the nested `msgData` payload. The double `msgData.msgData` naming has been eliminated.
+
 ## [3.16.9] - 2026-06-23
 
 ### Fixed
