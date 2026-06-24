@@ -1025,6 +1025,7 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
         const filePath = ctx.args?.filePath ?? ctx.args?.mediaUrl ?? ctx.args?.media ?? "";
         const caption = ctx.args?.caption ?? ctx.args?.text ?? "";
         const text = ctx.args?.text ?? ctx.args?.content ?? ctx.args?.message ?? "";
+        log.debug(`tool:send to=${to} filePath=${filePath || "none"} textLen=${text.length} captionLen=${caption.length}`);
         if (filePath) {
           const resolved = path.resolve(filePath);
           try {
@@ -1044,6 +1045,7 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
 
       if (ctx.action === "delete") {
         const messageId = ctx.args?.messageId ?? "";
+        log.debug(`tool:delete messageId=${messageId}`);
         const result = await client.revokeMessage([messageId], "bot");
         return { success: result.success };
       }

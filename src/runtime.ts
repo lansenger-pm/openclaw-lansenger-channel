@@ -348,6 +348,7 @@ export function startLansengerGateway(api: OpenClawPluginApi): void {
       const client = entry?.client ?? makeClient(account, sdkLogger());
       const events = await client.processRawMessage(body);
 
+      log.debug(`inbound: webhook received ${events.length} event(s)`);
       for (const event of events) {
         await handleInbound(api, event, account, key);
       }
@@ -422,6 +423,7 @@ export function startLansengerGateway(api: OpenClawPluginApi): void {
     };
 
     const card = detectedLang === "zh" ? zhCard : enCard;
+    log.debug(`sendCard: chatId=${chatId} command=${cmdText.slice(0, 60)} lang=${detectedLang}`);
     const result = await client.sendApproveCard(chatId, card);
     if (!result.success) {
       opts.respond(false, undefined, errorShape("UNAVAILABLE", result.error ?? "Failed to send card"));
@@ -451,6 +453,7 @@ export function startLansengerGateway(api: OpenClawPluginApi): void {
       return;
     }
     const result = await client.updateCardStatus(messageId, status as "pending" | "approved" | "denied", detectedLang);
+    log.debug(`updateCard: messageId=${messageId} status=${status} lang=${detectedLang} success=${result.success}`);
     if (!result.success) {
       opts.respond(false, undefined, errorShape("UNAVAILABLE", result.error ?? "Failed to update card"));
       return;
@@ -707,6 +710,13 @@ async function handleInbound(
   runningKey: string,
 ): Promise<void> {
   const chatType = event.isGroup ? "group" : "dm";
+  log.debug(
+    `inbound: raw event — chatType=${chatType} chatId=${event.chatId} ` +
+    `senderId=${event.senderId} msgType=${event.msgType ?? "text"} eventType=${event.eventType ?? "n/a"} ` +
+    `isAtMe=${event.isAtMe ?? false} isAtAll=${event.isAtAll ?? false} ` +
+    `mediaCount=${event.mediaPaths?.length ?? 0} ` +
+    `text=${(event.text ?? "").slice(0, 80)}`
+  );
   const turnTextDelivered = new Set<string>();
   const turnMediaDelivered = new Set<string>();
   let reminder: ReminderParams | undefined;
@@ -725,6 +735,15 @@ async function handleInbound(
       log.error(`inbound: readAllowFromStore failed — ${e instanceof Error ? e.message : String(e)}`);
     }
     const effectiveAllowFrom = [...new Set([...configAllowFrom, ...storeAllowFrom])];
+    log.debug(
+      `inbound: dm config — dmPolicy=${dmPolicy} ` +
+      `configAllowFrom=[${configAllowFrom.join(",")}] ` +
+      `storeAllowFrom=[${storeAllowFrom.join(",")}] ` +
+      `senderAllowed=${effectiveAllowFrom.some((id: string) => {
+        const bare = id.replace(/^lansenger:/, "");
+        return bare === event.senderId || id === event.senderId;
+      })}`
+    );
     const senderAllowed = effectiveAllowFrom.some((id: string) => {
       const bare = id.replace(/^lansenger:/, "");
       return bare === event.senderId || id === event.senderId;
@@ -790,7 +809,7 @@ async function handleInbound(
         accountId: account.accountId,
         hasGroupAllowFrom,
       });
-      log.info(
+      log.debug(
         `inbound: groupPolicy resolved — chatId=${event.chatId} ` +
         `mode=${groupPolicyMode} ` +
         `allowlistEnabled=${groupPolicy.allowlistEnabled} ` +
@@ -921,6 +940,7 @@ async function handleInbound(
       const atName = `@${ourMention.botName}`;
       if (textForCommands.includes(atName)) {
         textForCommands = textForCommands.split(atName).join("").trim();
+        log.debug(`inbound: stripped @botName "${atName}" for command detection — textForCommands="${textForCommands.slice(0, 60)}"`);
       }
     }
   }
@@ -934,6 +954,11 @@ async function handleInbound(
     });
     shouldComputeAuth = api.runtime.channel.commands.shouldComputeCommandAuthorized(textForCommands, api.config);
     hasCommand = api.runtime.channel.commands.isControlCommandMessage(textForCommands, api.config);
+    log.debug(
+      `inbound: command detection — allowTextCommands=${allowTextCommands} ` +
+      `shouldComputeAuth=${shouldComputeAuth} hasCommand=${hasCommand} ` +
+      `textForCommands="${textForCommands.slice(0, 60)}"`
+    );
   } catch (e: unknown) {
     log.error(`inbound: command detection failed — ${e instanceof Error ? e.message : String(e)}, skipping command checks`);
   }
@@ -981,6 +1006,13 @@ async function handleInbound(
         }
       }
     }
+    log.debug(
+      `inbound: command auth — commandAuthorized=${commandAuthorized} ` +
+      `explicitAllowFrom_configured=${Boolean(explicitAllowFrom)} ` +
+      `ownerAllowFrom_count=${ownerAllowFrom.length} ` +
+      `channelAllowFrom_count=${(account.allowFrom ?? []).length} ` +
+      `senderId=${event.senderId}`
+    );
   }
 
   if (allowTextCommands && hasCommand && commandAuthorized !== true) {
@@ -1157,6 +1189,7 @@ async function handleInbound(
 
 async function deliverReply(client: LansengerClient, to: string, text: string, opts?: { reminder?: ReminderParams; refMsgId?: string }): Promise<ApiResult> {
   log.info(`deliverReply: to=${to} textLen=${text.length} preview="${text.slice(0, 100)}"`);
+  log.debug(`deliverReply: refMsgId=${opts?.refMsgId ?? "none"} reminderUserIds=[${(opts?.reminder?.userIds ?? []).join(",")}]`);
   if (!text.trim()) {
     log.warn(`deliverReply: empty text after OpenClaw MEDIA processing, skipping delivery`);
     return { success: true, messageId: undefined };
