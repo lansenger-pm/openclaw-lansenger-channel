@@ -176,6 +176,7 @@ openclaw pairing approve lansenger <配對碼>
 | `name` | 此帳戶的顯示名稱 | — |
 | `accounts` | 多機器人設定 | — |
 | `groupPolicy` | 群聊策略：`open`（所有群）、`allowlist`（僅允許列表群）、`disabled`（禁止群訊息） | `open` |
+| `groupAllowFrom` | 群聊中允許觸發的使用者 ID（非群 ID）。藍信用戶 ID 和群 ID 格式相同，請從 API 或日誌確認。 | `[]` |
 | `groups` | 群級設定：`enabled`、`requireMention`、`autoMentionReply`、`autoQuoteReply`、`allowFrom`。key 為群 `chatId`。allowlist 模式設 `groups.<chatId>.enabled: true`。 | — |
 | `autoMentionReply` | 群聊回覆時自動 @傳送者 | `false` |
 | `autoQuoteReply` | 回覆時自動引用入站訊息（群聊和私聊） | `false` |

@@ -68,13 +68,17 @@ metadata: {"openclaw":{"requires":{"cli":["openclaw"]},"primaryEnv":"LANSENGER_A
 
 ### 群聊设置
 
-群聊接入有两层独立的过滤机制：**用户级**（谁能在群里触发）和**群级**（哪些群允许接入），两者是**与关系**——必须同时满足才能入站。
+群聊接入有**三层**独立的过滤机制，三者是**与关系**——必须同时满足才能入站：
+
+1. **频道级用户过滤**：`groupAllowFrom` — 哪些用户能在任意群触发
+2. **群级过滤**：`groupPolicy` + `groups.<chatId>.enabled` — 哪些群允许接入
+3. **单群用户过滤**：`groups.<chatId>.allowFrom` — 该群内仅允许哪些用户触发（不设置时无限制）
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
 | `groupPolicy` | enum | `open` | 群级策略。可选值：`open`（所有群可触发）、`allowlist`（仅 groups 中 enabled:true 的群）、`disabled`（禁止群消息） |
 | `groupAllowFrom` | string[] | `[]` | **用户级过滤**：只有列表中的蓝信用户 ID 在群聊中发消息才会触发 bot。注意，此项填的是**用户 ID**（发消息的人），不是群 ID。蓝信用户 ID 和群 ID 格式相同，无法靠格式区分，请从蓝信消息日志或 API 确认。 |
-| `groups` | object | `{}` | 单群配置（key 为群 chatId），可设置 `enabled`、`requireMention`、`autoMentionReply`、`autoQuoteReply`、`allowFrom` |
+| `groups` | object | `{}` | 单群配置（key 为群 chatId），可设置 `enabled`、`requireMention`、`autoMentionReply`、`autoQuoteReply`、`allowFrom`。`allowFrom` 限定该群内允许触发 bot 的用户 ID（不设置或空数组时无限制），与频道级 `groupAllowFrom` 是 AND 关系。 |
 | `requireMention` | boolean | `true` | 群聊中是否需要 `@机器人名称` 才会触发。设为 `false` 则任何消息都会触发。 |
 | `autoMentionReply` | boolean | `false` | 群聊自动回复时是否 @入站消息发送者。蓝信 API 会根据 staffId 自动拼接名字，无需 Agent 手动写 `@姓名`。支持按群、按账号覆盖。 |
 | `autoQuoteReply` | boolean | `false` | 群聊和私聊回复时是否自动引用入站消息。支持按群、按账号覆盖。私聊时 per-group 配置不生效。 |
@@ -92,6 +96,8 @@ metadata: {"openclaw":{"requires":{"cli":["openclaw"]},"primaryEnv":"LANSENGER_A
 | `allowlist` | 否 | — | ❌ 拦截 |
 | `allowlist` | 是 | 未设置 / `true` | ✅ 放行（仅列出即可） |
 | `allowlist` | 是 | `false` | ❌ 拦截 |
+
+> 以上仅覆盖群级过滤。消息还需通过**用户级过滤**：若设了 `groupAllowFrom`，sender 必须在列表中；若设了 `groups.<chatId>.allowFrom`，sender 必须在该群的列表中。两者是 AND 关系。
 
 **按群粒度微调** — 优先使用 account 级路径 `channels.lansenger.accounts.<appId>.groups.<chatId>` 避免影响其他机器人：
 
@@ -327,7 +333,7 @@ openclaw config set channels.lansenger.accounts.<appId>.dmPolicy disabled
 4. **群白名单** — 如果群聊策略设为 `allowlist`，需要在 `groups` 中启用允许的群。`open` 模式下也可以 `enabled: false` 封禁特定群。
 5. **群聊用户过滤** — 是否只允许特定用户在群聊中触发 bot？设置 `groupAllowFrom`（**注意填用户 ID，不是群 ID**）。蓝信用户 ID 和群 ID 格式相同，请从日志或 API 确认。
 
-> **两层过滤是"与"关系**：`groupAllowFrom` 控制**谁能发**（用户级），`groupPolicy` + `groups` 控制**哪些群**能收（群级）。两者独立，必须同时满足。
+> **三层过滤是"与"关系**：`groupAllowFrom` 控制**谁能发**（频道级用户过滤），`groupPolicy` + `groups` 控制**哪些群**能收（群级过滤），`groups.<chatId>.allowFrom` 控制**该群内谁能发**（单群用户过滤）。三者独立，必须同时满足。
 
 > **多账号环境 → 使用 account 级路径**：`channels.lansenger.accounts.<appId>.groupPolicy`，仅影响该机器人。
 
@@ -487,7 +493,11 @@ openclaw plugins install @lansenger-pm/openclaw-lansenger-channel
    ```bash
    openclaw config get channels.lansenger.requireMention
    ```
-5. 检查 `groups.<chatId>` 下的按群覆盖设置——它们优先于顶层设置。
+5. 检查 `groups.<chatId>.allowFrom` — 如果为特定群设置了用户白名单，确认发消息的人在该列表中：
+   ```bash
+   openclaw config get channels.lansenger.groups.<chatId>.allowFrom
+   ```
+6. 检查 `groups.<chatId>` 下的按群覆盖设置——它们优先于顶层设置。
 
 ### 确认消息不显示
 

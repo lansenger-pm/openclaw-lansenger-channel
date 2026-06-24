@@ -855,17 +855,20 @@ async function handleInbound(
 
   const rawText = event.text;
 
-  // Strip @botName from group chat messages.
+  // Strip @botName from group chat messages for slash command detection only.
   // Lansenger appends @botName when the bot is @mentioned (e.g. "/models@bot" or
-  // "/models@bot openai"). This breaks slash command detection because
+  // "/models@bot openai"). This breaks command detection because
   // isControlCommandMessage requires text to start with a registered command alias.
+  // The stripping only affects command matching — the original text (with @botName)
+  // is preserved in agentText/rawText for the Agent.
+  let textForCommands = event.text;
   if (event.isGroup && event.isAtMe) {
     const ourBotId = event.rawMessage?.botId as string | undefined;
     const ourMention = ourBotId ? event.mentionedBots?.find(b => b.botId === ourBotId) : undefined;
     if (ourMention) {
       const atName = `@${ourMention.botName}`;
-      if (event.text.includes(atName)) {
-        event.text = event.text.split(atName).join("").trim();
+      if (textForCommands.includes(atName)) {
+        textForCommands = textForCommands.split(atName).join("").trim();
       }
     }
   }
@@ -877,8 +880,8 @@ async function handleInbound(
       cfg: api.config,
       surface: "lansenger",
     });
-    shouldComputeAuth = api.runtime.channel.commands.shouldComputeCommandAuthorized(rawText, api.config);
-    hasCommand = api.runtime.channel.commands.isControlCommandMessage(rawText, api.config);
+    shouldComputeAuth = api.runtime.channel.commands.shouldComputeCommandAuthorized(textForCommands, api.config);
+    hasCommand = api.runtime.channel.commands.isControlCommandMessage(textForCommands, api.config);
   } catch (e: unknown) {
     log.error(`inbound: command detection failed — ${e instanceof Error ? e.message : String(e)}, skipping command checks`);
   }
@@ -969,7 +972,7 @@ async function handleInbound(
             id: event.messageId,
             rawText: event.text,
             textForAgent: agentText,
-            textForCommands: event.text,
+            textForCommands: textForCommands,
             raw: event.rawMessage,
           };
         },

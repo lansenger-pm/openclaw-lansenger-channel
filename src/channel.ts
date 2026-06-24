@@ -402,9 +402,6 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
           }
         }
       }
-      if (section.groupPolicy || section.groupAllowFrom) {
-        findings.push({ checkId: "lansenger/group-config-unused", severity: "info", title: "Group config is set but personal bots cannot join groups / 群聊配置已设置但个人机器人暂不支持进群", detail: "Personal bots currently cannot join Lansenger groups. groupPolicy and groupAllowFrom settings have no effect. / 个人机器人暂不支持加入蓝信群聊，groupPolicy 和 groupAllowFrom 设置暂不生效。", remediation: "These settings are reserved for future group support. You can leave them as-is. / 这些设置为群聊功能预留，可保持不变。" });
-      }
       const topLevelGatewayUrl = section.apiGatewayUrl;
       const envHasGatewayUrl = Boolean(process.env.LANSENGER_API_GATEWAY_URL);
       const allAccountsWithAppIdHaveGatewayUrl = accounts

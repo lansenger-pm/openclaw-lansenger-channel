@@ -168,6 +168,7 @@ Credentials can also be provided via `openclaw.json` config (see Optional Config
 | `name` | Display name for this account | — |
 | `accounts` | Multi-bot configuration | — |
 | `groupPolicy` | Group policy: `open`, `allowlist`, `disabled` | `open` |
+| `groupAllowFrom` | User IDs allowed to send in groups (NOT group IDs). Lansenger user IDs and group IDs share the same format — confirm via API or logs. | `[]` |
 | `groups` | Per-group configuration: `enabled`, `requireMention`, `autoMentionReply`, `autoQuoteReply`, `allowFrom`. Key is group `chatId`. Use `groups.<chatId>.enabled: true` for allowlist mode. | — |
 | `autoMentionReply` | Auto @mention the sender when replying in groups | `false` |
 | `autoQuoteReply` | Auto quote the inbound message when replying (groups and DMs) | `false` |

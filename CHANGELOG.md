@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.16.9] - 2026-06-23
+
+### Fixed
+
+- **@BotName stripping incorrectly mutated message text**: The @botName stripping for slash command detection was mutating `event.text` in-place, causing two bugs: (1) command detection used the original text with @botName (`isControlCommandMessage(rawText)`), so `"/models@bot openai"` never matched; (2) the stripped text was passed to the Agent, losing @botName context. Fixed by computing a local `textForCommands` for command matching while preserving `event.text` for the Agent.
+- **Removed misleading health check**: `lansenger/group-config-unused` claimed `groupPolicy`/`groupAllowFrom` "have no effect". Removed — group config IS fully functional.
+
+### Changed
+
+- **Group policy docs**: Updated from "two-layer" to "three-layer" filtering (channel-level `groupAllowFrom` → group-level `enabled`/`groupPolicy` → per-group `allowFrom`). Added `groupAllowFrom` to all 5 README config tables. Added comprehensive AND-logic notes and per-group `allowFrom` troubleshooting step.
+
 ## [3.16.8] - 2026-06-23
 
 ### Added

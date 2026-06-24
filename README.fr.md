@@ -176,6 +176,7 @@ Les identifiants peuvent aussi être fournis via la configuration `openclaw.json
 | `name` | Nom d'affichage pour ce compte | — |
 | `accounts` | Configuration multi-robot | — |
 | `groupPolicy` | Politique de groupe : `open` (tous les groupes), `allowlist` (groupes autorisés), `disabled` (désactivé) | `open` |
+| `groupAllowFrom` | IDs utilisateur autorisés dans les groupes (PAS des IDs de groupe). Les IDs utilisateur et groupe Lansenger ont le même format — confirmer via API ou logs. | `[]` |
 | `groups` | Configuration par groupe : `enabled`, `requireMention`, `autoMentionReply`, `autoQuoteReply`, `allowFrom`. Clé = `chatId` du groupe. Utiliser `groups.<chatId>.enabled: true` pour le mode allowlist. | — |
 | `autoMentionReply` | @mention automatique de l'expéditeur dans les réponses de groupe | `false` |
 | `autoQuoteReply` | Citation automatique du message entrant dans les réponses (groupes et DM) | `false` |
