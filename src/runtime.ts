@@ -2,7 +2,7 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk/channel-core";
 import type { ChannelGatewayContext, ChannelAccountSnapshot } from "openclaw/plugin-sdk";
 import { createSubsystemLogger } from "openclaw/plugin-sdk/logging-core";
 import { createAccountStatusSink, waitUntilAbort } from "openclaw/plugin-sdk/channel-runtime";
-import { CHANNEL_APPROVAL_NATIVE_RUNTIME_CONTEXT_CAPABILITY } from "openclaw/plugin-sdk/approval-handler-runtime";
+import { CHANNEL_APPROVAL_NATIVE_RUNTIME_CONTEXT_CAPABILITY, resolveApprovalOverGateway } from "openclaw/plugin-sdk/approval-handler-runtime";
 import { registerChannelRuntimeContext } from "openclaw/plugin-sdk/channel-runtime-context";
 import { createChannelInboundDebouncer, shouldDebounceTextInbound, resolveInboundDebounceMs } from "openclaw/plugin-sdk/channel-inbound";
 import { LansengerClient } from "./client.js";
@@ -12,7 +12,7 @@ import type { ResolvedAccount } from "./channel.js";
 import { errorShape } from "openclaw/plugin-sdk/gateway-runtime";
 import { listNativeCommandSpecsForConfig } from "openclaw/plugin-sdk/native-command-registry";
 import { resolveNativeCommandsEnabled } from "openclaw/plugin-sdk/native-command-config-runtime";
-import { pendingApprovalCards } from "./channel.js";
+import { pendingApprovalCards, pendingApprovalCallbacks } from "./channel.js";
 import { BUILTIN_COMMAND_I18N } from "./command-i18n.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import * as path from "node:path";
@@ -127,6 +127,11 @@ async function startAccount(api: OpenClawPluginApi, accountId?: string | null): 
   }
 
   client.setMessageHandler(async (event: InboundEvent) => {
+    // Callback events must bypass the debouncer — they have no text to debounce
+    if (event.approveCardCallback) {
+      await handleInbound(api, event, account, key);
+      return;
+    }
     if (debouncer) {
       await debouncer.enqueue(event);
     } else {
@@ -613,6 +618,11 @@ export async function gatewayStartAccount(ctx: ChannelGatewayContext<ResolvedAcc
   }
 
   client.setMessageHandler(async (event: InboundEvent) => {
+    // Callback events must bypass the debouncer — they have no text to debounce
+    if (event.approveCardCallback) {
+      await handleInbound(api, event, account, key);
+      return;
+    }
     if (debouncer) {
       await debouncer.enqueue(event);
     } else {
@@ -703,6 +713,84 @@ function autoStart(api: OpenClawPluginApi, accounts?: Record<string, any>): void
   }
 }
 
+async function handleApproveCardCallback(
+  api: OpenClawPluginApi,
+  event: InboundEvent,
+  account: ResolvedAccount,
+  runningKey: string,
+): Promise<void> {
+  const callback = event.approveCardCallback!;
+  const { eventData: callbackInfo, staffId } = callback;
+
+  // Parse callbackInfo: "{choice}:{requestId}"
+  const colonIdx = callbackInfo.indexOf(":");
+  if (colonIdx <= 0) {
+    log.warn(`approveCard callback: invalid callbackInfo format: "${callbackInfo}"`);
+    return;
+  }
+  const choice = callbackInfo.slice(0, colonIdx);
+  const requestId = callbackInfo.slice(colonIdx + 1);
+
+  if (!["once", "session", "always", "deny"].includes(choice)) {
+    log.warn(`approveCard callback: unknown choice "${choice}" in callbackInfo: "${callbackInfo}"`);
+    return;
+  }
+
+  log.info(`approveCard callback: choice=${choice} requestId=${requestId} staffId=${staffId}`);
+
+  // Look up pending approval mapping
+  const mapping = pendingApprovalCallbacks.get(requestId);
+  if (!mapping) {
+    log.warn(`approveCard callback: no pending approval found for requestId=${requestId}`);
+    return;
+  }
+
+  const { messageId, lang, chatId } = mapping;
+
+  // Get client for card update
+  const entry = runningAccounts.get(runningKey);
+  const client = entry?.client ?? makeClient(account, sdkLogger());
+
+  // Map choice to approval decision
+  const decisionMap: Record<string, "allow-once" | "allow-always" | "deny"> = {
+    once: "allow-once",
+    session: "allow-once",
+    always: "allow-always",
+    deny: "deny",
+  };
+  const decision = decisionMap[choice]!;
+  const strategyKind = choice as "allow-once" | "allow-session" | "allow-always" | "deny";
+  const displayStrategyKind = choice === "session" ? "allow-session" : (choice === "always" ? "allow-always" : (choice === "once" ? "allow-once" : "deny"));
+
+  // Button theme matches the original button: 1=primary, 2=secondary, 3=secondary-black, 4=warning
+  const buttonThemeMap: Record<string, number> = { once: 1, session: 2, always: 3, deny: 4 };
+
+  // Update card status
+  const status: "approved" | "denied" = choice === "deny" ? "denied" : "approved";
+  const cardResult = await client.updateCardStatus(messageId, status, lang, displayStrategyKind, buttonThemeMap[choice]);
+  log.info(`approveCard callback: card update — status=${status} lang=${lang} success=${cardResult.success}`);
+
+  // Resolve approval via framework
+  try {
+    await resolveApprovalOverGateway({
+      cfg: api.config,
+      approvalId: requestId,
+      decision,
+      senderId: staffId,
+    });
+    log.info(`approveCard callback: approval resolved — requestId=${requestId} decision=${decision}`);
+  } catch (e: unknown) {
+    log.error(`approveCard callback: resolveApprovalOverGateway failed — ${e instanceof Error ? e.message : String(e)}`);
+    // Card is already updated, so don't re-throw
+  }
+
+  // Clean up
+  pendingApprovalCallbacks.delete(requestId);
+  const cardKey = account.accountId ? `${account.accountId}:${chatId}` : chatId;
+  pendingApprovalCards.delete(cardKey);
+  log.info(`approveCard callback: cleaned up — requestId=${requestId} chatId=${chatId}`);
+}
+
 async function handleInbound(
   api: OpenClawPluginApi,
   event: InboundEvent,
@@ -717,6 +805,12 @@ async function handleInbound(
     `mediaCount=${event.mediaPaths?.length ?? 0} ` +
     `text=${(event.text ?? "").slice(0, 80)}`
   );
+
+  // Handle approveCard button click callbacks
+  if (event.approveCardCallback) {
+    await handleApproveCardCallback(api, event, account, runningKey);
+    return;
+  }
   const turnTextDelivered = new Set<string>();
   const turnMediaDelivered = new Set<string>();
   let reminder: ReminderParams | undefined;

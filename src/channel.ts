@@ -37,6 +37,16 @@ class PersistentApprovalCardStore extends PersistentStore<{ messageId: string; l
 
 const pendingApprovalCards = new PersistentApprovalCardStore();
 
+const APPROVAL_CALLBACK_FILE = path.join(os.homedir(), ".openclaw", "lansenger-approval-callbacks.json");
+
+class PersistentApprovalCallbackStore extends PersistentStore<{ messageId: string; lang: "zh" | "en"; chatId: string; sessionKey: string }> {
+  constructor() {
+    super(APPROVAL_CALLBACK_FILE, "approval callbacks");
+  }
+}
+
+const pendingApprovalCallbacks = new PersistentApprovalCallbackStore();
+
 function isPathAllowed(filePath: string, roots: string[]): boolean {
   if (roots.length === 0) return true;
   const resolved = path.resolve(filePath);
@@ -824,7 +834,7 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
         },
       } as any,
       presentation: {
-        buildPendingPayload: ({ cfg, request, target, nowMs }: any) => {
+        buildPendingPayload: ({ cfg, request, target, nowMs, view }: any) => {
           const req = request?.request ?? request;
           const commandPreview = (req?.command ?? req?.summary ?? "").slice(0, 300);
           const sessionKey = req?.sessionKey ?? "unknown";
@@ -834,12 +844,18 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
           const buttonScope: ApproveCardButton["permissionScope"] = approverIds.length > 0
             ? { permittedStaffs: approverIds }
             : undefined;
+          // Expiration: view.expiresAtMs is absolute ms, compute remaining seconds
+          const expireTime = view?.expiresAtMs ? Math.max(1, Math.ceil((view.expiresAtMs - nowMs) / 1000)) : undefined;
+          // "allow-always" is only available when the policy allows permanent approval
+          const execAskPolicy: string = (cfg as any)?.approvals?.exec?.ask ?? "dangerous";
+          const showAlways = execAskPolicy !== "always";
           const zhCard: ApproveCardData = {
             head: {
               title: "⚠️ 命令审批",
               headStatus: {
                 describe: "待审批",
                 colour: "#FFB116",
+                statusIcon: 1,
               },
             },
             body: {
@@ -867,6 +883,13 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
                   `> /approve ${shortId} allow-session`,
                   "> ```",
                   "",
+                  ...(showAlways ? [
+                    `> 永久允许`,
+                    "> ```",
+                    `> /approve ${shortId} allow-always`,
+                    "> ```",
+                    "",
+                  ] : []),
                   `> 拒绝执行`,
                   "> ```",
                   `> /approve ${shortId} deny`,
@@ -875,10 +898,12 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
               },
             },
             buttons: [
-              { text: "执行一次", buttonTheme: 1, permissionScope: buttonScope },
-              { text: "本会话有效", buttonTheme: 2, permissionScope: buttonScope },
-              { text: "拒绝执行", buttonTheme: 4, permissionScope: buttonScope },
+              { text: "执行一次", buttonTheme: 1, permissionScope: buttonScope, callbackInfo: `once:${requestId}` },
+              { text: "本会话有效", buttonTheme: 2, permissionScope: buttonScope, callbackInfo: `session:${requestId}` },
+              ...(showAlways ? [{ text: "永久允许", buttonTheme: 3, permissionScope: buttonScope, callbackInfo: `always:${requestId}` }] : []),
+              { text: "拒绝执行", buttonTheme: 4, permissionScope: buttonScope, callbackInfo: `deny:${requestId}` },
             ],
+            expireTime,
           };
           const enCard: ApproveCardData = {
             head: {
@@ -886,6 +911,7 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
               headStatus: {
                 describe: "Pending",
                 colour: "#FFB116",
+                statusIcon: 1,
               },
             },
             body: {
@@ -913,6 +939,13 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
                   `> /approve ${shortId} allow-session`,
                   "> ```",
                   "",
+                  ...(showAlways ? [
+                    `> Always allow`,
+                    "> ```",
+                    `> /approve ${shortId} allow-always`,
+                    "> ```",
+                    "",
+                  ] : []),
                   `> Deny`,
                   "> ```",
                   `> /approve ${shortId} deny`,
@@ -921,19 +954,27 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
               },
             },
             buttons: [
-              { text: "Approve Once", buttonTheme: 1, permissionScope: buttonScope },
-              { text: "This Session", buttonTheme: 2, permissionScope: buttonScope },
-              { text: "Deny", buttonTheme: 4, permissionScope: buttonScope },
+              { text: "Approve Once", buttonTheme: 1, permissionScope: buttonScope, callbackInfo: `once:${requestId}` },
+              { text: "This Session", buttonTheme: 2, permissionScope: buttonScope, callbackInfo: `session:${requestId}` },
+              ...(showAlways ? [{ text: "Always Allow", buttonTheme: 3, permissionScope: buttonScope, callbackInfo: `always:${requestId}` }] : []),
+              { text: "Deny", buttonTheme: 4, permissionScope: buttonScope, callbackInfo: `deny:${requestId}` },
             ],
+            expireTime,
           };
-          return { type: "approveCard", zh: zhCard, en: enCard, isDynamic: true };
+          return { type: "approveCard", zh: zhCard, en: enCard, isDynamic: true, requestId, sessionKey };
         },
         buildResolvedResult: ({ cfg, resolved, entry }: any) => {
           const strategyKind = resolved?.strategy?.kind ?? resolved?.kind ?? "deny";
-          if (resolved?.kind === "approved") {
-            return { kind: "update", payload: { status: "approved", strategyKind } };
+          // Button theme: 1=primary (allow-once), 2=secondary (allow-session), 3=secondary-black (allow-always), 4=warning (deny)
+          const buttonThemeMap: Record<string, number> = { "allow-once": 1, "allow-session": 2, "allow-always": 3, deny: 4 };
+          const resolvedButtonTheme = buttonThemeMap[strategyKind] ?? 4;
+          // Only consider known approved kinds as approved; everything else is denied.
+          // This is safer than trying to enumerate all possible deny values.
+          const approvedKinds = new Set(["approved", "allow-once", "allow-session", "allow-always"]);
+          if (approvedKinds.has(resolved?.kind)) {
+            return { kind: "update", payload: { status: "approved", strategyKind, buttonTheme: resolvedButtonTheme } };
           }
-          return { kind: "update", payload: { status: "denied", strategyKind: "deny" } };
+          return { kind: "update", payload: { status: "denied", strategyKind: "deny", buttonTheme: 4 } };
         },
         buildExpiredResult: ({ cfg, request, entry }: any) => {
           return { kind: "delete" };
@@ -957,6 +998,15 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
             if (result.messageId) {
               const cardKey = account.accountId ? `${account.accountId}:${target.to}` : target.to;
               pendingApprovalCards.set(cardKey, { messageId: result.messageId, lang: lang as "zh" | "en" });
+              // Store callback mapping for button click resolution
+              if (payload.requestId) {
+                pendingApprovalCallbacks.set(payload.requestId, {
+                  messageId: result.messageId,
+                  lang: lang as "zh" | "en",
+                  chatId: target.to,
+                  sessionKey: payload.sessionKey ?? "unknown",
+                });
+              }
             }
             return { delivered: result.success, messageId: result.messageId ?? null, to: target.to, lang };
           }
@@ -975,7 +1025,15 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
           const client = makeClient(account);
           const status = payload?.status ?? (phase === "expired" ? "denied" : "pending");
           const strategyKind = payload?.strategyKind;
-          await client.updateCardStatus(messageId, status as "approved" | "denied", lang, strategyKind);
+          const buttonTheme = payload?.buttonTheme as number | undefined;
+          await client.updateCardStatus(messageId, status as "approved" | "denied", lang, strategyKind, buttonTheme);
+          // Clean up callback mapping (search by messageId since requestId is not in entry)
+          for (const [key, val] of pendingApprovalCallbacks.entries()) {
+            if (val.messageId === messageId) {
+              pendingApprovalCallbacks.delete(key);
+              break;
+            }
+          }
         },
         deleteEntry: async ({ cfg, accountId, entry, phase }: any) => {
           const messageId = entry?.messageId;
@@ -983,6 +1041,13 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
           const account = resolveAccount(cfg, accountId);
           const client = makeClient(account);
           await client.revokeMessage([messageId], "bot");
+          // Clean up callback mapping
+          for (const [key, val] of pendingApprovalCallbacks.entries()) {
+            if (val.messageId === messageId) {
+              pendingApprovalCallbacks.delete(key);
+              break;
+            }
+          }
         },
       } as any,
     } as any,
@@ -1087,5 +1152,5 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
   },
 };
 
-export { resolveAccount, makeClient, isPathAllowed, pendingApprovalCards, LANSENGER_TEXT_CHUNK_LIMIT };
+export { resolveAccount, makeClient, isPathAllowed, pendingApprovalCards, pendingApprovalCallbacks, LANSENGER_TEXT_CHUNK_LIMIT };
 export type { ResolvedAccount };

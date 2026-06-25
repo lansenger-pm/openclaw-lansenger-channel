@@ -449,7 +449,7 @@ export class LansengerClient {
     }
   }
 
-  async updateCardStatus(messageId: string, status: "pending" | "approved" | "denied", lang?: "zh" | "en", strategyKind?: "allow-once" | "allow-session" | "deny"): Promise<ApiResult> {
+  async updateCardStatus(messageId: string, status: "pending" | "approved" | "denied", lang?: "zh" | "en", strategyKind?: "allow-once" | "allow-session" | "allow-always" | "deny", resolvedButtonTheme?: number): Promise<ApiResult> {
     const token = await this.getAppToken();
     if (!token) return { success: false, error: "No access token" };
     const detectedLang = lang ?? "zh";
@@ -466,6 +466,7 @@ export class LansengerClient {
     const strategyLabels: Record<string, { zh: string; en: string }> = {
       "allow-once": { zh: "已允许执行一次", en: "Allow Once" },
       "allow-session": { zh: "已允许本会话有效", en: "Allow Session" },
+      "allow-always": { zh: "已永久允许", en: "Always Allow" },
       "deny": { zh: "已拒绝执行", en: "Denied" },
     };
     const strategyCfg = strategyLabels[strategyKind ?? "deny"] ?? strategyLabels["deny"]!;
@@ -484,7 +485,7 @@ export class LansengerClient {
             },
             ...(resolved ? {
               buttons: [
-                { text: isZh ? strategyCfg.zh : strategyCfg.en, buttonTheme: 0, state: 1 },
+                { text: isZh ? strategyCfg.zh : strategyCfg.en, buttonTheme: resolvedButtonTheme ?? 2, state: 1 },
               ],
             } : {}),
           },
@@ -677,11 +678,65 @@ export class LansengerClient {
     } catch {
       return [];
     }
-    const events = wsMsg.events ?? [];
+
     const results: InboundEvent[] = [];
+
+    // Handle approve_card_callback at top level (not inside events array)
+    const rawObj = wsMsg as Record<string, any>;
+    if (rawObj.type === "approve_card_callback") {
+      const callbackData = rawObj.data as Record<string, any> | undefined;
+      const callbackEventData = callbackData?.eventData as string | undefined;
+      const callbackStaffId = callbackData?.staffId as string | undefined;
+      this.log.info(`processRawMessage: approve_card_callback — eventData="${callbackEventData ?? "MISSING"}" staffId=${callbackStaffId ?? "MISSING"}`);
+      if (callbackEventData) {
+        results.push({
+          messageId: crypto.randomUUID(),
+          text: "",
+          chatId: "",
+          isGroup: false,
+          senderId: callbackStaffId ?? "",
+          userName: callbackStaffId ?? "",
+          rawMessage: callbackData ?? {},
+          msgType: "approve_card_callback",
+          eventType: "approve_card_callback",
+          approveCardCallback: {
+            eventData: callbackEventData,
+            staffId: callbackStaffId ?? "",
+          },
+        });
+      }
+      return results;
+    }
+
+    const events = wsMsg.events ?? [];
     for (const ev of events) {
       const eventData = ev.data ?? {};
       const eventType = ev.type ?? "";
+
+      // Handle approve_card_callback events (button clicks)
+      if (ev.type === "approve_card_callback" || eventType === "approve_card_callback") {
+        const callbackEventData = eventData.eventData as string | undefined;
+        const callbackStaffId = eventData.staffId as string | undefined;
+        if (callbackEventData) {
+          results.push({
+            messageId: crypto.randomUUID(),
+            text: "",
+            chatId: "",
+            isGroup: false,
+            senderId: callbackStaffId ?? "",
+            userName: callbackStaffId ?? "",
+            rawMessage: eventData,
+            msgType: "approve_card_callback",
+            eventType: "approve_card_callback",
+            approveCardCallback: {
+              eventData: callbackEventData,
+              staffId: callbackStaffId ?? "",
+            },
+          });
+        }
+        continue;
+      }
+
       const extracted = await this.extractText(eventData);
       if (!extracted.text) continue;
       if (extracted.mediaPaths?.length) {
@@ -721,6 +776,9 @@ export class LansengerClient {
         botCreator: eventData.botCreator ?? undefined,
         botId: eventData.botId ?? undefined,
       });
+    }
+    if (results.length === 0 && (rawObj.type || rawObj.eventType || (rawObj.events && rawObj.events.length > 0))) {
+      this.log.info(`processRawMessage: no results — type=${rawObj.type ?? "n/a"} eventType=${rawObj.eventType ?? "n/a"} eventsCount=${rawObj.events?.length ?? 0}`);
     }
     return results;
   }
@@ -798,8 +856,13 @@ export class LansengerClient {
         };
 
         ws.onmessage = async (ev) => {
-          if (typeof ev.data !== "string" || !this.messageHandler) return;
-          const events = await this.processRawMessage(ev.data);
+          const rawData: string = typeof ev.data === "string" ? ev.data : Buffer.isBuffer(ev.data) ? ev.data.toString("utf-8") : "";
+          if (!rawData) {
+            this.log.info(`WS onmessage: skipped non-text message (typeof=${typeof ev.data})`);
+            return;
+          }
+          if (!this.messageHandler) return;
+          const events = await this.processRawMessage(rawData);
           for (const event of events) {
             try { await this.messageHandler(event); } catch (e: any) {
               this.log.error(`messageHandler: ${e.message}`);
@@ -1127,6 +1190,11 @@ export type InboundEvent = {
   mentionedStaffs?: Array<{ staffId?: string; staffName?: string }>;
   /** Bots @mentioned (from eventData.reminder.bots) */
   mentionedBots?: Array<{ botId: string; botName: string }>;
+  /** approveCard button callback data */
+  approveCardCallback?: {
+    eventData: string;
+    staffId: string;
+  };
 };
 
 export type LansengerCommand = {

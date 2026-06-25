@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.16.13] - 2026-06-25
+
+### Added
+
+- **approveCard button callback support**: ApproveCard buttons now trigger real-time callbacks via WebSocket. Clicking an approval button resolves the approval and updates the card in-place without needing the `/approve` text command. Buttons carry `callbackInfo` (encoded as `choice:requestId`) for precise request-to-card mapping.
+- **"永久允许" / "Always Allow" button**: Fourth approval button (theme 3, white-on-black) for permanent approval. Visibility controlled by `approvals.exec.ask` policy — hidden when policy is `"always"`.
+- **Card expiration time**: ApproveCard `expireTime` now computed from framework's `view.expiresAtMs`, matching the approval timeout (default 30min exec / 2min plugin).
+- **PersistentStore.entries()**: Added iteration support for cleanup operations.
+
+### Fixed
+
+- **ApproveCard missing status dot**: Added `statusIcon: 1` to `headStatus` in pending approval cards so the colored status dot renders correctly.
+- **`buildResolvedResult` wrongfully showing "denied" for approved resolutions**: Changed from deny-keyword blacklist to approved-kind whitelist (`approved`, `allow-once`, `allow-session`, `allow-always`) — unknown resolution kinds now safely default to denied rather than approved.
+- **Resolved button kept original theme**: After approval/denial, the disabled button now retains the original theme (1=primary blue, 2=secondary blue, 3=secondary black, 4=warning red) instead of always using theme 2.
+- **Callback events silently dropped**: Callback events now bypass the inbound debouncer and handle Buffer WebSocket frames, with full diagnostic logging at every processing stage.
+- **Skill description limited to first-time setup**: Updated `lansenger-setup` SKILL.md to cover ongoing configuration adjustments (group settings, DM policy, ackMessage, etc.), not just initial credential binding. Removed Docker-centric language.
+
+### Changed
+
+- **Skill SKILL.md refined**: Expanded trigger keywords and removed "频道尚未配置" as a hard prerequisite.
+
 ## [3.16.12] - 2026-06-24
 
 ### Fixed

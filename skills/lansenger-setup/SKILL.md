@@ -1,6 +1,6 @@
 ---
 name: lansenger-setup
-description: Guide for first-time Lansenger (蓝信) bot credential binding, DM pairing, and comprehensive channel configuration — for scenarios where the user cannot access the OpenClaw command line (e.g. Docker deployment). Use this skill when the user wants to set up or reconfigure Lansenger from scratch via conversation.
+description: Comprehensive Lansenger (蓝信) channel configuration guide — covers initial bot credential binding, DM pairing, group policy setup, and ALL ongoing configuration adjustments (requireMention, autoMentionReply, group allow/deny list, ackMessage, media paths, etc.). Use this skill whenever the user wants to set up, reconfigure, or adjust ANY Lansenger channel setting via conversation.
 metadata: {"openclaw":{"requires":{"cli":["openclaw"]},"primaryEnv":"LANSENGER_APP_ID"}}
 ---
 
@@ -10,10 +10,9 @@ metadata: {"openclaw":{"requires":{"cli":["openclaw"]},"primaryEnv":"LANSENGER_A
 
 ## 何时使用此技能
 
-- 用户说"配置蓝信"、"绑定蓝信机器人"、"连接蓝信"等。
-- 蓝信频道尚未配置（`channels.lansenger` 中没有 `appId`/`appSecret`）。
-- 用户想要调整特定频道设置（私聊策略、群聊策略、确认消息等）。
-- 用户在 Docker/容器环境中，无法自行执行 CLI 命令。
+- 用户提到任何蓝信/Lansenger 配置相关关键词：配置蓝信、设置蓝信、绑定机器人、连接蓝信、蓝信频道、群设置、私聊设置、@提及、requireMention、groupPolicy、dmPolicy、appId、appSecret、ackMessage 等。
+- 用户想要调整特定频道设置（私聊策略、群聊策略、确认消息、自动@回复、自动引用回复、媒体路径、审批等）。
+- 用户对蓝信机器人的行为不满意，希望修改。
 
 ## 前提条件
 

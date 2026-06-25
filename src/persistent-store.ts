@@ -51,6 +51,8 @@ export class PersistentStore<T> {
     this.save();
   }
 
+  entries(): IterableIterator<[string, T]> { return this.data.entries(); }
+
   clear() {
     this.data.clear();
     this.save();
