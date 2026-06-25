@@ -157,6 +157,11 @@
             "default": true,
             "description": "Require @mention to trigger in groups (can be overridden per-group) / 群聊中是否需要 @提及才触发（可在单群配置中覆盖）"
           },
+          "respondToAtAll": {
+            "type": "boolean",
+            "default": false,
+            "description": "Whether @all/@everyone counts as a valid mention. When requireMention is true and this is false, @all messages are ignored. / @全体成员是否算有效提及。当 requireMention 为 true 且此项为 false 时，@all 消息会被忽略。"
+          },
           "autoMentionReply": {
             "type": "boolean",
             "default": false,
@@ -174,6 +179,7 @@
               "type": "object",
               "properties": {
                 "requireMention": { "type": "boolean", "description": "Require @mention to trigger / 是否需要 @提及才触发" },
+                "respondToAtAll": { "type": "boolean", "description": "Whether @all/@everyone counts as a valid mention / @全体成员是否算有效提及" },
                 "autoMentionReply": { "type": "boolean", "description": "Auto @mention the sender when replying in this group / 该群自动回复时是否 @发送者" },
                 "autoQuoteReply": { "type": "boolean", "description": "Auto quote the inbound message when replying in this group / 该群回复时是否自动引用入站消息" },
                 "enabled": { "type": "boolean", "description": "Enable/disable this group / 启用/禁用该群" },
@@ -223,6 +229,7 @@
                 "groupPolicy": { "type": "string", "enum": ["open", "allowlist", "disabled"], "default": "open", "description": "Group chat policy / 群聊策略" },
                 "groupAllowFrom": { "type": "array", "items": { "type": "string" }, "default": [], "description": "User IDs allowed to trigger the bot in group chats (sender-level filter, NOT group IDs). Inherits from top-level if unset. / 群聊中允许触发机器人的用户 ID 列表（用户级过滤，不是群 ID）。未设置时继承顶层配置。" },
                 "requireMention": { "type": "boolean", "description": "Require @mention to trigger in groups (inherits from top-level if unset) / 群聊中是否需要 @提及才触发（未设置时继承顶层配置）" },
+                "respondToAtAll": { "type": "boolean", "description": "Whether @all/@everyone counts as a valid mention (inherits from top-level if unset) / @全体成员是否算有效提及（未设置时继承顶层配置）" },
                 "autoMentionReply": { "type": "boolean", "description": "Auto @mention the sender when replying in groups (inherits from top-level if unset) / 群聊自动回复时是否 @发送者（未设置时继承顶层配置）" },
                 "autoQuoteReply": { "type": "boolean", "description": "Auto quote the inbound message when replying (inherits from top-level if unset, applies to groups and DMs) / 回复时是否自动引用入站消息（未设置时继承顶层配置，群聊和私聊均生效）" },
                 "ackMessage": { "type": "boolean", "description": "Send ack message before agent processing (inherits from top-level if unset) / 代理处理前发送确认消息（未设置时继承顶层配置）" },
@@ -237,6 +244,7 @@
                     "properties": {
                       "enabled": { "type": "boolean", "description": "Enable/disable this group for this account / 启用/禁用该群" },
                       "requireMention": { "type": "boolean", "description": "Require @mention to trigger / 是否需要 @提及才触发" },
+                      "respondToAtAll": { "type": "boolean", "description": "Whether @all/@everyone counts as a valid mention / @全体成员是否算有效提及" },
                       "autoMentionReply": { "type": "boolean", "description": "Auto @mention the sender when replying / 自动回复时是否 @发送者" },
                       "autoQuoteReply": { "type": "boolean", "description": "Auto quote the inbound message when replying / 回复时是否自动引用入站消息" },
                       "allowFrom": { "type": "array", "items": { "type": "string" }, "description": "Sender IDs allowed in this group / 该群允许的发送者 ID" }
