@@ -56,6 +56,7 @@ Les messages peuvent être envoyés via les **outils agent** (intégrés) ou les
 | `lansenger_send_image_url` | Envoyer une image par URL |
 | `lansenger_send_link_card` | Envoyer une carte de prévisualisation de lien enrichi |
 | `lansenger_send_app_card` | Envoyer une carte interactive/approbation |
+| `lansenger_send_approve_card` | Envoyer une carte d'approbation avec boutons restreints aux approbateurs |
 | `lansenger_send_app_articles` | Envoyer une carte multi-articles |
 | `lansenger_update_dynamic_card` | Mettre à jour le statut d'une carte dynamique en place |
 | `lansenger_revoke_message` | Révoquer un message précédemment envoyé |
@@ -348,6 +349,29 @@ Le plugin supporte les cartes d'approbation :
 - Les mises à jour de statut (en attente → approuvé/refusé) mettent à jour la carte en place via **DynamicMsg**
 - La langue détectée automatiquement détermine la langue de la carte (chinois ou anglais)
 - **i18nAppCard** (5 langues) est réservé pour un usage futur et n'est pas utilisé pour l'approbation
+
+### Qui peut approuver ?
+
+La visibilité des boutons est contrôlée par `permissionScope.permittedStaffs`. Seuls les approbateurs autorisés peuvent cliquer sur les boutons ; les autres les voient désactivés.
+
+**Priorité de résolution des approbateurs :**
+1. `commands.ownerAllowFrom` — IDs d'approbateurs configurés explicitement
+2. `account.allowFrom` — IDs autorisés pour les messages privés
+3. `account.homeChannel` — propriétaire du bot (détecté automatiquement depuis le premier message privé)
+
+Si aucun des éléments ci-dessus n'est configuré, personne ne peut approuver via les boutons. L'approbation reste possible via commandes texte :
+- `/approve <id> allow-once` — approuver une fois
+- `/approve <id> allow-session` — approuver pour cette session
+- `/approve <id> deny` — refuser
+
+### Configuration
+
+Spécifier des approbateurs explicites :
+```bash
+openclaw config set commands.ownerAllowFrom '["lansenger:user-id-1", "lansenger:user-id-2"]'
+```
+
+Ou utiliser le propriétaire détecté automatiquement (`homeChannel`), défini après le premier message privé.
 
 ## Notes importantes
 

@@ -56,6 +56,7 @@
 | `lansenger_send_image_url` | 通过 URL 发送图片 |
 | `lansenger_send_link_card` | 发送富链接预览卡片 |
 | `lansenger_send_app_card` | 发送交互/审批卡片 |
+| `lansenger_send_approve_card` | 发送审批卡片，按钮权限仅审批人可操作 |
 | `lansenger_send_app_articles` | 发送多文章卡片 |
 | `lansenger_update_dynamic_card` | 原地更新动态卡片状态 |
 | `lansenger_revoke_message` | 撤回已发送的消息 |
@@ -348,6 +349,29 @@ openclaw channels status --probe
 - 状态更新（待审批 → 已通过/已拒绝）通过 **DynamicMsg** 原地更新卡片
 - 根据用户检测到的语言发送中文或英文卡片
 - **i18nAppCard**（5 语言）保留供未来使用，当前不用于审批
+
+### 谁能审批？
+
+审批卡片的按钮通过 `permissionScope.permittedStaffs` 控制权限，仅授权审批人可点击按钮，其他人看到的是禁用状态。
+
+**审批人解析优先级：**
+1. `commands.ownerAllowFrom` — 显式配置的审批人 ID
+2. `account.allowFrom` — 私聊白名单用户 ID
+3. `account.homeChannel` — 机器人主人（从第一条私聊自动检测）
+
+如果以上都未配置，无人可通过按钮审批。任何情况下均可通过文本命令审批：
+- `/approve <id> allow-once` — 执行一次
+- `/approve <id> allow-session` — 本会话有效
+- `/approve <id> deny` — 拒绝执行
+
+### 配置方法
+
+显式指定审批人：
+```bash
+openclaw config set commands.ownerAllowFrom '["lansenger:用户ID-1", "lansenger:用户ID-2"]'
+```
+
+或依赖自动检测的机器人主人（`homeChannel`），首次私聊后自动设置。
 
 ## 重要说明
 

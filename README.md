@@ -54,6 +54,7 @@ Messages can be sent via **agent tools** (built-in) or **CLI commands** (optiona
 | `lansenger_send_image_url` | Send image by URL |
 | `lansenger_send_link_card` | Send rich link preview card |
 | `lansenger_send_app_card` | Send interactive/approval card |
+| `lansenger_send_approve_card` | Send approval card with button permission scope (only approvers can interact) |
 | `lansenger_send_app_articles` | Send multi-article card |
 | `lansenger_update_dynamic_card` | Update dynamic card status in-place |
 | `lansenger_revoke_message` | Revoke a previously sent message |
@@ -340,6 +341,29 @@ The plugin supports approval workflow cards:
 - Status updates (pending → approved/denied) update the card in-place via **DynamicMsg**
 - Language detection: the card is sent in the user's detected language (Chinese or English)
 - **i18nAppCard** (5-language) is reserved for future use but not currently used for approval
+
+### Who can approve?
+
+Approval button visibility is controlled by `permissionScope.permittedStaffs` on each card button. Only authorized approvers can click the buttons; others see them as disabled.
+
+**Approver resolution priority:**
+1. `commands.ownerAllowFrom` — explicitly configured approver IDs
+2. `account.allowFrom` — DM allowed user IDs
+3. `account.homeChannel` — bot owner (auto-detected from first DM)
+
+If none of the above are configured, no one can approve via buttons. Users can still approve via text commands in any case:
+- `/approve <id> allow-once` — approve once
+- `/approve <id> allow-session` — approve for this session
+- `/approve <id> deny` — deny execution
+
+### How to configure
+
+Set explicit approvers:
+```bash
+openclaw config set commands.ownerAllowFrom '["lansenger:user-id-1", "lansenger:user-id-2"]'
+```
+
+Or rely on the auto-detected bot owner (`homeChannel`), which is set automatically from the first DM conversation.
 
 ## Important Notes
 

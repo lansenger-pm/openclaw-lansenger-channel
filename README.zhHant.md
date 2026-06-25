@@ -56,6 +56,7 @@
 | `lansenger_send_image_url` | 透過 URL 傳送圖片 |
 | `lansenger_send_link_card` | 傳送富連結預覽卡片 |
 | `lansenger_send_app_card` | 傳送互動/審批卡片 |
+| `lansenger_send_approve_card` | 傳送審批卡片，按鈕權限僅審批人可操作 |
 | `lansenger_send_app_articles` | 傳送多文章卡片 |
 | `lansenger_update_dynamic_card` | 原地更新動態卡片狀態 |
 | `lansenger_revoke_message` | 撤回已傳送的訊息 |
@@ -348,6 +349,29 @@ openclaw channels status --probe
 - 狀態更新（待審批 → 已通過/已拒絕）透過 **DynamicMsg** 原地更新卡片
 - 根據使用者偵測到的語言傳送中文或英文卡片
 - **i18nAppCard**（5 語言）保留供未來使用，目前不用於審批
+
+### 誰能審批？
+
+審批卡片的按鈕透過 `permissionScope.permittedStaffs` 控制權限，僅授權審批人可點擊按鈕，其他人看到的是禁用狀態。
+
+**審批人解析優先級：**
+1. `commands.ownerAllowFrom` — 顯式設定的審批人 ID
+2. `account.allowFrom` — 私聊白名單使用者 ID
+3. `account.homeChannel` — 機器人主人（從第一條私聊自動偵測）
+
+如果以上都未設定，無人可透過按鈕審批。任何情況下均可透過文字指令審批：
+- `/approve <id> allow-once` — 執行一次
+- `/approve <id> allow-session` — 本次工作階段有效
+- `/approve <id> deny` — 拒絕執行
+
+### 設定方法
+
+顯式指定審批人：
+```bash
+openclaw config set commands.ownerAllowFrom '["lansenger:使用者ID-1", "lansenger:使用者ID-2"]'
+```
+
+或依賴自動偵測的機器人主人（`homeChannel`），首次私聊後自動設定。
 
 ## 重要說明
 
