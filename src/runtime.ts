@@ -6,7 +6,7 @@ import { CHANNEL_APPROVAL_NATIVE_RUNTIME_CONTEXT_CAPABILITY, resolveApprovalOver
 import { registerChannelRuntimeContext } from "openclaw/plugin-sdk/channel-runtime-context";
 import { createChannelInboundDebouncer, shouldDebounceTextInbound, resolveInboundDebounceMs } from "openclaw/plugin-sdk/channel-inbound";
 import { LansengerClient } from "./client.js";
-import type { InboundEvent, ClientLogger, ApiResult, ApproveCardData, LansengerCommand, ReminderParams } from "./client.js";
+import type { InboundEvent, ClientLogger, ApiResult, ApproveCardData, LansengerCommand, ReminderParams, GroupSessionMeta } from "./client.js";
 import { resolveAccount, makeClient, isPathAllowed } from "./channel.js";
 import type { ResolvedAccount } from "./channel.js";
 import { errorShape } from "openclaw/plugin-sdk/gateway-runtime";
@@ -233,6 +233,16 @@ export function setSessionAccountId(sessionKey: string, accountId: string): void
 
 export function getSessionAccountId(sessionKey: string): string | undefined {
   return sessionAccountTracker.get(sessionKey);
+}
+
+/** Find which running account's client has seen this chatId (via chatTypeMap cache). */
+export function findAccountIdByChatId(chatId: string): string | undefined {
+  for (const [, entry] of runningAccounts) {
+    if (entry.client.hasChatId(chatId)) {
+      return entry.account.appId;
+    }
+  }
+  return undefined;
 }
 
 export function startLansengerGateway(api: OpenClawPluginApi): void {
@@ -666,7 +676,7 @@ export async function gatewayStartAccount(ctx: ChannelGatewayContext<ResolvedAcc
       channelId: "lansenger",
       accountId: ctx.accountId,
       capability: CHANNEL_APPROVAL_NATIVE_RUNTIME_CONTEXT_CAPABILITY,
-      context: {},
+      context: { appId: account.appId },
       abortSignal: ctx.abortSignal,
     });
     // Auto-configure approvals.exec.allowFrom.lansenger from homeChannel if not set
@@ -1163,6 +1173,18 @@ async function handleInbound(
     }
   }
 
+  // Pre-fetch group metadata for session context injection
+  let groupMeta: GroupSessionMeta | null = null;
+  if (event.isGroup) {
+    try {
+      const metaClient = runningAccounts.get(runningKey)?.client ?? makeClient(account, sdkLogger());
+      groupMeta = await metaClient.getGroupSessionMeta(event.chatId);
+      log.info(`inbound: groupMeta fetched — chatId=${event.chatId} groupName=${groupMeta?.groupInfo?.name ?? "n/a"} memberCount=${groupMeta?.memberCount ?? 0} hasMembers=${groupMeta?.members !== null}`);
+    } catch (e: unknown) {
+      log.error(`inbound: getGroupSessionMeta failed — ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
   try {
     log.info(`inbound.run starting: sessionKey=${sessionKey} agentId=${agentId} accountId=${account.accountId}`);
     await api.runtime.channel.inbound.run({
@@ -1213,6 +1235,10 @@ async function handleInbound(
               Provider: "lansenger",
               Surface: "lansenger",
               To: replyTo,
+              AppId: account.appId,
+              ...(groupMeta?.groupInfo ? { GroupInfo: JSON.stringify(groupMeta.groupInfo) } : {}),
+              ...(groupMeta?.members ? { GroupMembers: JSON.stringify(groupMeta.members) } : {}),
+              ...(groupMeta ? { GroupMemberCount: groupMeta.memberCount } : {}),
             },
             recordInboundSession: api.runtime.channel.session.recordInboundSession,
             dispatchReplyWithBufferedBlockDispatcher: api.runtime.channel.reply.dispatchReplyWithBufferedBlockDispatcher,

@@ -28,7 +28,10 @@
       "lansenger_send_app_card",
       "lansenger_send_approve_card",
       "lansenger_update_dynamic_card",
-      "lansenger_query_groups"
+      "lansenger_query_groups",
+      "lansenger_group_info",
+      "lansenger_group_members",
+      "lansenger_group_check_membership"
     ]
   },
   "toolMetadata": {
@@ -63,6 +66,15 @@
       "configSignals": [{ "rootPath": "channels.lansenger", "requiredAny": ["appId", "accounts"] }]
     },
     "lansenger_query_groups": {
+      "configSignals": [{ "rootPath": "channels.lansenger", "requiredAny": ["appId", "accounts"] }]
+    },
+    "lansenger_group_info": {
+      "configSignals": [{ "rootPath": "channels.lansenger", "requiredAny": ["appId", "accounts"] }]
+    },
+    "lansenger_group_members": {
+      "configSignals": [{ "rootPath": "channels.lansenger", "requiredAny": ["appId", "accounts"] }]
+    },
+    "lansenger_group_check_membership": {
       "configSignals": [{ "rootPath": "channels.lansenger", "requiredAny": ["appId", "accounts"] }]
     }
   },

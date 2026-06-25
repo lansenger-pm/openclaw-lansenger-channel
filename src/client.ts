@@ -125,6 +125,9 @@ export class LansengerClient {
   private chatTypeMap = new Map<string, "group" | "dm">();
   private userLangMap = new Map<string, "zh" | "en">();
   private dangerouslyAllowPrivateNetwork: boolean = false;
+  private groupInfoCache = new Map<string, { data: GroupInfoData; expiry: number }>();
+  private groupMembersCache = new Map<string, { data: GroupMembersData; expiry: number }>();
+  private readonly GROUP_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
   constructor(config: { appId: string; appSecret: string; apiGatewayUrl?: string; logger?: ClientLogger; dangerouslyAllowPrivateNetwork?: boolean | null }) {
     this.appId = config.appId;
@@ -600,6 +603,108 @@ export class LansengerClient {
     }
   }
 
+  // ---- Group info & members API ----
+
+  async getGroupInfo(groupId: string): Promise<GroupInfoData | null> {
+    const cached = this.groupInfoCache.get(groupId);
+    if (cached && Date.now() < cached.expiry) return cached.data;
+
+    const token = await this.getAppToken();
+    if (!token) return null;
+    try {
+      const url = `${this.apiGatewayUrl}/v2/groups/${encodeURIComponent(groupId)}/info/fetch?app_token=${token}`;
+      const resp = await fetch(url);
+      if (!resp.ok) return null;
+      const data = (await resp.json()) as LansengerApiResponse;
+      if (data.errCode !== 0) {
+        this.log.error(`getGroupInfo: errCode=${data.errCode} errMsg=${data.errMsg ?? "n/a"} groupId=${groupId}`);
+        return null;
+      }
+      const info = (data.data ?? {}) as unknown as GroupInfoData;
+      this.groupInfoCache.set(groupId, { data: info, expiry: Date.now() + this.GROUP_CACHE_TTL_MS });
+      return info;
+    } catch (e: any) {
+      this.log.error(`getGroupInfo: ${e.message}`);
+      return null;
+    }
+  }
+
+  async getGroupMembers(groupId: string, pageOffset: number = 0, pageSize?: number): Promise<GroupMembersData | null> {
+    const token = await this.getAppToken();
+    if (!token) return null;
+    try {
+      let url = `${this.apiGatewayUrl}/v2/groups/${encodeURIComponent(groupId)}/members/fetch?app_token=${token}&page_offset=${pageOffset}`;
+      if (pageSize !== undefined) url += `&page_size=${pageSize}`;
+      const resp = await fetch(url);
+      if (!resp.ok) return null;
+      const data = (await resp.json()) as LansengerApiResponse;
+      if (data.errCode !== 0) {
+        this.log.error(`getGroupMembers: errCode=${data.errCode} errMsg=${data.errMsg ?? "n/a"} groupId=${groupId}`);
+        return null;
+      }
+      const membersData = (data.data ?? {}) as unknown as GroupMembersData;
+      // Cache only when fetching full list (no pagination offset, no pageSize limit)
+      if (pageOffset === 0 && pageSize === undefined && membersData.totalMembers <= 100) {
+        this.groupMembersCache.set(groupId, { data: membersData, expiry: Date.now() + this.GROUP_CACHE_TTL_MS });
+      }
+      return membersData;
+    } catch (e: any) {
+      this.log.error(`getGroupMembers: ${e.message}`);
+      return null;
+    }
+  }
+
+  async checkMembership(groupId: string, staffId?: string): Promise<boolean | null> {
+    const token = await this.getAppToken();
+    if (!token) return null;
+    try {
+      let url = `${this.apiGatewayUrl}/v2/groups/${encodeURIComponent(groupId)}/members/is_in_group?app_token=${token}`;
+      if (staffId) url += `&staff_id=${encodeURIComponent(staffId)}`;
+      const resp = await fetch(url);
+      if (!resp.ok) return null;
+      const data = (await resp.json()) as LansengerApiResponse;
+      if (data.errCode !== 0) {
+        this.log.error(`checkMembership: errCode=${data.errCode} errMsg=${data.errMsg ?? "n/a"} groupId=${groupId}`);
+        return null;
+      }
+      return (data.data as any)?.isInGroup === true;
+    } catch (e: any) {
+      this.log.error(`checkMembership: ${e.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Get group info + members for session metadata injection.
+   * Uses TTL cache. For groups with > 100 members, only returns info + count (no member list).
+   */
+  async getGroupSessionMeta(groupId: string): Promise<GroupSessionMeta> {
+    const groupInfo = await this.getGroupInfo(groupId);
+
+    // Check member cache first
+    const memberCached = this.groupMembersCache.get(groupId);
+    if (memberCached && Date.now() < memberCached.expiry) {
+      return {
+        groupInfo,
+        members: memberCached.data.members,
+        memberCount: memberCached.data.totalMembers,
+      };
+    }
+
+    // If we have groupInfo, check member count to decide strategy
+    if (groupInfo && groupInfo.totalMembers > 100) {
+      return { groupInfo, members: null, memberCount: groupInfo.totalMembers };
+    }
+
+    // Fetch full member list (no pageSize = all)
+    const membersData = await this.getGroupMembers(groupId);
+    return {
+      groupInfo,
+      members: membersData?.members ?? null,
+      memberCount: membersData?.totalMembers ?? groupInfo?.totalMembers ?? 0,
+    };
+  }
+
   detectLang(text: string): "zh" | "en" {
     const cjkChars = (text.match(/[\u4e00-\u9fff\u3400-\u4dbf\u3040-\u309f\u30a0-\u30ff]/g) ?? []).length;
     const ratio = text.length > 0 ? cjkChars / text.length : 0;
@@ -621,6 +726,10 @@ export class LansengerClient {
 
   getChatType(chatId: string): "group" | "dm" | undefined {
     return this.chatTypeMap.get(chatId);
+  }
+
+  hasChatId(chatId: string): boolean {
+    return this.chatTypeMap.has(chatId);
   }
 
   isGroupChat(chatId: string): boolean {
@@ -1287,5 +1396,47 @@ export type I18nAppCardData = {
 export function buildI18n(zhHans: string, zhHant: string, zhHantHK: string, en: string, fr: string): I18nObj {
   return { zhHans, zhHant, zhHantHK, en, fr };
 }
+
+// ---- Group API types ----
+
+export type GroupInfoData = {
+  name: string;
+  avatarId?: string;
+  avatarUrl?: string;
+  description?: string;
+  owner?: { staffId: string; name: string };
+  state: number; // 0=normal, 1=disbanded
+  creator?: { staffId: string; name: string };
+  manageMode?: number;
+  locationShare?: boolean;
+  needsConfirm?: boolean;
+  isPublic?: boolean;
+  maxMembers?: number;
+  maxHistoryMsgCount?: number;
+  totalMembers: number;
+  remindAll?: boolean;
+  sendMsgStatus?: boolean;
+};
+
+export type GroupMember = {
+  status: number; // 0=INACTIVE, 1=NORMAL, 2=FROZEN, 3=DELETED
+  staffId: string;
+  name: string;
+  avatarUrl?: string;
+  avatarId?: string;
+  orgName?: string;
+  role: number; // 0=member, 1=assistOwner, 2=owner
+};
+
+export type GroupMembersData = {
+  totalMembers: number;
+  members: GroupMember[];
+};
+
+export type GroupSessionMeta = {
+  groupInfo: GroupInfoData | null;
+  members: GroupMember[] | null; // null when > 100 members
+  memberCount: number;
+};
 
 export { DEFAULT_API_GATEWAY_URL, MAX_MESSAGE_LENGTH };
