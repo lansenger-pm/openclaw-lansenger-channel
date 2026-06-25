@@ -341,14 +341,17 @@ export function startLansengerGateway(api: OpenClawPluginApi): void {
         return true;
       }
 
+      const url = new URL(req.url ?? "/", "http://localhost");
+      const accountId = url.searchParams.get("accountId") ?? undefined;
+
       const chunks: Buffer[] = [];
       for await (const chunk of req) {
         chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk as Buffer);
       }
       const body = Buffer.concat(chunks).toString("utf-8");
 
-      const account = resolveAccount(api.config);
-      const key = account.accountId ?? "__default__";
+      const account = resolveAccount(api.config, accountId);
+      const key = account.appId || account.accountId || "__default__";
       const entry = runningAccounts.get(key);
       const client = entry?.client ?? makeClient(account, sdkLogger());
       const events = await client.processRawMessage(body);
@@ -494,20 +497,25 @@ async function autoConfigureApprovalAllowFrom(cfg: any, account: ResolvedAccount
 
 /**
  * Sync native slash commands built from OpenClaw's native command registry.
- * Respects `commands.native` config flag. Syncs to both private (scopeType=4)
+ * Respects `commands.native` config flag. Syncs to both private (scopeType=6)
  * and group (scopeType=5) scopes separately.
  */
-const COMMAND_SCOPE_PRIVATE = 4;
-const COMMAND_SCOPE_GROUP = 5;
+const COMMAND_SCOPE_PRIVATE = 6; // all private chats
+const COMMAND_SCOPE_GROUP = 5;     // all groups
 
 function buildLansengerCommands(api: OpenClawPluginApi): LansengerCommand[] {
   const nativeSpecs = listNativeCommandSpecsForConfig(api.config, { provider: "lansenger" });
   return nativeSpecs
     .filter((spec) => !spec.isAlias)
+    .filter((spec) => {
+      const name = spec.name.startsWith("/") ? spec.name.slice(1) : spec.name;
+      // Lansenger slash command API only allows alphanumeric + underscores
+      return /^[a-zA-Z0-9_]+$/.test(name);
+    })
     .map((spec) => {
       const name = spec.name.startsWith("/") ? spec.name.slice(1) : spec.name;
       const cmd: LansengerCommand = {
-        command: `/${name}`,
+        command: name,
         description: spec.description,
       };
 
@@ -894,7 +902,12 @@ async function handleInbound(
       const channelGroupAllowFrom = (lansengerCfg?.groupAllowFrom as unknown[]) ?? [];
       const accountGroupAllowFrom = (accountCfg?.groupAllowFrom as unknown[]) ?? [];
       const hasGroupAllowFrom = channelGroupAllowFrom.length > 0 || accountGroupAllowFrom.length > 0;
-      const groupPolicyMode = lansengerCfg?.groupPolicy as string | undefined;
+      // Resolve effective groupPolicy mode: account > section > default "open".
+      // Matches the SDK's own resolution (resolveChannelGroupPolicyMode).
+      // Used only for the SDK bug workaround below.
+      const effectiveGroupPolicyMode = (accountCfg?.groupPolicy as string | undefined)
+        ?? (lansengerCfg?.groupPolicy as string | undefined)
+        ?? "open";
 
       const groupPolicy = api.runtime.channel.groups.resolveGroupPolicy({
         cfg: api.config,
@@ -905,7 +918,7 @@ async function handleInbound(
       });
       log.debug(
         `inbound: groupPolicy resolved — chatId=${event.chatId} ` +
-        `mode=${groupPolicyMode} ` +
+        `mode=${effectiveGroupPolicyMode ?? "default"} ` +
         `allowlistEnabled=${groupPolicy.allowlistEnabled} ` +
         `allowed=${groupPolicy.allowed} ` +
         `hasGroupConfig=${Boolean(groupPolicy.groupConfig)} ` +
@@ -914,10 +927,11 @@ async function handleInbound(
         `accountId=${account.accountId}`
       );
       if (!groupPolicy.allowed) {
-        // Workaround SDK bug: open + groups with entries → allowlistEnabled=true →
-        // groups NOT in the groups map are incorrectly blocked.
-        // In open mode, unlisted groups should be allowed (only explicit enabled:false blocks).
-        if (groupPolicyMode === "open" && !groupPolicy.groupConfig) {
+        // Workaround SDK bug: when open mode has groups entries, the SDK
+        // incorrectly sets allowlistEnabled=true and blocks unlisted groups.
+        // Only apply when config explicitly says "open" and this group has no
+        // specific config — disabled/allowlist should NOT pass through.
+        if (effectiveGroupPolicyMode === "open" && !groupPolicy.groupConfig) {
           // pass through — open mode allows unlisted groups
         } else {
           log.info(`inbound: group dropped — groupPolicy not allowed for chatId=${event.chatId}`);
@@ -947,6 +961,8 @@ async function handleInbound(
         ?? account.autoMentionReply ?? false;
       const autoQuoteReply = groupConfig?.autoQuoteReply as boolean | undefined
         ?? account.autoQuoteReply ?? false;
+      const respondToAtAll = groupConfig?.respondToAtAll as boolean | undefined
+        ?? account.respondToAtAll ?? false;
       if (autoMentionReply && event.senderId) {
         reminder = { userIds: [event.senderId] };
       }
@@ -954,16 +970,25 @@ async function handleInbound(
         refMsgId = event.messageId;
       }
 
+      // Resolve requireMention: account-level requireMention overrides SDK default.
+      // The SDK only reads per-group config (groups.<id>.requireMention), so we
+      // pass account/section-level settings as requireMentionOverride.
+      const configRequireMention = accountCfg?.requireMention as boolean | undefined
+        ?? lansengerCfg?.requireMention as boolean | undefined;
       const requireMention = api.runtime.channel.groups.resolveRequireMention({
         cfg: api.config,
         channel: "lansenger",
         groupId: event.chatId,
         accountId: account.accountId,
+        ...(configRequireMention !== undefined ? { requireMentionOverride: configRequireMention } : {}),
       });
       const atMe = event.isAtMe ?? false;
       const atAll = event.isAtAll ?? false;
       log.info(`inbound: group allowed — chatId=${event.chatId} requireMention=${requireMention} isAtMe=${atMe} isAtAll=${atAll}`);
-      if (requireMention && !atMe && !atAll) {
+      // @all is only a valid mention when respondToAtAll is enabled.
+      // Otherwise only explicit @bot triggers.
+      const effectiveAt = atMe || (atAll && respondToAtAll);
+      if (requireMention && !effectiveAt) {
         log.info(`inbound: group dropped — requireMention but bot not @mentioned`);
         return;
       }

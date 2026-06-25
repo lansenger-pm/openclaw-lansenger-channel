@@ -67,7 +67,7 @@ metadata: {"openclaw":{"requires":{"cli":["openclaw"]},"primaryEnv":"LANSENGER_A
 
 ### 群聊设置
 
-群聊接入有**三层**独立的过滤机制，三者是**与关系**——必须同时满足才能入站：
+群聊接入有**三层**独立的过滤机制，群级(2)与用户级(1/3)是**与关系**——必须同时满足才能入站：
 
 1. **频道级用户过滤**：`groupAllowFrom` — 哪些用户能在任意群触发
 2. **群级过滤**：`groupPolicy` + `groups.<chatId>.enabled` — 哪些群允许接入
@@ -77,10 +77,11 @@ metadata: {"openclaw":{"requires":{"cli":["openclaw"]},"primaryEnv":"LANSENGER_A
 |--------|------|--------|------|
 | `groupPolicy` | enum | `open` | 群级策略。可选值：`open`（所有群可触发）、`allowlist`（仅 groups 中 enabled:true 的群）、`disabled`（禁止群消息） |
 | `groupAllowFrom` | string[] | `[]` | **用户级过滤**：只有列表中的蓝信用户 ID 在群聊中发消息才会触发 bot。注意，此项填的是**用户 ID**（发消息的人），不是群 ID。蓝信用户 ID 和群 ID 格式相同，无法靠格式区分，请从蓝信消息日志或 API 确认。 |
-| `groups` | object | `{}` | 单群配置（key 为群 chatId），可设置 `enabled`、`requireMention`、`autoMentionReply`、`autoQuoteReply`、`allowFrom`。`allowFrom` 限定该群内允许触发 bot 的用户 ID（不设置或空数组时无限制），与频道级 `groupAllowFrom` 是 AND 关系。 |
+| `groups` | object | `{}` | 单群配置（key 为群 chatId），可设置 `enabled`、`requireMention`、`autoMentionReply`、`autoQuoteReply`、`respondToAtAll`、`allowFrom`。`allowFrom` 限定该群内允许触发 bot 的用户 ID（不设置或空数组时无限制），**替换**上级 `groupAllowFrom`（群级 > 账号级 > 频道级）。 |
 | `requireMention` | boolean | `true` | 群聊中是否需要 `@机器人名称` 才会触发。设为 `false` 则任何消息都会触发。 |
 | `autoMentionReply` | boolean | `false` | 群聊自动回复时是否 @入站消息发送者。蓝信 API 会根据 staffId 自动拼接名字，无需 Agent 手动写 `@姓名`。支持按群、按账号覆盖。 |
 | `autoQuoteReply` | boolean | `false` | 群聊和私聊回复时是否自动引用入站消息。支持按群、按账号覆盖。私聊时 per-group 配置不生效。 |
+| `respondToAtAll` | boolean | `false` | 群聊中 `@全体成员` 是否触发机器人。默认 `false`，仅 `@机器人名称` 会触发；设为 `true` 后 @all 也有效。支持按群、按账号、section 级覆盖。 |
 
 **`groups.<chatId>.enabled` 语义：**
 
@@ -96,7 +97,7 @@ metadata: {"openclaw":{"requires":{"cli":["openclaw"]},"primaryEnv":"LANSENGER_A
 | `allowlist` | 是 | 未设置 / `true` | ✅ 放行（仅列出即可） |
 | `allowlist` | 是 | `false` | ❌ 拦截 |
 
-> 以上仅覆盖群级过滤。消息还需通过**用户级过滤**：若设了 `groupAllowFrom`，sender 必须在列表中；若设了 `groups.<chatId>.allowFrom`，sender 必须在该群的列表中。两者是 AND 关系。
+> 以上仅覆盖群级过滤。消息还需通过**用户级过滤**：若设了 `groupAllowFrom`，sender 必须在列表中；若设了 `groups.<chatId>.allowFrom`，则**替换**上级 `groupAllowFrom`（仅群级生效，上级不参与）。
 
 **按群粒度微调** — 优先使用 account 级路径 `channels.lansenger.accounts.<appId>.groups.<chatId>` 避免影响其他机器人：
 
@@ -107,6 +108,11 @@ openclaw config set channels.lansenger.accounts.<appId>.groups.<chatId>.requireM
 openclaw config set channels.lansenger.accounts.<appId>.groups.<chatId>.autoMentionReply true
 # 开启自动引用回复
 openclaw config set channels.lansenger.accounts.<appId>.groups.<chatId>.autoQuoteReply true
+
+# 允许 @全体成员 触发机器人（account 级 groups）
+openclaw config set channels.lansenger.accounts.<appId>.groups.<chatId>.respondToAtAll true
+# 或 section 级 groups（仅一个机器人时可用）
+openclaw config set channels.lansenger.groups.<chatId>.respondToAtAll true
 
 # 启用/禁用特定群
 openclaw config set channels.lansenger.accounts.<appId>.groups.<chatId>.enabled false
@@ -165,7 +171,7 @@ openclaw config set channels.lansenger.accounts.<appId>.dmPolicy pairing
 # 每个账号独立支持以上所有设置：
 # name, apiGatewayUrl, groupPolicy, groupAllowFrom, requireMention,
 # ackMessage, revokeAckMessage, ackMessageTextZh, ackMessageTextEn,
-# mediaLocalRoots, dangerouslyAllowPrivateNetwork
+# mediaLocalRoots, dangerouslyAllowPrivateNetwork, respondToAtAll
 # （allowFrom / dmPolicy=allowlist/open 对个人机器人无实际意义）
 ```
 

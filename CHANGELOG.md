@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.16.14] - 2026-06-25
+
+### Added
+
+- **`respondToAtAll` config toggle**: Controls whether `@全体成员` counts as a valid mention. Supports 4-level priority: per-group > account > section > default `false`. When enabled, @all triggers the bot the same as @bot.
+- **Webhook `?accountId=` query param**: Webhook endpoint now supports routing to a specific account via query parameter, enabling multi-account testing and simulation.
+
+### Fixed
+
+- **`requireMention` not honored at account/section level**: SDK's `resolveRequireMention` only reads per-group config (`groups.<id>.requireMention`). Now account/section-level `requireMention` is passed as `requireMentionOverride`, making `channels.lansenger.requireMention` and `channels.lansenger.accounts.<id>.requireMention` work as expected.
+- **`@all` incorrectly assumed to equal `@bot`**: `requireMention=true` now only triggers on explicit `@bot`, not `@all`. Controlled by new `respondToAtAll` config.
+- **Group policy `disabled` bypassed by SDK workaround**: The workaround for an SDK bug (open mode incorrectly blocking unlisted groups) was using section-level `groupPolicy` to determine mode. Now uses effective mode (account > section > default "open"), so account-level `disabled` properly blocks even when section has Gateway-injected "open".
+- **Command registration**: Commands now registered without leading `/` (Lansenger client adds it); commands with special characters (non-alphanumeric, non-underscore) are filtered out; private command scope corrected from `4` (all group admins) to `6` (all private chats).
+
 ## [3.16.13] - 2026-06-25
 
 ### Added

@@ -446,6 +446,283 @@ describe("resolveAccount edge cases", () => {
   });
 });
 
+describe("resolveAccount config inheritance", () => {
+  // -------------------------------------------------------------------
+  // Multi-account mode: section = top-level, account = sub-account entry.
+  // Priority rules:
+  //   SDK-managed security fields: section ?? account  (section wins)
+  //   Channel-behavior fields:     account ?? section  (account wins)
+  //   apiGatewayUrl:               account ?? section  (account wins)
+  // -------------------------------------------------------------------
+
+  it("allowFrom: section overrides account (SDK security field)", () => {
+    const cfg = {
+      channels: {
+        lansenger: {
+          allowFrom: ["section-user-1", "section-user-2"],
+          accounts: {
+            "bot1": { appId: "bot1", appSecret: "s1", allowFrom: ["account-user"] },
+          },
+        },
+      },
+    } as any;
+    const account = resolveAccount(cfg, "bot1");
+    expect(account.allowFrom).toEqual(["section-user-1", "section-user-2"]);
+  });
+
+  it("allowFrom: falls back to account when section not set", () => {
+    const cfg = {
+      channels: {
+        lansenger: {
+          accounts: {
+            "bot1": { appId: "bot1", appSecret: "s1", allowFrom: ["account-user"] },
+          },
+        },
+      },
+    } as any;
+    const account = resolveAccount(cfg, "bot1");
+    expect(account.allowFrom).toEqual(["account-user"]);
+  });
+
+  it("allowFrom: empty array at account does NOT override section non-empty", () => {
+    const cfg = {
+      channels: {
+        lansenger: {
+          allowFrom: ["section-user"],
+          accounts: {
+            "bot1": { appId: "bot1", appSecret: "s1", allowFrom: [] },
+          },
+        },
+      },
+    } as any;
+    const account = resolveAccount(cfg, "bot1");
+    expect(account.allowFrom).toEqual(["section-user"]);
+  });
+
+  it("dmPolicy: section overrides account (SDK security field)", () => {
+    const cfg = {
+      channels: {
+        lansenger: {
+          dmPolicy: "open",
+          accounts: {
+            "bot1": { appId: "bot1", appSecret: "s1", dmPolicy: "disabled" },
+          },
+        },
+      },
+    } as any;
+    const account = resolveAccount(cfg, "bot1");
+    expect(account.dmPolicy).toBe("open");
+  });
+
+  it("dmPolicy: falls back to account when section not set", () => {
+    const cfg = {
+      channels: {
+        lansenger: {
+          accounts: {
+            "bot1": { appId: "bot1", appSecret: "s1", dmPolicy: "allowlist" },
+          },
+        },
+      },
+    } as any;
+    const account = resolveAccount(cfg, "bot1");
+    expect(account.dmPolicy).toBe("allowlist");
+  });
+
+  it("dmPolicy: section dmSecurity fallback before account dmPolicy", () => {
+    const cfg = {
+      channels: {
+        lansenger: {
+          dmSecurity: "paired",
+          accounts: {
+            "bot1": { appId: "bot1", appSecret: "s1", dmPolicy: "open" },
+          },
+        },
+      },
+    } as any;
+    const account = resolveAccount(cfg, "bot1");
+    // section.dmSecurity wins over account.dmPolicy
+    expect(account.dmPolicy).toBe("paired");
+  });
+
+  it("mediaLocalRoots: section overrides account (SDK security field)", () => {
+    const cfg = {
+      channels: {
+        lansenger: {
+          mediaLocalRoots: ["/section/root"],
+          accounts: {
+            "bot1": { appId: "bot1", appSecret: "s1", mediaLocalRoots: ["/account/root"] },
+          },
+        },
+      },
+    } as any;
+    const account = resolveAccount(cfg, "bot1");
+    expect(account.mediaLocalRoots).toEqual(["/section/root"]);
+  });
+
+  it("mediaLocalRoots: falls back to account when section not set", () => {
+    const cfg = {
+      channels: {
+        lansenger: {
+          accounts: {
+            "bot1": { appId: "bot1", appSecret: "s1", mediaLocalRoots: ["/account/root"] },
+          },
+        },
+      },
+    } as any;
+    const account = resolveAccount(cfg, "bot1");
+    expect(account.mediaLocalRoots).toEqual(["/account/root"]);
+  });
+
+  it("autoMentionReply: account overrides section (channel behavior field)", () => {
+    const cfg = {
+      channels: {
+        lansenger: {
+          autoMentionReply: false,
+          accounts: {
+            "bot1": { appId: "bot1", appSecret: "s1", autoMentionReply: true },
+          },
+        },
+      },
+    } as any;
+    const account = resolveAccount(cfg, "bot1");
+    expect(account.autoMentionReply).toBe(true);
+  });
+
+  it("autoMentionReply: inherits section when account not set", () => {
+    const cfg = {
+      channels: {
+        lansenger: {
+          autoMentionReply: true,
+          accounts: {
+            "bot1": { appId: "bot1", appSecret: "s1" },
+          },
+        },
+      },
+    } as any;
+    const account = resolveAccount(cfg, "bot1");
+    expect(account.autoMentionReply).toBe(true);
+  });
+
+  it("autoMentionReply: defaults to false when neither section nor account set", () => {
+    const cfg = {
+      channels: {
+        lansenger: {
+          accounts: {
+            "bot1": { appId: "bot1", appSecret: "s1" },
+          },
+        },
+      },
+    } as any;
+    const account = resolveAccount(cfg, "bot1");
+    expect(account.autoMentionReply).toBe(false);
+  });
+
+  it("autoQuoteReply: account overrides section (channel behavior field)", () => {
+    const cfg = {
+      channels: {
+        lansenger: {
+          autoQuoteReply: false,
+          accounts: {
+            "bot1": { appId: "bot1", appSecret: "s1", autoQuoteReply: true },
+          },
+        },
+      },
+    } as any;
+    const account = resolveAccount(cfg, "bot1");
+    expect(account.autoQuoteReply).toBe(true);
+  });
+
+  it("ackMessage: account overrides section (channel behavior field)", () => {
+    const cfg = {
+      channels: {
+        lansenger: {
+          ackMessage: true,
+          accounts: {
+            "bot1": { appId: "bot1", appSecret: "s1", ackMessage: false },
+          },
+        },
+      },
+    } as any;
+    const account = resolveAccount(cfg, "bot1");
+    expect(account.ackMessage).toBe(false);
+  });
+
+  it("ackMessage: inherits section when account not set", () => {
+    const cfg = {
+      channels: {
+        lansenger: {
+          ackMessage: true,
+          accounts: {
+            "bot1": { appId: "bot1", appSecret: "s1" },
+          },
+        },
+      },
+    } as any;
+    const account = resolveAccount(cfg, "bot1");
+    expect(account.ackMessage).toBe(true);
+  });
+
+  it("apiGatewayUrl: account overrides section", () => {
+    const cfg = {
+      channels: {
+        lansenger: {
+          apiGatewayUrl: "https://section.example.com",
+          accounts: {
+            "bot1": { appId: "bot1", appSecret: "s1", apiGatewayUrl: "https://account.example.com" },
+          },
+        },
+      },
+    } as any;
+    const account = resolveAccount(cfg, "bot1");
+    expect(account.apiGatewayUrl).toBe("https://account.example.com");
+  });
+
+  it("apiGatewayUrl: inherits section when account not set", () => {
+    const cfg = {
+      channels: {
+        lansenger: {
+          apiGatewayUrl: "https://section.example.com",
+          accounts: {
+            "bot1": { appId: "bot1", appSecret: "s1" },
+          },
+        },
+      },
+    } as any;
+    const account = resolveAccount(cfg, "bot1");
+    expect(account.apiGatewayUrl).toBe("https://section.example.com");
+  });
+
+  it("homeChannel: section overrides account", () => {
+    const cfg = {
+      channels: {
+        lansenger: {
+          homeChannel: "section-owner",
+          accounts: {
+            "bot1": { appId: "bot1", appSecret: "s1", homeChannel: "account-owner" },
+          },
+        },
+      },
+    } as any;
+    const account = resolveAccount(cfg, "bot1");
+    expect(account.homeChannel).toBe("section-owner");
+  });
+
+  it("respondToAtAll: account overrides section (channel behavior field)", () => {
+    const cfg = {
+      channels: {
+        lansenger: {
+          respondToAtAll: false,
+          accounts: {
+            "bot1": { appId: "bot1", appSecret: "s1", respondToAtAll: true },
+          },
+        },
+      },
+    } as any;
+    const account = resolveAccount(cfg, "bot1");
+    expect(account.respondToAtAll).toBe(true);
+  });
+});
+
 describe("config callbacks", () => {
 
   it("isConfigured returns true with appId+appSecret", () => {

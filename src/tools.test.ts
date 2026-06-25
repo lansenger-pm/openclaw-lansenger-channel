@@ -45,6 +45,7 @@ const mockAccount = {
   mediaLocalRoots: [] as string[],
   autoMentionReply: false,
   autoQuoteReply: false,
+  respondToAtAll: false,
 };
 
 function mockRunning() {

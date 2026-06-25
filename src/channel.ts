@@ -80,6 +80,7 @@ type LansengerAccount = {
   mediaLocalRoots?: string[];
   autoMentionReply?: boolean;
   autoQuoteReply?: boolean;
+  respondToAtAll?: boolean;
 }
 
 type ResolvedAccount = {
@@ -100,6 +101,7 @@ type ResolvedAccount = {
   mediaLocalRoots: string[];
   autoMentionReply: boolean;
   autoQuoteReply: boolean;
+  respondToAtAll: boolean;
 };
 
 function resolveSecretValue(raw: unknown): string {
@@ -154,6 +156,42 @@ function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): Resolve
     );
   }
   const apiGatewayUrl = account?.apiGatewayUrl ?? section?.apiGatewayUrl ?? process.env.LANSENGER_API_GATEWAY_URL ?? DEFAULT_API_GATEWAY_URL;
+
+  // ── Config field priority in multi-account mode ──────────────────────────
+  //
+  // Two distinct priority patterns are used deliberately, NOT a bug:
+  //
+  // 1. SECURITY FIELDS → `section ?? account` (top-level wins)
+  //    Fields: allowFrom, dmPolicy, dmSecurity, mediaLocalRoots, homeChannel
+  //
+  //    These are consumed by the OpenClaw SDK security layer
+  //    (security.dm.resolvePolicy / resolveAllowFrom) and act as a global
+  //    security baseline. The section-level config represents the bot owner's
+  //    security posture — sub-accounts should NOT be able to silently widen
+  //    access (e.g. change dmPolicy from "pairing" to "open" or expose
+  //    media paths the owner didn't approve). Section-first ensures the
+  //    owner's security constraints always apply.
+  //
+  //    The SDK itself does NOT do section/account merging for these values;
+  //    it receives the per-account resolved object and passes it directly
+  //    to resolvePolicy/resolveAllowFrom. Priority is entirely the plugin's
+  //    responsibility.
+  //
+  // 2. CHANNEL BEHAVIOR FIELDS → `account ?? section` (sub-account wins)
+  //    Fields: ackMessage, ackMessageText*, revokeAckMessage,
+  //            autoMentionReply, autoQuoteReply, respondToAtAll
+  //
+  //    These are UX/behavior preferences used by the channel plugin itself
+  //    (not the SDK security layer). Sub-accounts should be able to
+  //    customize their own reply behavior independently.
+  //
+  // 3. INFRASTRUCTURE FIELDS → `account ?? section` (sub-account wins)
+  //    Fields: apiGatewayUrl
+  //
+  //    Different accounts may point to different Lansenger API gateways
+  //    (e.g. different enterprise deployments).
+  // ─────────────────────────────────────────────────────────────────────────
+
   const allowFrom: string[] = section?.allowFrom ?? account?.allowFrom ?? [];
   const dmPolicy = section?.dmPolicy ?? section?.dmSecurity ?? account?.dmPolicy ?? account?.dmSecurity;
   const homeChannel = section?.homeChannel ?? account?.homeChannel;
@@ -166,6 +204,7 @@ function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): Resolve
   const mediaLocalRoots: string[] = section?.mediaLocalRoots ?? account?.mediaLocalRoots ?? [];
   const autoMentionReply = account?.autoMentionReply !== undefined ? account.autoMentionReply : (section?.autoMentionReply ?? false);
   const autoQuoteReply = account?.autoQuoteReply !== undefined ? account.autoQuoteReply : (section?.autoQuoteReply ?? false);
+  const respondToAtAll = account?.respondToAtAll !== undefined ? account.respondToAtAll : (section?.respondToAtAll ?? false);
 
   return {
     accountId: resolvedAccountId || appId || null,
@@ -184,6 +223,7 @@ function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): Resolve
     mediaLocalRoots,
     autoMentionReply,
     autoQuoteReply,
+    respondToAtAll,
   };
 }
 
