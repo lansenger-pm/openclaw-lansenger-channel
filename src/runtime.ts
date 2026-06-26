@@ -287,14 +287,21 @@ export function startLansengerGateway(api: OpenClawPluginApi): void {
     log.warn(`plugin startup: api.runtime.channel.pairing is UNDEFINED — DM pairing will be disabled`);
   }
 
+  // When a tool profile or allow list is configured, plugin tools may be
+  // excluded unless "group:plugins" is in alsoAllow (or allow).
   const toolsConfig = api.config.tools as Record<string, any> | undefined;
-  const alsoAllow = (toolsConfig?.alsoAllow ?? []) as string[];
-  if (!alsoAllow.some((e: string) => e === "group:plugins" || e === "__openclaw_default_plugin_tools__")) {
-    log.warn(
-      `Agent tools (lansenger_send_file, etc.) are registered by this channel plugin but may be INVISIBLE under the current tool profile.` +
-      ` Add to openclaw.json: "tools": { "alsoAllow": ["group:plugins"] }` +
-      ` — see https://openclaw.ai/docs/tool-policy for details.`
-    );
+  const hasToolRestriction = !!(toolsConfig?.profile || (toolsConfig?.allow && toolsConfig.allow.length > 0));
+  if (hasToolRestriction) {
+    const allowList = (toolsConfig?.allow ?? []) as string[];
+    const alsoAllow = (toolsConfig?.alsoAllow ?? []) as string[];
+    const combined = [...allowList, ...alsoAllow];
+    if (!combined.some((e: string) => e === "group:plugins" || e === "__openclaw_default_plugin_tools__" || e === "*")) {
+      log.warn(
+        `Agent tools (lansenger_send_file, etc.) are registered by this channel plugin but may be INVISIBLE under the current tool profile (profile="${toolsConfig?.profile ?? "custom"}").` +
+        ` Add to openclaw.json: "tools": { "alsoAllow": ["group:plugins"] }` +
+        ` — see https://openclaw.ai/docs/tool-policy for details.`
+      );
+    }
   }
 
   const section = (api.config.channels as Record<string, any>)?.["lansenger"];
