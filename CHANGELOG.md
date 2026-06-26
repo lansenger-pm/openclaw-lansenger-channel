@@ -21,14 +21,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 - **`commands.ownerAllowFrom` auto-configuration**: On first DM, the owner's ID is automatically appended so they can use slash commands without manual configuration.
 
-## [3.16.17] - 2026-06-26
-
-> Unlisted — replaced by 3.16.18 (missed local changes).
-
-## [3.16.16] - 2026-06-26
-
-> Unlisted — replaced by 3.16.17 (VERSION file fix).
-
 ## [3.16.15] - 2026-06-26
 
 ### Added
