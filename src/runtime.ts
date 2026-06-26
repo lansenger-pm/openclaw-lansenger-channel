@@ -938,6 +938,22 @@ async function handleInbound(
       }
     }
 
+    // Auto-configure commands.ownerAllowFrom on first DM so the owner can use
+    // slash commands without manually adding themselves to the allow list.
+    try {
+      const commandsCfg = (api.config as any)?.commands ?? {};
+      const existingOwner = commandsCfg?.ownerAllowFrom;
+      if (!existingOwner || existingOwner.length === 0) {
+        execSync(
+          `openclaw config set commands.ownerAllowFrom '["${event.senderId}"]'`,
+          { stdio: "pipe", timeout: 5000 },
+        );
+        log.info(`autoConfigureCommandOwner: set commands.ownerAllowFrom = ["${event.senderId}"]`);
+      }
+    } catch (e: any) {
+      log.warn(`autoConfigureCommandOwner: ${e.message}`);
+    }
+
     // autoMentionReply / autoQuoteReply for DMs: account > section
     if (account.autoMentionReply && event.senderId) {
       reminder = { userIds: [event.senderId] };
