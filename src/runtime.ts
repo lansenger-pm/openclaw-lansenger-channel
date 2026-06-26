@@ -940,19 +940,27 @@ async function handleInbound(
 
     // Auto-configure commands.ownerAllowFrom on first DM so the owner can use
     // slash commands without manually adding themselves to the allow list.
-    try {
-      const commandsCfg = (api.config as any)?.commands ?? {};
-      const existing: string[] = commandsCfg?.ownerAllowFrom ?? [];
-      if (!existing.includes(event.senderId)) {
-        const updated = [...existing, event.senderId];
-        execSync(
-          `openclaw config set commands.ownerAllowFrom '${JSON.stringify(updated)}'`,
-          { stdio: "pipe", timeout: 5000 },
+    // Only runs with real accounts (not test/mock environments).
+    if (account.appId) {
+      try {
+        const commandsCfg = (api.config as any)?.commands ?? {};
+        const existing: string[] = commandsCfg?.ownerAllowFrom ?? [];
+        const id = `lansenger:${event.senderId}`;
+        const bare = event.senderId;
+        const alreadyExists = existing.some(
+          (e: string) => e === id || e === bare || e.replace(/^lansenger:/, "") === bare,
         );
-        log.info(`autoConfigureCommandOwner: set commands.ownerAllowFrom = ${JSON.stringify(updated)}`);
+        if (!alreadyExists) {
+          const updated = [...existing, id];
+          execSync(
+            `openclaw config set commands.ownerAllowFrom '${JSON.stringify(updated)}'`,
+            { stdio: "pipe", timeout: 5000 },
+          );
+          log.info(`autoConfigureCommandOwner: set commands.ownerAllowFrom = ${JSON.stringify(updated)}`);
+        }
+      } catch (e: any) {
+        log.warn(`autoConfigureCommandOwner: ${e.message}`);
       }
-    } catch (e: any) {
-      log.warn(`autoConfigureCommandOwner: ${e.message}`);
     }
 
     // autoMentionReply / autoQuoteReply for DMs: account > section
