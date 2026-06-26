@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.16.17] - 2026-06-26
+
+### Fixed
+
+- **VERSION file out of sync**: Update VERSION file to match package.json (was missed in 3.16.16 release).
+
 ## [3.16.16] - 2026-06-26
 
 ### Fixed
