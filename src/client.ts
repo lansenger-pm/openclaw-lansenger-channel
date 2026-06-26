@@ -555,7 +555,14 @@ export class LansengerClient {
         this.log.error(`fetchCommands: errCode=${data.errCode} errMsg=${data.errMsg ?? "n/a"} scopeType=${scopeType}`);
         return null;
       }
-      return data.data?.commands ?? [];
+      const rawCommands: Array<Record<string, unknown>> = data.data?.commands ?? [];
+      return rawCommands.map((cmd) => {
+        const { description_i18n, ...rest } = cmd;
+        return {
+          ...rest,
+          ...(description_i18n ? { i18nDescription: description_i18n } : {}),
+        } as LansengerCommand;
+      });
     } catch (e: any) {
       this.log.error(`fetchCommands: ${e.message}`);
       return null;
@@ -1295,7 +1302,7 @@ export type LansengerCommand = {
   command: string;
   description: string;
   icon?: string;
-  description_i18n?: {
+  i18nDescription?: {
     zhHans?: string;
     zhHant?: string;
     zhHantHK?: string;

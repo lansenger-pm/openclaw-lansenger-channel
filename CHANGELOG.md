@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.16.19] - 2026-06-26
+
+### Fixed
+
+- **Slash Command multi-language descriptions not working**: The create API field name was `description_i18n` (matching the fetch response) but the Lansenger OpenAPI spec expects `i18nDescription` for create requests. Renamed to `i18nDescription`.
+
+### Added
+
+- **Command sync retry on failure**: If `deleteCommands` or `createCommands` fails for any scope, the sync automatically retries after 30 seconds, up to 3 times total.
+- **Owner DM triggers command sync**: On the first DM from the bot owner, any pending/failed command sync is re-triggered immediately, ensuring slash commands are registered even if the initial startup sync failed.
+
+### Changed
+
+- **Reduced sync log verbosity**: `syncCommands: built` and `syncCommands: scheduling retry` downgraded from `info` to `debug`.
+
 ## [3.16.18] - 2026-06-26
 
 ### Changed

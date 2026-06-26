@@ -170,7 +170,7 @@ async function startAccount(api: OpenClawPluginApi, accountId?: string | null): 
   runningAccounts.set(key, { accountId: account.accountId, account, client, debouncer });
 
   // Sync native slash commands to Lansenger (fire-and-forget — don't block connection)
-  syncLansengerNativeCommands(client, api, key).catch((e) =>
+  syncLansengerNativeCommands(client, api, key, account).catch((e) =>
     log.error(`syncCommands: unhandled error — ${e instanceof Error ? e.message : String(e)} (key=${key})`),
   );
 
@@ -523,6 +523,10 @@ async function autoConfigureApprovalAllowFrom(cfg: any, account: ResolvedAccount
  */
 const COMMAND_SCOPE_PRIVATE = 6; // all private chats
 const COMMAND_SCOPE_GROUP = 5;     // all groups
+const SYNC_RETRY_MAX = 3;
+const SYNC_RETRY_DELAY_MS = 30_000;
+const syncRetryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const ownerSyncDone = new Set<string>();
 
 function buildLansengerCommands(api: OpenClawPluginApi): LansengerCommand[] {
   const nativeSpecs = listNativeCommandSpecsForConfig(api.config, { provider: "lansenger" });
@@ -540,7 +544,7 @@ function buildLansengerCommands(api: OpenClawPluginApi): LansengerCommand[] {
         description: spec.description,
       };
 
-      const i18n: NonNullable<LansengerCommand["description_i18n"]> = {};
+      const i18n: NonNullable<LansengerCommand["i18nDescription"]> = {};
       const enDesc = spec.descriptionLocalizations?.["en"] ?? spec.description;
       if (enDesc) i18n.en = enDesc;
 
@@ -563,15 +567,42 @@ function buildLansengerCommands(api: OpenClawPluginApi): LansengerCommand[] {
         ?? BUILTIN_COMMAND_I18N[name]?.fr;
       if (frDesc) i18n.fr = frDesc;
 
-      if (Object.keys(i18n).length > 0) cmd.description_i18n = i18n;
+      if (Object.keys(i18n).length > 0) cmd.i18nDescription = i18n;
       return cmd;
     });
+}
+
+function cancelSyncRetry(key: string): void {
+  const timer = syncRetryTimers.get(key);
+  if (timer) {
+    clearTimeout(timer);
+    syncRetryTimers.delete(key);
+  }
+}
+
+function scheduleSyncRetry(
+  api: OpenClawPluginApi,
+  key: string,
+  account: ResolvedAccount,
+  attempt: number,
+): void {
+  const timer = setTimeout(() => {
+    syncRetryTimers.delete(key);
+    const entry = runningAccounts.get(key);
+    const retryClient = entry?.client ?? makeClient(account, sdkLogger());
+    syncLansengerNativeCommands(retryClient, api, key, account, attempt + 1).catch((e) =>
+      log.error(`syncCommands: retry error — ${e instanceof Error ? e.message : String(e)} (key=${key})`),
+    );
+  }, SYNC_RETRY_DELAY_MS);
+  syncRetryTimers.set(key, timer);
 }
 
 async function syncLansengerNativeCommands(
   client: LansengerClient,
   api: OpenClawPluginApi,
   key: string,
+  account: ResolvedAccount,
+  attempt: number = 1,
 ): Promise<void> {
   try {
     const nativeEnabled = resolveNativeCommandsEnabled({
@@ -581,31 +612,52 @@ async function syncLansengerNativeCommands(
     });
     if (!nativeEnabled) {
       log.info(`syncCommands: native commands disabled (key=${key}), skipping`);
+      cancelSyncRetry(key);
       return;
     }
 
     const commands = buildLansengerCommands(api);
     if (commands.length === 0) {
       log.info(`syncCommands: no native commands to register (key=${key}), skipping`);
+      cancelSyncRetry(key);
       return;
     }
-    log.info(`syncCommands: built ${commands.length} native command(s) (key=${key})`);
+    log.debug(`syncCommands: built ${commands.length} native command(s) (key=${key} attempt=${attempt}/${SYNC_RETRY_MAX})`);
+
+    let hasFailure = false;
 
     await client.deleteCommands(COMMAND_SCOPE_PRIVATE);
     const privResult = await client.createCommands(COMMAND_SCOPE_PRIVATE, commands);
     if (!privResult.success) {
       log.error(`syncCommands: private scope registration failed — ${privResult.error} (key=${key})`);
+      hasFailure = true;
     }
 
     await client.deleteCommands(COMMAND_SCOPE_GROUP);
     const groupResult = await client.createCommands(COMMAND_SCOPE_GROUP, commands);
     if (!groupResult.success) {
       log.error(`syncCommands: group scope registration failed — ${groupResult.error} (key=${key})`);
+      hasFailure = true;
     }
 
-    log.info(`syncCommands: done — ${commands.length} command(s) → private + groups (key=${key})`);
+    if (hasFailure && attempt < SYNC_RETRY_MAX) {
+      log.debug(`syncCommands: scheduling retry ${attempt + 1}/${SYNC_RETRY_MAX} in ${SYNC_RETRY_DELAY_MS / 1000}s (key=${key})`);
+      scheduleSyncRetry(api, key, account, attempt);
+    } else if (hasFailure) {
+      log.error(`syncCommands: all ${SYNC_RETRY_MAX} attempts exhausted (key=${key})`);
+      cancelSyncRetry(key);
+    } else {
+      cancelSyncRetry(key);
+      log.info(`syncCommands: done — ${commands.length} command(s) → private + groups (key=${key})`);
+    }
   } catch (e: unknown) {
-    log.error(`syncCommands: failed — ${e instanceof Error ? e.message : String(e)} (key=${key})`);
+    log.error(`syncCommands: failed — ${e instanceof Error ? e.message : String(e)} (key=${key} attempt=${attempt}/${SYNC_RETRY_MAX})`);
+    if (attempt < SYNC_RETRY_MAX) {
+      log.debug(`syncCommands: scheduling retry ${attempt + 1}/${SYNC_RETRY_MAX} after error in ${SYNC_RETRY_DELAY_MS / 1000}s (key=${key})`);
+      scheduleSyncRetry(api, key, account, attempt);
+    } else {
+      cancelSyncRetry(key);
+    }
   }
 }
 
@@ -694,7 +746,7 @@ export async function gatewayStartAccount(ctx: ChannelGatewayContext<ResolvedAcc
     await autoConfigureApprovalAllowFrom(ctx.cfg, account);
     // Sync native slash commands (fire-and-forget — don't block gateway startup)
     if (pluginApi) {
-      syncLansengerNativeCommands(client, pluginApi, key).catch((e) =>
+      syncLansengerNativeCommands(client, pluginApi, key, account).catch((e) =>
         log.error(`syncCommands: unhandled error — ${e instanceof Error ? e.message : String(e)} (key=${key})`),
       );
     }
@@ -972,6 +1024,19 @@ async function handleInbound(
     if (account.autoQuoteReply && event.messageId) {
       refMsgId = event.messageId;
       log.info(`inbound: autoQuoteReply enabled (DM), refMsgId=${event.messageId}`);
+    }
+  }
+
+  // Retry command sync on first owner DM (in case startup sync failed)
+  if (!ownerSyncDone.has(runningKey)) {
+    ownerSyncDone.add(runningKey);
+    const entry = runningAccounts.get(runningKey);
+    if (entry) {
+      log.info(`syncCommands: triggered by first owner DM (key=${runningKey})`);
+      cancelSyncRetry(runningKey);
+      syncLansengerNativeCommands(entry.client, api, runningKey, account).catch((e) =>
+        log.error(`syncCommands: owner-triggered sync error — ${e instanceof Error ? e.message : String(e)} (key=${runningKey})`),
+      );
     }
   }
 

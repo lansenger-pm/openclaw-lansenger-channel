@@ -2,7 +2,7 @@
  * Multi-language descriptions for OpenClaw built-in native commands.
  *
  * OpenClaw's built-in commands do not provide descriptionLocalizations,
- * so we supply them here for Lansenger's description_i18n field
+ * so we supply them here for Lansenger's i18nDescription field
  * (zhHans / zhHant / zhHantHK / en / fr).
  */
 export const BUILTIN_COMMAND_I18N: Record<
