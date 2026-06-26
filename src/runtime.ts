@@ -287,11 +287,15 @@ export function startLansengerGateway(api: OpenClawPluginApi): void {
     log.warn(`plugin startup: api.runtime.channel.pairing is UNDEFINED — DM pairing will be disabled`);
   }
 
-  // When a tool profile or allow list is configured, plugin tools may be
-  // excluded unless "group:plugins" is in alsoAllow (or allow).
+  // When a restrictive tool profile or allow list is configured, plugin tools
+  // may be excluded unless "group:plugins" is in alsoAllow (or allow).
+  // Profile "full" has allow: ["*"] — all tools available, no warning needed.
   const toolsConfig = api.config.tools as Record<string, any> | undefined;
-  const hasToolRestriction = !!(toolsConfig?.profile || (toolsConfig?.allow && toolsConfig.allow.length > 0));
-  if (hasToolRestriction) {
+  const profile = toolsConfig?.profile as string | undefined;
+  const hasProfile = !!profile;
+  const hasAllow = !!(toolsConfig?.allow && toolsConfig.allow.length > 0);
+  const isRestrictive = hasProfile && profile !== "full" || hasAllow && !hasProfile;
+  if (isRestrictive) {
     const allowList = (toolsConfig?.allow ?? []) as string[];
     const alsoAllow = (toolsConfig?.alsoAllow ?? []) as string[];
     const combined = [...allowList, ...alsoAllow];
