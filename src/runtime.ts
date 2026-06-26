@@ -287,24 +287,14 @@ export function startLansengerGateway(api: OpenClawPluginApi): void {
     log.warn(`plugin startup: api.runtime.channel.pairing is UNDEFINED — DM pairing will be disabled`);
   }
 
-  // Warn if tool policy is restrictive and doesn't include plugin tools.
-  // Profiles (e.g. "coding") and explicit tools.allow both restrict tool access.
-  // When restricted, plugin tools need "group:plugins" — either in allow or alsoAllow.
   const toolsConfig = api.config.tools as Record<string, any> | undefined;
-  const allowList = toolsConfig?.allow as string[] | undefined;
-  const hasToolRestriction = (allowList && allowList.length > 0) || !!toolsConfig?.profile;
-  if (hasToolRestriction) {
-    const hasPluginAccess = (allowList ?? []).some((e: string) => e === "group:plugins" || e === "__openclaw_default_plugin_tools__" || e === "*");
-    const alsoAllow = (toolsConfig?.alsoAllow ?? []) as string[];
-    const hasAlsoAllow = alsoAllow.some((e: string) => e === "group:plugins" || e === "__openclaw_default_plugin_tools__" || e === "*");
-    if (!hasPluginAccess && !hasAlsoAllow) {
-      log.warn(
-        `Agent tools (lansenger_send_file, etc.) are registered but may be INVISIBLE because ` +
-        `the current tool policy (profile="${toolsConfig?.profile ?? "custom"}"${allowList ? `, allow=[${allowList.join(",")}]` : ""}) excludes plugin tools. ` +
-        `Add to openclaw.json: "tools": { "alsoAllow": ["group:plugins"] }` +
-        ` — see https://openclaw.ai/docs/tool-policy for details.`
-      );
-    }
+  const alsoAllow = (toolsConfig?.alsoAllow ?? []) as string[];
+  if (!alsoAllow.some((e: string) => e === "group:plugins" || e === "__openclaw_default_plugin_tools__")) {
+    log.warn(
+      `Agent tools (lansenger_send_file, etc.) are registered by this channel plugin but may be INVISIBLE under the current tool profile.` +
+      ` Add to openclaw.json: "tools": { "alsoAllow": ["group:plugins"] }` +
+      ` — see https://openclaw.ai/docs/tool-policy for details.`
+    );
   }
 
   const section = (api.config.channels as Record<string, any>)?.["lansenger"];
