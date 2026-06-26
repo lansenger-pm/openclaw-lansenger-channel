@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [3.16.15] - 2026-06-26
 
+### Added
+
+- **Group API tools**: `lansenger_group_info`, `lansenger_group_members`, `lansenger_group_check_membership` for querying group details, member lists, and membership checks.
+- **Session metadata injection**: `appId` now automatically injected from session context into all tools, removing the need for LLM to manually pass it.
+- **SessionKey credential resolution**: Tools now resolve account from `agentAccountId` (framework-provided) or `agentId` + bindings, replacing the previous static binding cache.
+- **`respondToAtAll` plugin config schema**: Added `respondToAtAll` to all 4 config levels (per-group, account, section, channel) in `openclaw.plugin.json` for UI discoverability.
+- **`autoMentionReply`/`autoQuoteReply` info logs**: DM and group paths now emit info-level logs for easier debugging.
+- **`_clearTestState()` export**: Module-level state cleanup utility for unit tests to prevent cross-test pollution.
+- **`ackMessage`/`revokeAckMessage` runtime unit tests**: 3 new tests covering ack send+revoke, no-revoke, and no-ack scenarios.
+
 ### Fixed
 
 - **Group ack message revoke failed**: `revokeMessage` for ack was hardcoded with `chatType="bot"`, causing group ack revokes to return `success=false`. Now dynamically uses `"group"` for group chats.
@@ -14,12 +24,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 ### Changed
 
 - **`deliverReply` log level**: `refMsgId`/`reminderUserIds` log upgraded from `debug` to `info`, making `autoMentionReply`/`autoQuoteReply` behavior directly observable in gateway logs.
-
-### Added
-
-- **`autoMentionReply`/`autoQuoteReply` info logs**: DM and group paths now emit info-level logs (`autoMentionReply enabled (DM/group)`, `autoQuoteReply enabled (DM/group)`) for easier debugging.
-- **`_clearTestState()` export**: Module-level state cleanup utility for unit tests to prevent cross-test `sessionDeliveryTracker` pollution.
-- **`ackMessage`/`revokeAckMessage` runtime unit tests**: 3 new tests covering ack send+revoke, no-revoke, and no-ack scenarios.
+- **Skill doc**: All tool `appId` parameters updated from "required" to "auto-injected" in `lansenger-messaging` skill.
+- **READMEs (5 languages)**: Added documentation for the 3 new group API tools.
 
 ## [3.16.14] - 2026-06-25
 
