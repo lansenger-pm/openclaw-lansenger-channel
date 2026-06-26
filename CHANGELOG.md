@@ -8,24 +8,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Added
 
-- **Group API tools**: `lansenger_group_info`, `lansenger_group_members`, `lansenger_group_check_membership` for querying group details, member lists, and membership checks.
-- **Session metadata injection**: `appId` now automatically injected from session context into all tools, removing the need for LLM to manually pass it.
-- **SessionKey credential resolution**: Tools now resolve account from `agentAccountId` (framework-provided) or `agentId` + bindings, replacing the previous static binding cache.
-- **`respondToAtAll` plugin config schema**: Added `respondToAtAll` to all 4 config levels (per-group, account, section, channel) in `openclaw.plugin.json` for UI discoverability.
-- **`autoMentionReply`/`autoQuoteReply` info logs**: DM and group paths now emit info-level logs for easier debugging.
-- **`_clearTestState()` export**: Module-level state cleanup utility for unit tests to prevent cross-test pollution.
+- **Group API tools**: `lansenger_group_info`, `lansenger_group_members`, `lansenger_group_check_membership`. Three new agent tools for querying group details, member lists (with 5-min TTL cache), and checking if a user/bot is in a group.
+- **Group metadata injection**: Group name, members, and member count are now pre-fetched on every group inbound message and injected into the session context (`GroupInfo`, `GroupMembers`, `GroupMemberCount`), so the Agent always knows who's in the group without calling tools.
+- **AppId context injection**: `AppId` is now injected into `ctxPayload` for every inbound message, making it available to tools without manual resolution.
+- **Auto homeChannel config**: On the very first DM, the plugin now auto-writes `homeChannel` to `openclaw.json` so tools/apps can resolve the owner ID without needing a DM to come in first.
+- **`ownerId`-based group detection**: `LansengerClient.isGroupChat()` now uses `ownerId` (set from `homeChannel`) instead of a per-session `chatTypeMap`, making group detection persistent across gateway restarts.
+- **`autoMentionReply`/`autoQuoteReply` info logs**: Info-level logs added for DM and group paths, making these features directly observable in gateway logs.
+- **`_clearTestState()` export**: Module-level state cleanup utility for unit tests.
 - **`ackMessage`/`revokeAckMessage` runtime unit tests**: 3 new tests covering ack send+revoke, no-revoke, and no-ack scenarios.
 
 ### Fixed
 
-- **Group ack message revoke failed**: `revokeMessage` for ack was hardcoded with `chatType="bot"`, causing group ack revokes to return `success=false`. Now dynamically uses `"group"` for group chats.
-- **`revokeMessage` senderId validation too strict**: SDK validated `senderId` as required for `chatType="group"`, but the Lansenger API defaults to the authenticated caller (bot) when omitted. Removed client-side validation. Same fix applied to approval `deleteEntry` and native `tool:delete` revoke paths.
+- **Group ack message revoke failed**: `revokeMessage` for ack was hardcoded with `chatType="bot"`, causing group ack revokes to return `success=false`. Now dynamically uses `"group"` for group chats. Same fix applied to approval `deleteEntry` and native `tool:delete` revoke paths.
+- **`revokeMessage` senderId validation too strict**: SDK required `senderId` for `chatType="group"`, but the Lansenger API accepts group revokes without it (defaults to authenticated caller). Removed client-side validation.
 
 ### Changed
 
-- **`deliverReply` log level**: `refMsgId`/`reminderUserIds` log upgraded from `debug` to `info`, making `autoMentionReply`/`autoQuoteReply` behavior directly observable in gateway logs.
-- **Skill doc**: All tool `appId` parameters updated from "required" to "auto-injected" in `lansenger-messaging` skill.
-- **READMEs (5 languages)**: Added documentation for the 3 new group API tools.
+- **Tool credential resolution**: `accountId` parameter renamed to `appId` in all tool schemas. Tools now resolve the account from `agentAccountId` (framework-provided) or `agentId` + config bindings, replacing the previous `getSessionAccountId` approach. `makeToolClient()` simplified to always require an explicit `accountId`.
+- **`deliverReply` log level**: `refMsgId`/`reminderUserIds` log upgraded from `debug` to `info`.
+- **`respondToAtAll` schema**: Added to all 4 config levels (per-group, account, section, channel) in `openclaw.plugin.json`.
+- **Skill doc**: All tool `appId` descriptions updated from "required" to "auto-injected" in `lansenger-messaging` SKILL.md.
+- **READMEs (5 languages)**: Added 3 new group API tools to the tool list.
+- **Removed `chatTypeMap`**: `cacheChatType`/`getChatType` removed from `LansengerClient`; replaced by `ownerId`-based `isGroupChat()`.
 
 ## [3.16.14] - 2026-06-25
 
