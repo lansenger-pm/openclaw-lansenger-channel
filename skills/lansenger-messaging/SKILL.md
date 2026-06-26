@@ -313,5 +313,5 @@ OpenClaw 的 `MEDIA:` 标签机制有 **MIME 白名单**——只有以下文件
 | headStatusInfo div 包裹混乱 | description 支持 div 样式控制颜色。colour 是圆点颜色。两者独立。 |
 | 消息过长 | ~4000 字符限制。分多条发送。 |
 | 视频缺少封面或元数据 | **API 要求：** 1) `coverImagePath`（封面/缩略图）— mediaIds 必须为 `[videoId, coverId]`；2) `videoWidth` + `videoHeight` + `videoDuration` — 上传 API 需要这些参数。发送视频前必须：提取封面帧（`ffmpeg -i video.mp4 -vframes 1 -q:v 2 cover.jpg`）并探测元数据（`ffprobe`）。将四个参数全部填入工具参数。 |
-| 工具不可用 | 工具内置于频道插件中，但需要 `alsoAllow` 配置才能对 Agent 可见。确认 `openclaw.json` 中有：`"tools": { "alsoAllow": ["group:plugins"] }`。如果仍不可用，检查 Gateway 日志是否有类似 "may be INVISIBLE under the current tool profile" 的警告。CLI 备选：`pipx install lansenger-cli`。 |
+| 工具不可用 | 工具内置于频道插件中，默认自动可用。如果不显示，检查 `openclaw.json` 中 `tools.allow` 是否配置了限制性列表（如 `["read", "write"]`）但漏掉了插件工具。修复：添加 `"tools": { "alsoAllow": ["group:plugins"] }`。CLI 备选：`pipx install lansenger-cli`。 |
 | 漏掉 appId 参数 | `appId` 已自动从当前会话注入，无需传入。仅当需要指定不同账号时才需显式传 `appId`。 |

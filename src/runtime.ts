@@ -287,14 +287,24 @@ export function startLansengerGateway(api: OpenClawPluginApi): void {
     log.warn(`plugin startup: api.runtime.channel.pairing is UNDEFINED — DM pairing will be disabled`);
   }
 
+  // Warn if tools.allow is explicitly restrictive and doesn't include plugin tools.
+  // By default (no tools.allow), OpenClaw makes all plugin tools available automatically.
+  // Only when allow is explicitly set (e.g. ["read", "write"]) do plugin tools need
+  // "group:plugins" added — either in allow or via alsoAllow.
   const toolsConfig = api.config.tools as Record<string, any> | undefined;
-  const alsoAllow = (toolsConfig?.alsoAllow ?? []) as string[];
-  if (!alsoAllow.some((e: string) => e === "group:plugins" || e === "__openclaw_default_plugin_tools__")) {
-    log.warn(
-      `Agent tools (lansenger_send_file, etc.) are registered by this channel plugin but may be INVISIBLE under the current tool profile.` +
-      ` Add to openclaw.json: "tools": { "alsoAllow": ["group:plugins"] }` +
-      ` — see https://openclaw.ai/docs/tool-policy for details.`
-    );
+  const allowList = toolsConfig?.allow as string[] | undefined;
+  if (allowList && allowList.length > 0) {
+    const hasPluginAccess = allowList.some((e: string) => e === "group:plugins" || e === "__openclaw_default_plugin_tools__" || e === "*");
+    const alsoAllow = (toolsConfig?.alsoAllow ?? []) as string[];
+    const hasAlsoAllow = alsoAllow.some((e: string) => e === "group:plugins" || e === "__openclaw_default_plugin_tools__" || e === "*");
+    if (!hasPluginAccess && !hasAlsoAllow) {
+      log.warn(
+        `Agent tools (lansenger_send_file, etc.) are registered but may be INVISIBLE because ` +
+        `tools.allow is configured without plugin tool access. ` +
+        `Add to openclaw.json: "tools": { "alsoAllow": ["group:plugins"] }` +
+        ` — see https://openclaw.ai/docs/tool-policy for details.`
+      );
+    }
   }
 
   const section = (api.config.channels as Record<string, any>)?.["lansenger"];
