@@ -942,13 +942,14 @@ async function handleInbound(
     // slash commands without manually adding themselves to the allow list.
     try {
       const commandsCfg = (api.config as any)?.commands ?? {};
-      const existingOwner = commandsCfg?.ownerAllowFrom;
-      if (!existingOwner || existingOwner.length === 0) {
+      const existing: string[] = commandsCfg?.ownerAllowFrom ?? [];
+      if (!existing.includes(event.senderId)) {
+        const updated = [...existing, event.senderId];
         execSync(
-          `openclaw config set commands.ownerAllowFrom '["${event.senderId}"]'`,
+          `openclaw config set commands.ownerAllowFrom '${JSON.stringify(updated)}'`,
           { stdio: "pipe", timeout: 5000 },
         );
-        log.info(`autoConfigureCommandOwner: set commands.ownerAllowFrom = ["${event.senderId}"]`);
+        log.info(`autoConfigureCommandOwner: set commands.ownerAllowFrom = ${JSON.stringify(updated)}`);
       }
     } catch (e: any) {
       log.warn(`autoConfigureCommandOwner: ${e.message}`);
