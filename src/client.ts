@@ -8,9 +8,10 @@ import { assertHttpUrlTargetsPrivateNetwork, isPrivateNetworkOptInEnabled } from
 export type ClientLogger = {
   info: (message: string) => void;
   error: (message: string) => void;
+  debug: (message: string) => void;
 };
 
-const silentLogger: ClientLogger = { info: () => {}, error: () => {} };
+const silentLogger: ClientLogger = { info: () => {}, error: () => {}, debug: () => {} };
 
 const DEFAULT_API_GATEWAY_URL = "https://open.e.lanxin.cn/open/apigw";
 const MAX_MESSAGE_LENGTH = 4000;
@@ -48,7 +49,7 @@ function convertPxToPtCard(card: AppCardData): AppCardData {
 const RECONNECT_BACKOFF = [2, 5, 10, 30, 60];
 const HEARTBEAT_INTERVAL_MS = 30_000;
 const PONG_TIMEOUT_MS = 10_000;
-const LANG_DETECT_THRESHOLD = 0.6;
+const CHINESE_RE = /[\u4e00-\u9fff\u3400-\u4dbf]/;
 
 const API_ENDPOINTS = {
   appToken: "/v1/apptoken/create",
@@ -266,7 +267,7 @@ export class LansengerClient {
       }
       const fileContent = await fs.readFile(filePath);
       const filename = originalName ?? path.basename(filePath);
-      this.log.info(`uploadMedia: filePath=${filePath} uploadType=${typeStr} originalName=${originalName ?? "n/a"} filename=${filename} video=${typeStr === "video" ? `${videoWidth ?? "?"}x${videoHeight ?? "?"} dur=${videoDuration ?? "?"}` : "n/a"}`);
+      this.log.debug(`uploadMedia: filePath=${filePath} uploadType=${typeStr} originalName=${originalName ?? "n/a"} filename=${filename}`);
       const form = new FormData();
       form.append("media", new Blob([fileContent]), filename);
       const resp = await fetch(url, { method: "POST", body: form });
@@ -705,9 +706,7 @@ export class LansengerClient {
   }
 
   detectLang(text: string): "zh" | "en" {
-    const cjkChars = (text.match(/[\u4e00-\u9fff\u3400-\u4dbf\u3040-\u309f\u30a0-\u30ff]/g) ?? []).length;
-    const ratio = text.length > 0 ? cjkChars / text.length : 0;
-    return ratio >= LANG_DETECT_THRESHOLD ? "zh" : "en";
+    return CHINESE_RE.test(text) ? "zh" : "en";
   }
 
   cacheUserLang(userId: string, text: string): void {
@@ -836,7 +835,7 @@ export class LansengerClient {
       const extracted = await this.extractText(eventData);
       if (!extracted.text) continue;
       if (extracted.mediaPaths?.length) {
-        this.log.info(`inbound media: msgType=${eventData.msgType ?? "n/a"} count=${extracted.mediaPaths.length} saved=${extracted.mediaPaths.join(",")}`);
+        this.log.debug(`inbound media: msgType=${eventData.msgType ?? "n/a"} count=${extracted.mediaPaths.length}`);
       }
       const messageId = eventData.messageId ?? eventData.msgId ?? crypto.randomUUID();
       const chatType = eventData.chatType ?? "p2p";

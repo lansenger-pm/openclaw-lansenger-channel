@@ -185,19 +185,19 @@ describe("LansengerClient.detectLang", () => {
     expect(client.detectLang("Hello world")).toBe("en");
   });
 
-  it("mixed text above threshold returns zh", () => {
+  it("mixed text with Chinese returns zh", () => {
     const client = makeClient();
-    expect(client.detectLang("你好你好你好你好你好你")).toBe("zh");
-  });
-
-  it("mixed text below threshold returns en", () => {
-    const client = makeClient();
-    expect(client.detectLang("你a")).toBe("en");
+    expect(client.detectLang("你a")).toBe("zh");
   });
 
   it("empty string returns en", () => {
     const client = makeClient();
     expect(client.detectLang("")).toBe("en");
+  });
+
+  it("text with only punctuation and English returns en", () => {
+    const client = makeClient();
+    expect(client.detectLang("Hello, world! 123")).toBe("en");
   });
 });
 

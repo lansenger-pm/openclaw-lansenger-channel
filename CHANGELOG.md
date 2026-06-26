@@ -4,26 +4,30 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [3.16.17] - 2026-06-26
-
-### Fixed
-
-- **VERSION file out of sync**: Update VERSION file to match package.json (was missed in 3.16.16 release).
-
-## [3.16.16] - 2026-06-26
-
-### Fixed
-
-- **`ackMessageTextZh`/`ackMessageTextEn` section-level fallback not working**: Account-level schema had `"default"` values that OpenClaw injected into config at runtime, causing `account.ackMessageTextEn` to resolve to the hardcoded default instead of `undefined`, which blocked the `??` fallback to section-level custom text. Removed `"default"` from account-level schema so section-level custom text properly takes effect when account not explicitly set.
-- **`commands.ownerAllowFrom` auto-config**: Now writes with `lansenger:` prefix and checks for duplicates (both with and without prefix). Only runs with real accounts (skips test/mock environments where `appId` is empty).
-
-### Added
-
-- **`commands.ownerAllowFrom` auto-configuration**: On first DM, the owner's ID is automatically appended to `commands.ownerAllowFrom` so they can use slash commands without manual configuration.
+## [3.16.18] - 2026-06-26
 
 ### Changed
 
-- **Ack message log**: Now includes the actual ack text in the info log for easier debugging.
+- **Language detection simplified**: `detectLang` now uses simple Chinese character regex (`[\u4e00-\u9fff\u3400-\u4dbf]`) instead of ratio-based threshold. One Chinese character anywhere means `zh`.
+- **Log verbosity reduced**: `uploadMedia` and `inbound media` logs downgraded from `info` to `debug`.
+- **ClientLogger**: Added `debug` method.
+
+### Fixed
+
+- **`ackMessageTextZh`/`ackMessageTextEn` section-level fallback not working**: Account-level schema had `"default"` values that OpenClaw injected into config at runtime, causing the `??` fallback to section-level custom text to be blocked. Removed `"default"` from account-level schema.
+- **`commands.ownerAllowFrom` auto-config**: Now writes with `lansenger:` prefix and checks for duplicates. Only runs with real accounts.
+
+### Added
+
+- **`commands.ownerAllowFrom` auto-configuration**: On first DM, the owner's ID is automatically appended so they can use slash commands without manual configuration.
+
+## [3.16.17] - 2026-06-26
+
+> Unlisted — replaced by 3.16.18 (missed local changes).
+
+## [3.16.16] - 2026-06-26
+
+> Unlisted — replaced by 3.16.17 (VERSION file fix).
 
 ## [3.16.15] - 2026-06-26
 
