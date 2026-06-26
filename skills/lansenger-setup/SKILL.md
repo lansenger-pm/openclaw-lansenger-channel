@@ -42,7 +42,7 @@ metadata: {"openclaw":{"requires":{"cli":["openclaw"]},"primaryEnv":"LANSENGER_A
 
 ### 多账号注意事项
 
-> **设置 config 时优先使用 account 级路径**：`channels.lansenger.accounts.<appId>.` 只影响指定机器人。`channels.lansenger.` 是**顶级配置**，会影响所有机器人——其他机器人可能属于其他用户，不要随意改动顶级配置。
+> **设置 config 时优先使用 account 级路径**：`channels.lansenger.accounts.<accountId>.` 只影响指定机器人。`channels.lansenger.` 是**顶级配置**，会影响所有机器人——其他机器人可能属于其他用户，不要随意改动顶级配置。
 
 | 层级 | 路径示例 | 影响范围 |
 |------|---------|---------|
@@ -50,7 +50,7 @@ metadata: {"openclaw":{"requires":{"cli":["openclaw"]},"primaryEnv":"LANSENGER_A
 | 单账号（优先） | `channels.lansenger.accounts.13107200-4218880.groupPolicy` | 仅该机器人 |
 | 单群 | `channels.lansenger.groups.<chatId>.requireMention` | 仅该群 |
 
-> 如果用户只有一个机器人，顶级配置和 account 级配置效果相同；如果存在多个机器人（`accounts` 下有多个 key），始终优先用 `accounts.<appId>.` 路径。
+> 如果用户只有一个机器人，顶级配置和 account 级配置效果相同；如果存在多个机器人（`accounts` 下有多个 key），始终优先用 `accounts.<accountId>.` 路径。
 
 ### 私聊访问控制
 
@@ -99,26 +99,26 @@ metadata: {"openclaw":{"requires":{"cli":["openclaw"]},"primaryEnv":"LANSENGER_A
 
 > 以上仅覆盖群级过滤。消息还需通过**用户级过滤**：若设了 `groupAllowFrom`，sender 必须在列表中；若设了 `groups.<chatId>.allowFrom`，则**替换**上级 `groupAllowFrom`（仅群级生效，上级不参与）。
 
-**按群粒度微调** — 优先使用 account 级路径 `channels.lansenger.accounts.<appId>.groups.<chatId>` 避免影响其他机器人：
+**按群粒度微调** — 优先使用 account 级路径 `channels.lansenger.accounts.<accountId>.groups.<chatId>` 避免影响其他机器人：
 
 ```bash
 # 对特定群关闭 @提及 要求
-openclaw config set channels.lansenger.accounts.<appId>.groups.<chatId>.requireMention false
+openclaw config set channels.lansenger.accounts.<accountId>.groups.<chatId>.requireMention false
 # 对特定群开启自动 @回复
-openclaw config set channels.lansenger.accounts.<appId>.groups.<chatId>.autoMentionReply true
+openclaw config set channels.lansenger.accounts.<accountId>.groups.<chatId>.autoMentionReply true
 # 开启自动引用回复
-openclaw config set channels.lansenger.accounts.<appId>.groups.<chatId>.autoQuoteReply true
+openclaw config set channels.lansenger.accounts.<accountId>.groups.<chatId>.autoQuoteReply true
 
 # 允许 @全体成员 触发机器人（account 级 groups）
-openclaw config set channels.lansenger.accounts.<appId>.groups.<chatId>.respondToAtAll true
+openclaw config set channels.lansenger.accounts.<accountId>.groups.<chatId>.respondToAtAll true
 # 或 section 级 groups（仅一个机器人时可用）
 openclaw config set channels.lansenger.groups.<chatId>.respondToAtAll true
 
 # 启用/禁用特定群
-openclaw config set channels.lansenger.accounts.<appId>.groups.<chatId>.enabled false
+openclaw config set channels.lansenger.accounts.<accountId>.groups.<chatId>.enabled false
 
 # 限制特定群中的发送者
-openclaw config set channels.lansenger.accounts.<appId>.groups.<chatId>.allowFrom '["<userId1>","<userId2>"]'
+openclaw config set channels.lansenger.accounts.<accountId>.groups.<chatId>.allowFrom '["<userId1>","<userId2>"]'
 ```
 
 > 仅有一个机器人时可以用 section 级 `channels.lansenger.groups.<chatId>` 简化配置。
@@ -162,11 +162,11 @@ openclaw config set commands.ownerAllowFrom '["lansenger:<orgId>-<staffId>"]'
 # 查看当前多账号设置
 openclaw config get channels.lansenger.accounts
 
-# 添加新机器人账号（key 为 App ID）
-openclaw config set channels.lansenger.accounts.<appId>.appId "<appId>"
-openclaw config set channels.lansenger.accounts.<appId>.appSecret "<appSecret>"
-openclaw config set channels.lansenger.accounts.<appId>.enabled true
-openclaw config set channels.lansenger.accounts.<appId>.dmPolicy pairing
+# 添加新机器人账号（key 为 accountId，通常与 App ID 相同）
+openclaw config set channels.lansenger.accounts.<accountId>.appId "<appId>"
+openclaw config set channels.lansenger.accounts.<accountId>.appSecret "<appSecret>"
+openclaw config set channels.lansenger.accounts.<accountId>.enabled true
+openclaw config set channels.lansenger.accounts.<accountId>.dmPolicy pairing
 
 # 每个账号独立支持以上所有设置：
 # name, apiGatewayUrl, groupPolicy, groupAllowFrom, requireMention,
@@ -221,8 +221,8 @@ openclaw config get channels.lansenger
 
 > **多账号检查**：先执行 `openclaw config get channels.lansenger.accounts`。如果返回了多个 account key，说明存在其他用户配置的其他机器人，**使用 account 级路径**，不要影响他们：
 > ```bash
-> openclaw config set channels.lansenger.accounts.<appId>.appId "<appId>"
-> openclaw config set channels.lansenger.accounts.<appId>.appSecret "<appSecret>"
+> openclaw config set channels.lansenger.accounts.<accountId>.appId "<appId>"
+> openclaw config set channels.lansenger.accounts.<accountId>.appSecret "<appSecret>"
 > ```
 > 如果 `accounts` 下只有一个机器人或为空，可以直接用顶级路径。
 
@@ -238,7 +238,7 @@ openclaw config set channels.lansenger.apiGatewayUrl "<url>"
 
 #### 步骤 1.5：启用并设置默认值
 
-> 多账号环境同样优先使用 `accounts.<appId>.` 路径。
+> 多账号环境同样优先使用 `accounts.<accountId>.` 路径。
 
 ```bash
 openclaw config set channels.lansenger.enabled true
@@ -320,10 +320,10 @@ openclaw pairing approve lansenger <配对码>
 
 1. **禁用私聊** — 如果只想让机器人在群聊中使用：
 
-> 多账号环境同样优先使用 `accounts.<appId>.dmPolicy`。
+> 多账号环境同样优先使用 `accounts.<accountId>.dmPolicy`。
 
 ```bash
-openclaw config set channels.lansenger.accounts.<appId>.dmPolicy disabled
+openclaw config set channels.lansenger.accounts.<accountId>.dmPolicy disabled
 ```
 
 > 注意：蓝信个人机器人只能接收主人的私聊。`allowFrom`、`allowlist`、`open` 等策略对个人机器人无实际意义。只有主人的私聊会被送达。
@@ -340,25 +340,25 @@ openclaw config set channels.lansenger.accounts.<appId>.dmPolicy disabled
 
 > **三层过滤是"与"关系**：`groupAllowFrom` 控制**谁能发**（频道级用户过滤），`groupPolicy` + `groups` 控制**哪些群**能收（群级过滤），`groups.<chatId>.allowFrom` 控制**该群内谁能发**（单群用户过滤）。三者独立，必须同时满足。
 
-> **多账号环境 → 使用 account 级路径**：`channels.lansenger.accounts.<appId>.groupPolicy`，仅影响该机器人。
+> **多账号环境 → 使用 account 级路径**：`channels.lansenger.accounts.<accountId>.groupPolicy`，仅影响该机器人。
 
 ```bash
 # allowlist 模式：仅允许特定群
-openclaw config set channels.lansenger.accounts.<appId>.groupPolicy allowlist
+openclaw config set channels.lansenger.accounts.<accountId>.groupPolicy allowlist
 openclaw config set channels.lansenger.groups.<chatId>.enabled true
 
 # open 模式 + 封禁特定群
-openclaw config set channels.lansenger.accounts.<appId>.groupPolicy open
+openclaw config set channels.lansenger.accounts.<accountId>.groupPolicy open
 openclaw config set channels.lansenger.groups.<chatId>.enabled false
 
 # 禁止所有群
-openclaw config set channels.lansenger.accounts.<appId>.groupPolicy disabled
+openclaw config set channels.lansenger.accounts.<accountId>.groupPolicy disabled
 
 # 不需要 @提及
-openclaw config set channels.lansenger.accounts.<appId>.requireMention false
+openclaw config set channels.lansenger.accounts.<accountId>.requireMention false
 
 # 仅允许特定用户（填用户 ID，不是群 ID）
-openclaw config set channels.lansenger.accounts.<appId>.groupAllowFrom '["<userId1>","<userId2>"]'
+openclaw config set channels.lansenger.accounts.<accountId>.groupAllowFrom '["<userId1>","<userId2>"]'
 ```
 
 #### 批次 C：确认消息
