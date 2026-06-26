@@ -227,8 +227,8 @@
                 "autoQuoteReply": { "type": "boolean", "description": "Auto quote the inbound message when replying (inherits from top-level if unset, applies to groups and DMs) / 回复时是否自动引用入站消息（未设置时继承顶层配置，群聊和私聊均生效）" },
                 "ackMessage": { "type": "boolean", "description": "Send ack message before agent processing (inherits from top-level if unset) / 代理处理前发送确认消息（未设置时继承顶层配置）" },
                 "revokeAckMessage": { "type": "boolean", "description": "Auto-revoke ack message after agent reply (inherits from top-level if unset, default true) / 代理回复后自动撤回确认消息（未设置时继承顶层配置，默认 true）" },
-                "ackMessageTextZh": { "type": "string", "default": "收到，正在处理...", "description": "Chinese ack message text / 中文确认消息文案" },
-                "ackMessageTextEn": { "type": "string", "default": "Received, processing...", "description": "English ack message text / 英文确认消息文案" },
+                "ackMessageTextZh": { "type": "string", "description": "Chinese ack message text (inherits from top-level if unset) / 中文确认消息文案（未设置时继承顶层配置）" },
+                "ackMessageTextEn": { "type": "string", "description": "English ack message text (inherits from top-level if unset) / 英文确认消息文案（未设置时继承顶层配置）" },
                 "groups": {
                   "type": "object",
                   "description": "Per-group configuration for this account / 该账号的单群配置（key 为群聊 chatId）",

@@ -1238,7 +1238,7 @@ async function handleInbound(
       const ackResult = await ackClient.sendFormatText(event.chatId, ackText);
       if (ackResult.messageId) {
         ackMessageId = ackResult.messageId;
-        log.info(`inbound: ack message sent: messageId=${ackMessageId} lang=${lang}`);
+        log.info(`inbound: ack message sent: messageId=${ackMessageId} lang=${lang} text="${ackText}"`);
       }
     } catch (e: unknown) {
       log.error(`inbound: ack message send failed — ${e instanceof Error ? e.message : String(e)}`);
