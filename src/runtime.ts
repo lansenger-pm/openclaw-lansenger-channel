@@ -27,6 +27,7 @@ function sdkLogger(): ClientLogger {
   return {
     info: (msg: string) => log.info(msg),
     error: (msg: string) => log.error(msg),
+    debug: (msg: string) => log.debug(msg),
   };
 }
 
@@ -1217,7 +1218,7 @@ async function handleInbound(
   }
 
   if (allowTextCommands && hasCommand && commandAuthorized !== true) {
-    log.info(`inbound: command blocked — sender=${event.senderId} not authorized: ${rawText.slice(0, 60)}`);
+    log.info(`inbound: command blocked — sender=${event.senderId} not authorized`);
     // Reply with an unauthorized message instead of silently dropping
     const replyClient = runningAccounts.get(runningKey)?.client ?? makeClient(account, sdkLogger());
     const lang = replyClient.getUserLang(event.senderId);
@@ -1238,7 +1239,7 @@ async function handleInbound(
       const ackResult = await ackClient.sendFormatText(event.chatId, ackText);
       if (ackResult.messageId) {
         ackMessageId = ackResult.messageId;
-        log.info(`inbound: ack message sent: messageId=${ackMessageId} lang=${lang} text="${ackText}"`);
+        log.debug(`inbound: ack message sent: messageId=${ackMessageId} lang=${lang} text="${ackText}"`);
       }
     } catch (e: unknown) {
       log.error(`inbound: ack message send failed — ${e instanceof Error ? e.message : String(e)}`);
@@ -1336,14 +1337,14 @@ async function handleInbound(
                 for (const mediaUrl of mediaUrls) {
                   const mediaKey = mediaUrl.trim();
                   if (mediaKey && turnMediaDelivered.has(mediaKey)) {
-                    log.info(`deliver media dedup skip: ${mediaKey}`);
+                    log.debug(`deliver media dedup skip: ${mediaKey}`);
                     continue;
                   }
                   if (mediaKey) turnMediaDelivered.add(mediaKey);
-                  log.info(`deliver media: ${mediaUrl} (turnMediaDelivered size=${turnMediaDelivered.size})`);
+                  log.debug(`deliver media: ${mediaUrl} (turnMediaDelivered size=${turnMediaDelivered.size})`);
                   const readFile = payload.mediaReadFile ?? payload.mediaAccess?.readFile;
                   const originalName = stripOpenClawUuidSuffix(path.basename(mediaUrl));
-                  log.info(`deliver media path: ${mediaUrl} readFile=${readFile ? "yes" : "no"} originalName=${originalName}`);
+                  log.debug(`deliver media path: ${mediaUrl} readFile=${readFile ? "yes" : "no"} originalName=${originalName}`);
                   if (/^https?:\/\//i.test(mediaUrl)) {
                     const r = await client.sendImageUrl(to, mediaUrl, "", account.dangerouslyAllowPrivateNetwork);
                     if (r.messageId) messageIds.push(r.messageId);
@@ -1381,7 +1382,7 @@ async function handleInbound(
         },
       },
     } as any);
-    log.info(`inbound.run completed: sessionKey=${sessionKey}`);
+    log.info(`inbound.run completed: sessionKey=${sessionKey.slice(0, 32)}`);
     if (ackMessageId && account.revokeAckMessage) {
       try {
         const entry = runningAccounts.get(runningKey);
@@ -1407,8 +1408,8 @@ async function handleInbound(
 }
 
 async function deliverReply(client: LansengerClient, to: string, text: string, opts?: { reminder?: ReminderParams; refMsgId?: string }): Promise<ApiResult> {
-  log.info(`deliverReply: to=${to} textLen=${text.length} preview="${text.slice(0, 100)}"`);
-  log.info(`deliverReply: refMsgId=${opts?.refMsgId ?? "none"} reminderUserIds=[${(opts?.reminder?.userIds ?? []).join(",")}]`);
+  log.debug(`deliverReply: to=${to} textLen=${text.length} preview="${text.slice(0, 100)}"`);
+  log.debug(`deliverReply: refMsgId=${opts?.refMsgId ?? "none"} reminderUserIds=[${(opts?.reminder?.userIds ?? []).join(",")}]`);
   if (!text.trim()) {
     log.warn(`deliverReply: empty text after OpenClaw MEDIA processing, skipping delivery`);
     return { success: true, messageId: undefined };
