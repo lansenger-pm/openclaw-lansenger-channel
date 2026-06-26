@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.16.15] - 2026-06-26
+
+### Fixed
+
+- **Group ack message revoke failed**: `revokeMessage` for ack was hardcoded with `chatType="bot"`, causing group ack revokes to return `success=false`. Now dynamically uses `"group"` for group chats.
+- **`revokeMessage` senderId validation too strict**: SDK validated `senderId` as required for `chatType="group"`, but the Lansenger API defaults to the authenticated caller (bot) when omitted. Removed client-side validation. Same fix applied to approval `deleteEntry` and native `tool:delete` revoke paths.
+
+### Changed
+
+- **`deliverReply` log level**: `refMsgId`/`reminderUserIds` log upgraded from `debug` to `info`, making `autoMentionReply`/`autoQuoteReply` behavior directly observable in gateway logs.
+
+### Added
+
+- **`autoMentionReply`/`autoQuoteReply` info logs**: DM and group paths now emit info-level logs (`autoMentionReply enabled (DM/group)`, `autoQuoteReply enabled (DM/group)`) for easier debugging.
+- **`_clearTestState()` export**: Module-level state cleanup utility for unit tests to prevent cross-test `sessionDeliveryTracker` pollution.
+- **`ackMessage`/`revokeAckMessage` runtime unit tests**: 3 new tests covering ack send+revoke, no-revoke, and no-ack scenarios.
+
 ## [3.16.14] - 2026-06-25
 
 ### Added

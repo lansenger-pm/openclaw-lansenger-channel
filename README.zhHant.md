@@ -61,8 +61,11 @@
 | `lansenger_update_dynamic_card` | 原地更新動態卡片狀態 |
 | `lansenger_revoke_message` | 撤回已傳送的訊息 |
 | `lansenger_query_groups` | 查詢可用群組 |
+| `lansenger_group_info` | 查詢群組詳情（名稱、頭像、群主等） |
+| `lansenger_group_members` | 查詢群成員列表（姓名、角色、頭像） |
+| `lansenger_group_check_membership` | 檢查用戶或機器人是否在群中 |
 
-工具也可透過 CLI 使用：`lansenger message send-text`、`lansenger message send-file` 等。
+工具也可通過 CLI 使用：`lansenger message send-text`、`lansenger message send-file` 等。
 
 ## 安裝與設定
 

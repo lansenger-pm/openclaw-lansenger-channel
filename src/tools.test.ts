@@ -327,7 +327,7 @@ describe("multi-account support", () => {
   const mockAccountA = { ...mockAccount, accountId: "account-A", appId: "app-A" };
   const mockAccountB = { ...mockAccount, accountId: "account-B", appId: "app-B" };
 
-  it("uses appId from params when provided", async () => {
+  it("uses appId from params to override session context", async () => {
     const mockClientSpy = { sendText: vi.fn().mockResolvedValue({ success: true, messageId: "m1" }) };
     vi.spyOn(runtime, "getRunningClientByAccountId").mockImplementation((id) => {
       if (id === "account-A") return mockClientSpy as any;
@@ -342,10 +342,9 @@ describe("multi-account support", () => {
     vi.spyOn(runtime, "getLastInboundChatId").mockReturnValue("chat-1");
 
     const api = makeMockApi();
-    api.config.bindings.push({ agentId: "acct-a", match: { channel: "lansenger", accountId: "account-A" } });
     registerLansengerTools(api);
 
-    const result = await api._tools["lansenger_send_text"].execute("tc1", { _sessionKey: "agent:acct-a:lansenger:dm:user1", content: "hello", to: "chat-1" });
+    const result = await api._tools["lansenger_send_text"].execute("tc1", { appId: "account-A", content: "hello", to: "chat-1" });
     expect(parseResult(result).success).toBe(true);
 
     expect(runtime.getRunningClientByAccountId).toHaveBeenCalledWith("account-A");
@@ -355,18 +354,19 @@ describe("multi-account support", () => {
     vi.restoreAllMocks();
   });
 
-  it("returns error when no appId provided", async () => {
-    const mockClientSpy = { sendText: vi.fn().mockResolvedValue({ success: true, messageId: "m1" }) };
-    vi.spyOn(runtime, "getRunningClient").mockReturnValue(mockClientSpy as any);
-    vi.spyOn(runtime, "getRunningAccount").mockReturnValue(mockAccount);
+  it("returns error when session account is not running", async () => {
+    vi.spyOn(runtime, "getRunningClientByAccountId").mockReturnValue(null);
+    vi.spyOn(runtime, "getRunningAccountByAccountId").mockReturnValue(null);
+    vi.spyOn(runtime, "getRunningClient").mockReturnValue(null);
+    vi.spyOn(runtime, "getRunningAccount").mockReturnValue(null);
     vi.spyOn(runtime, "getLastInboundChatId").mockReturnValue("chat-1");
+
     const api = makeMockApi();
     registerLansengerTools(api);
 
-    const result = await api._tools["lansenger_send_text"].execute("tc1", { _sessionKey: "agent:test:lansenger:dm:user1",  content: "hello", to: "chat-1" });
+    const result = await api._tools["lansenger_send_text"].execute("tc1", { content: "hello", to: "chat-1" });
     expect(parseResult(result).error).toContain("not configured or not running");
 
-    
     vi.restoreAllMocks();
   });
 });

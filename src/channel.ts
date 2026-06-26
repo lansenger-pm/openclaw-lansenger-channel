@@ -228,13 +228,15 @@ function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): Resolve
 }
 
 function makeClient(account: ResolvedAccount, logger?: ClientLogger): LansengerClient {
-  return new LansengerClient({
+  const client = new LansengerClient({
     appId: account.appId,
     appSecret: account.appSecret,
     apiGatewayUrl: account.apiGatewayUrl,
     dangerouslyAllowPrivateNetwork: account.dangerouslyAllowPrivateNetwork,
     logger,
   });
+  client.ownerId = account.homeChannel || "";
+  return client;
 }
 
 function resolveLansengerApprovers({ cfg, accountId }: { cfg: OpenClawConfig; accountId?: string | null }): string[] {
@@ -1077,10 +1079,12 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
         },
         deleteEntry: async ({ cfg, accountId, entry, phase }: any) => {
           const messageId = entry?.messageId;
+          const to = entry?.to;
           if (!messageId) return;
           const account = resolveAccount(cfg, accountId);
           const client = makeClient(account);
-          await client.revokeMessage([messageId], "bot");
+          const isGroup = to ? client.isGroupChat(to) : false;
+          await client.revokeMessage([messageId], isGroup ? "group" : "bot");
           // Clean up callback mapping
           for (const [key, val] of pendingApprovalCallbacks.entries()) {
             if (val.messageId === messageId) {
@@ -1155,7 +1159,8 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
       if (ctx.action === "delete") {
         const messageId = ctx.args?.messageId ?? "";
         log.debug(`tool:delete messageId=${messageId}`);
-        const result = await client.revokeMessage([messageId], "bot");
+        const isGroup = client.isGroupChat(to);
+        const result = await client.revokeMessage([messageId], isGroup ? "group" : "bot");
         return { success: result.success };
       }
 

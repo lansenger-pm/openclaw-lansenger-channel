@@ -59,6 +59,9 @@ Messages can be sent via **agent tools** (built-in) or **CLI commands** (optiona
 | `lansenger_update_dynamic_card` | Update dynamic card status in-place |
 | `lansenger_revoke_message` | Revoke a previously sent message |
 | `lansenger_query_groups` | Query available groups |
+| `lansenger_group_info` | Get detailed group info (name, avatar, owner, etc.) |
+| `lansenger_group_members` | List group members with names and roles |
+| `lansenger_group_check_membership` | Check if a user or bot is in a group |
 
 Tools are also available via CLI: `lansenger message send-text`, `lansenger message send-file`, etc.
 

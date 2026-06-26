@@ -61,6 +61,9 @@ Les messages peuvent être envoyés via les **outils agent** (intégrés) ou les
 | `lansenger_update_dynamic_card` | Mettre à jour le statut d'une carte dynamique en place |
 | `lansenger_revoke_message` | Révoquer un message précédemment envoyé |
 | `lansenger_query_groups` | Rechercher les groupes disponibles |
+| `lansenger_group_info` | Détails d'un groupe (nom, avatar, propriétaire, etc.) |
+| `lansenger_group_members` | Lister les membres d'un groupe avec noms et rôles |
+| `lansenger_group_check_membership` | Vérifier si un utilisateur ou le bot est dans un groupe |
 
 Les outils sont aussi disponibles via CLI : `lansenger message send-text`, `lansenger message send-file`, etc.
 

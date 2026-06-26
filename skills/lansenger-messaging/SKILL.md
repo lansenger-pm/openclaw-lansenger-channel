@@ -60,14 +60,14 @@ metadata: {"openclaw":{"requires":{"config":["channels.lansenger"]},"primaryEnv"
 
 ## Agent 工具参考
 
-**所有工具均需 `appId`（必填）**。从当前会话的 session metadata 中获取：`AppId` 字段即为你的蓝信 App ID。`to`（chatId）可选，留空自动检测当前会话。
+**所有工具均自动从会话注入 `appId`**，无需手动传入。仅在需要指定不同账号时通过 `appId` 参数覆盖。`to`（chatId）可选，留空自动检测当前会话。
 
 ### lansenger_send_file
 
 | 参数           | 类型     | 必填 | 说明 |
 |----------------|----------|------|------|
 | filePath       | string   | ✅    | 绝对本地路径（workspace、/tmp、Desktop 等） |
-| appId          | string   | ✅    | 你的蓝信 App ID（从 session metadata 的 AppId 获取） |
+| appId          | string   | ❌    | 自动从会话注入。仅在覆盖默认账号时传入 |
 | caption        | string   | ❌    | 纯文本说明（不支持 Markdown） |
 | coverImagePath | string   | ❌*   | **视频必填**：封面/缩略图路径。API 要求 mediaIds=[video, cover]。提取命令：`ffmpeg -i video.mp4 -vframes 1 -q:v 2 cover.jpg` |
 | videoWidth     | integer  | ❌*   | **视频必填**：视频宽度（像素）。获取命令：`ffprobe -v error -select_streams v:0 -show_entries stream=width -of csv=p=0 video.mp4` |
@@ -82,7 +82,7 @@ metadata: {"openclaw":{"requires":{"config":["channels.lansenger"]},"primaryEnv"
 | 参数            | 类型     | 必填 | 说明 |
 |-----------------|----------|------|------|
 | content         | string   | ✅    | 纯文本（不支持 Markdown） |
-| appId           | string   | ✅    | 你的蓝信 App ID（从 session metadata 的 AppId 获取） |
+| appId          | string   | ❌    | 自动从会话注入。仅在覆盖默认账号时传入 |
 | filePath        | string   | ❌    | 可选附件（content 成为文件说明） |
 | to              | string   | ❌    | 目标 chatId |
 | reminderAll     | boolean  | ❌    | @提及所有成员（仅群聊） |
@@ -95,7 +95,7 @@ metadata: {"openclaw":{"requires":{"config":["channels.lansenger"]},"primaryEnv"
 | 参数            | 类型     | 必填 | 说明 |
 |-----------------|----------|------|------|
 | content         | string   | ✅    | Markdown 文本 |
-| appId           | string   | ✅    | 你的蓝信 App ID（从 session metadata 的 AppId 获取） |
+| appId          | string   | ❌    | 自动从会话注入。仅在覆盖默认账号时传入 |
 | to              | string   | ❌    | 目标 chatId |
 | reminderAll     | boolean  | ❌    | @提及所有人（仅群聊） |
 | reminderUserIds | string[] | ❌    | @提及指定用户（仅群聊） |
@@ -107,7 +107,7 @@ metadata: {"openclaw":{"requires":{"config":["channels.lansenger"]},"primaryEnv"
 | 参数     | 类型   | 必填 | 说明 |
 |----------|--------|------|------|
 | imageUrl | string | ✅    | 可直接访问的图片 URL |
-| appId    | string | ✅    | 你的蓝信 App ID（从 session metadata 的 AppId 获取） |
+| appId          | string   | ❌    | 自动从会话注入。仅在覆盖默认账号时传入 |
 | caption  | string | ❌    | 纯文本说明（不支持 Markdown） |
 | to       | string | ❌    | 目标 chatId |
 
@@ -117,7 +117,7 @@ metadata: {"openclaw":{"requires":{"config":["channels.lansenger"]},"primaryEnv"
 |--------------|--------|------|------|
 | title        | string | ✅    | 卡片标题 |
 | link         | string | ✅    | 点击跳转链接 |
-| appId        | string | ✅    | 你的蓝信 App ID（从 session metadata 的 AppId 获取） |
+| appId          | string   | ❌    | 自动从会话注入。仅在覆盖默认账号时传入 |
 | description  | string | ❌    | 卡片描述（API 要求，默认空） |
 | iconLink     | string | ❌    | 图标 URL（默认空） |
 | pcLink       | string | ❌    | PC 客户端链接 |
@@ -130,7 +130,7 @@ metadata: {"openclaw":{"requires":{"config":["channels.lansenger"]},"primaryEnv"
 | 参数     | 类型     | 必填 | 说明 |
 |----------|----------|------|------|
 | articles | object[] | ✅    | 每项：{ imgUrl, title, url, summary?, pcUrl? } |
-| appId    | string   | ✅    | 你的蓝信 App ID（从 session metadata 的 AppId 获取） |
+| appId          | string   | ❌    | 自动从会话注入。仅在覆盖默认账号时传入 |
 | to       | string   | ❌    | 目标 chatId |
 
 > ⚠️ 图文项的摘要字段是 `summary`，不是 `description`。`description` 会被 API 静默忽略。
@@ -140,7 +140,7 @@ metadata: {"openclaw":{"requires":{"config":["channels.lansenger"]},"primaryEnv"
 | 参数           | 类型     | 必填 | 说明 |
 |----------------|----------|------|------|
 | bodyTitle      | string   | ✅    | 卡片标题（支持 div 样式） |
-| appId          | string   | ✅    | 你的蓝信 App ID（从 session metadata 的 AppId 获取） |
+| appId          | string   | ❌    | 自动从会话注入。仅在覆盖默认账号时传入 |
 | headTitle      | string   | ❌    | 头部标题 |
 | bodySubTitle   | string   | ❌    | 副标题（支持 div 样式） |
 | bodyContent    | string   | ❌    | 正文内容（支持 div 样式） |
@@ -160,7 +160,7 @@ metadata: {"openclaw":{"requires":{"config":["channels.lansenger"]},"primaryEnv"
 |------------|----------|------|------|
 | head       | object   | ✅*   | `{ title, iconLink?, iconId?, headStatus?: { describe, statusIcon?, iconLink?, colour } }` — 卡片头部。`headStatus.colour` 是圆点颜色（hex），`describe` 是状态文字。 |
 | body       | object   | ✅    | `{ title, content?, subtitle? }` — `content.formatType`: 1=普通文本, 2=Markdown。 |
-| appId      | string   | ✅    | 你的蓝信 App ID（从 session metadata 的 AppId 获取） |
+| appId          | string   | ❌    | 自动从会话注入。仅在覆盖默认账号时传入 |
 | buttons    | object[] | ❌    | `[{ text, buttonTheme?: 1\|2\|3\|4, state?: 0\|1\|2, link?, pcLink?, padLink?, callbackInfo?, permissionScope?: { permittedStaffs?, prohibitedStaffs? }, prohibitedState? }]` — 最多 3 个。buttonTheme: 1=primary蓝, 2=次蓝, 3=次黑, 4=警告。state: 0=可用, 1=禁用, 2=隐藏。 |
 | reminder   | object   | ❌    | `{ all?, userIds?, botIds? }` — @提及（仅群聊）。提示用户需在消息正文写 `@姓名`。 |
 | cardLink   | string   | ❌    | 卡片点击链接。`cardLinkForPc`/`cardLinkForPad` 也可通过同一个字符串传入（需拼接）。 |
@@ -174,7 +174,7 @@ metadata: {"openclaw":{"requires":{"config":["channels.lansenger"]},"primaryEnv"
 | 参数           | 类型     | 必填 | 说明 |
 |----------------|----------|------|------|
 | msgId          | string   | ✅    | 原始 send_app_card 返回的消息 ID |
-| appId          | string   | ✅    | 你的蓝信 App ID（从 session metadata 的 AppId 获取） |
+| appId          | string   | ❌    | 自动从会话注入。仅在覆盖默认账号时传入 |
 | headStatusInfo | object   | ❌    | { description, colour } — description：状态文字（支持 div 样式）。colour：圆点颜色（hex）。相互独立。 |
 | links          | object[] | ❌    | 更新后的链接（最多 3 个） |
 | isLastUpdate   | boolean  | ❌    | true = 最终状态，卡片变为静态（默认 false） |
@@ -184,7 +184,7 @@ metadata: {"openclaw":{"requires":{"config":["channels.lansenger"]},"primaryEnv"
 | 参数      | 类型     | 必填 | 说明 |
 |-----------|----------|------|------|
 | messageIds | string[] | ✅    | 要撤回的消息 ID 列表 |
-| appId     | string   | ✅    | 你的蓝信 App ID（从 session metadata 的 AppId 获取） |
+| appId          | string   | ❌    | 自动从会话注入。仅在覆盖默认账号时传入 |
 | chatType  | string   | ❌    | bot（默认）或 group |
 | senderId  | string   | ❌    | chatType=group 时必填 |
 
@@ -194,7 +194,7 @@ metadata: {"openclaw":{"requires":{"config":["channels.lansenger"]},"primaryEnv"
 
 | 参数       | 类型    | 必填 | 说明 |
 |------------|---------|------|------|
-| appId      | string  | ✅    | 你的蓝信 App ID（从 session metadata 的 AppId 获取） |
+| appId          | string   | ❌    | 自动从会话注入。仅在覆盖默认账号时传入 |
 | pageOffset | integer | ❌    | 分页偏移，0-based（默认 0） |
 | pageSize   | integer | ❌    | 每页群数（默认 100） |
 
@@ -207,7 +207,7 @@ metadata: {"openclaw":{"requires":{"config":["channels.lansenger"]},"primaryEnv"
 | 参数    | 类型   | 必填 | 说明 |
 |---------|--------|------|------|
 | groupId | string | ✅    | 群 ID |
-| appId   | string | ✅    | 你的蓝信 App ID（从 session metadata 的 AppId 获取） |
+| appId          | string   | ❌    | 自动从会话注入。仅在覆盖默认账号时传入 |
 
 > 当前群的 ID 可从 session metadata 的 `To` 字段获取。
 
@@ -218,7 +218,7 @@ metadata: {"openclaw":{"requires":{"config":["channels.lansenger"]},"primaryEnv"
 | 参数       | 类型    | 必填 | 说明 |
 |------------|---------|------|------|
 | groupId    | string  | ✅    | 群 ID |
-| appId      | string  | ✅    | 你的蓝信 App ID（从 session metadata 的 AppId 获取） |
+| appId          | string   | ❌    | 自动从会话注入。仅在覆盖默认账号时传入 |
 | pageOffset | integer | ❌    | 分页偏移（默认 0） |
 | pageSize   | integer | ❌    | 每页人数。省略则返回全部 |
 
@@ -229,7 +229,7 @@ metadata: {"openclaw":{"requires":{"config":["channels.lansenger"]},"primaryEnv"
 | 参数    | 类型   | 必填 | 说明 |
 |---------|--------|------|------|
 | groupId | string | ✅    | 群 ID |
-| appId   | string | ✅    | 你的蓝信 App ID（从 session metadata 的 AppId 获取） |
+| appId          | string   | ❌    | 自动从会话注入。仅在覆盖默认账号时传入 |
 | staffId | string | ❌    | 员工 ID。省略则检查机器人自身是否在群中 |
 
 ## 审批流程模式
@@ -314,4 +314,4 @@ OpenClaw 的 `MEDIA:` 标签机制有 **MIME 白名单**——只有以下文件
 | 消息过长 | ~4000 字符限制。分多条发送。 |
 | 视频缺少封面或元数据 | **API 要求：** 1) `coverImagePath`（封面/缩略图）— mediaIds 必须为 `[videoId, coverId]`；2) `videoWidth` + `videoHeight` + `videoDuration` — 上传 API 需要这些参数。发送视频前必须：提取封面帧（`ffmpeg -i video.mp4 -vframes 1 -q:v 2 cover.jpg`）并探测元数据（`ffprobe`）。将四个参数全部填入工具参数。 |
 | 工具不可用 | 工具内置于频道插件中。如果不可用，使用 `message(action=send, filePath=...)` 发送文件（不需要 `group:plugins`）。如需 CLI 方式，提示用户安装 `lansenger` 技能套件（`pipx install lansenger-cli`）。 |
-| 漏掉 appId 参数 | **所有工具都需要 `appId`（必填）**——从当前会话的 session metadata 中的 `AppId` 字段获取。不要省略，否则工具调用会失败。 |
+| 漏掉 appId 参数 | `appId` 已自动从当前会话注入，无需传入。仅当需要指定不同账号时才需显式传 `appId`。 |

@@ -122,7 +122,7 @@ export class LansengerClient {
   private onWsOpen: (() => void) | null = null;
   private onWsClose: (() => void) | null = null;
   private log: ClientLogger;
-  private chatTypeMap = new Map<string, "group" | "dm">();
+  ownerId = "";
   private userLangMap = new Map<string, "zh" | "en">();
   private dangerouslyAllowPrivateNetwork: boolean = false;
   private groupInfoCache = new Map<string, { data: GroupInfoData; expiry: number }>();
@@ -339,9 +339,8 @@ export class LansengerClient {
     if (!["bot", "group"].includes(chatType)) {
       return { success: false, error: `chatType must be 'bot' or 'group' (got '${chatType}')` };
     }
-    if (chatType === "group" && !senderId) {
-      return { success: false, error: "chatType='group' requires senderId" };
-    }
+    // NOTE: senderId validation relaxed — the Lansenger API accepts group
+    // revokes without senderId (defaults to the authenticated caller).
     try {
       const url = `${this.apiGatewayUrl}${API_ENDPOINTS.revokeMessage}?app_token=${token}`;
       const payload: Record<string, unknown> = { chatType, messageIds };
@@ -720,21 +719,9 @@ export class LansengerClient {
     return this.userLangMap.get(userId) ?? "zh";
   }
 
-  cacheChatType(chatId: string, chatType: "group" | "dm"): void {
-    this.chatTypeMap.set(chatId, chatType);
-  }
-
-  getChatType(chatId: string): "group" | "dm" | undefined {
-    return this.chatTypeMap.get(chatId);
-  }
-
-  hasChatId(chatId: string): boolean {
-    return this.chatTypeMap.has(chatId);
-  }
-
   isGroupChat(chatId: string): boolean {
-    const type = this.chatTypeMap.get(chatId);
-    return type === "group" || chatId.startsWith("group:");
+    if (this.ownerId) return chatId !== this.ownerId;
+    return chatId.startsWith("group:");
   }
 
   async downloadMedia(mediaId: string): Promise<{ bytes: Buffer; ext?: string } | null> {
@@ -857,7 +844,6 @@ export class LansengerClient {
       const senderId = eventData.from ?? "";
       const chatId = eventData.groupId ?? eventData.conversationId ?? senderId;
       
-      this.cacheChatType(chatId, isGroup ? "group" : "dm");
       if (extracted.text) this.cacheUserLang(senderId, extracted.text);
 
       const referenceMsg: ReferenceMsg | undefined = eventData.referenceMsg

@@ -201,39 +201,24 @@ describe("LansengerClient.detectLang", () => {
   });
 });
 
-describe("LansengerClient.chatType caching", () => {
-  it("cache and retrieve group type", () => {
+describe("LansengerClient.isGroupChat", () => {
+  it("returns true for non-owner chatId when ownerId is set", () => {
     const client = makeClient();
-    client.cacheChatType("group-1", "group");
-    expect(client.getChatType("group-1")).toBe("group");
+    client.ownerId = "owner-1";
+    expect(client.isGroupChat("group-99")).toBe(true);
+    expect(client.isGroupChat("user-99")).toBe(true);
   });
 
-  it("cache and retrieve dm type", () => {
+  it("returns false for owner chatId when ownerId is set", () => {
     const client = makeClient();
-    client.cacheChatType("user-1", "dm");
-    expect(client.getChatType("user-1")).toBe("dm");
+    client.ownerId = "owner-1";
+    expect(client.isGroupChat("owner-1")).toBe(false);
   });
 
-  it("unknown chatId returns undefined", () => {
-    const client = makeClient();
-    expect(client.getChatType("unknown")).toBe(undefined);
-  });
-
-  it("isGroupChat with cached group type", () => {
-    const client = makeClient();
-    client.cacheChatType("group-1", "group");
-    expect(client.isGroupChat("group-1")).toBe(true);
-  });
-
-  it("isGroupChat with group: prefix", () => {
+  it("falls back to group: prefix when ownerId is empty", () => {
     const client = makeClient();
     expect(client.isGroupChat("group:some-id")).toBe(true);
-  });
-
-  it("isGroupChat with dm type returns false", () => {
-    const client = makeClient();
-    client.cacheChatType("user-1", "dm");
-    expect(client.isGroupChat("user-1")).toBe(false);
+    expect(client.isGroupChat("some-user")).toBe(false);
   });
 });
 
@@ -266,16 +251,22 @@ describe("LansengerClient.revokeMessage validation", () => {
     vi.restoreAllMocks();
   });
 
-  it("rejects group chatType without senderId", async () => {
-    vi.stubGlobal("fetch", async (url: string | Request) => {
+  it("allows group chatType without senderId (API defaults to caller)", async () => {
+    const fetchCalls: Array<{ url: string; body: any }> = [];
+    vi.stubGlobal("fetch", async (url: string | Request, init?: any) => {
       const u = typeof url === "string" ? url : url.url;
       if (u.includes("apptoken")) return successApi({ appToken: "tok", expiresIn: 7200 });
+      if (u.includes("messages/revoke")) {
+        fetchCalls.push({ url: u, body: JSON.parse((init as any)?.body ?? "{}") });
+      }
       return successApi({});
     });
     const client = new LansengerClient({ appId: "id", appSecret: "secret" });
     const result = await client.revokeMessage(["m1"], "group");
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("requires senderId");
+    expect(result.success).toBe(true);
+    // senderId should not be in payload
+    expect(fetchCalls[0]!.body.senderId).toBeUndefined();
+    expect(fetchCalls[0]!.body.chatType).toBe("group");
     vi.restoreAllMocks();
   });
 });
@@ -601,10 +592,10 @@ describe("LansengerClient.msgTarget (via sendText group vs dm)", () => {
   });
   afterEach(() => { vi.restoreAllMocks(); });
 
-  it("uses group endpoint for cached group chatId", async () => {
+  it("uses group endpoint for non-owner chatId", async () => {
     const client = new LansengerClient({ appId: "id", appSecret: "secret" });
-    client.cacheChatType("group-1", "group");
-    const result = await client.sendText("group-1", "Hi group");
+    client.ownerId = "owner-1";
+    const result = await client.sendText("some-group", "Hi group");
     expect(result.success).toBe(true);
   });
 

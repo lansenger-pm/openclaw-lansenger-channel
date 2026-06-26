@@ -14,18 +14,6 @@ function jsonResult(data: unknown) {
   return { content: [{ type: "text", text: JSON.stringify(data) }] };
 }
 
-// Cached agentId → accountId bindings from openclaw.json
-let agentBindings: Record<string, string> = {};
-
-function cacheAgentBindings(config: any): void {
-  const bindings: Array<{ agentId: string; match: { channel: string; accountId?: string } }> = config?.bindings ?? [];
-  for (const b of bindings) {
-    if (b.match?.channel === "lansenger" && b.match.accountId) {
-      agentBindings[b.agentId] = b.match.accountId;
-    }
-  }
-}
-
 function makeToolClient(accountId?: string): { client: LansengerClient; account: ResolvedAccount } | null {
   if (!accountId) return null;
   const account = getRunningAccountByAccountId(accountId);
@@ -34,13 +22,22 @@ function makeToolClient(accountId?: string): { client: LansengerClient; account:
   return { client, account };
 }
 
-/** Parse "agent:<agentId>:lansenger:..." from sessionKey, resolve account via config bindings. */
-function resolveAccountFromSessionKey(sessionKey: string): string | undefined {
-  const parts = String(sessionKey).split(":");
-  if (parts.length >= 2 && parts[0] === "agent") {
-    const agentId = parts[1];
-    if (agentId && agentBindings[agentId]) {
-      return agentBindings[agentId];
+/**
+ * Resolve the Lansenger accountId from the tool factory context.
+ * Priority: params.appId > ctx.agentAccountId > bindings lookup.
+ */
+function resolveToolAccountId(ctx: any, params?: { appId?: string }): string | undefined {
+  const paramAppId = params?.appId;
+  if (paramAppId) return paramAppId;
+  if (ctx.agentAccountId) return ctx.agentAccountId;
+  // Fallback: resolve from agentId + bindings when framework doesn't set agentAccountId
+  const agentId = ctx.agentId;
+  const bindings = ctx.config?.bindings as Array<{ agentId: string; match?: { channel?: string; accountId?: string } }> | undefined;
+  if (agentId && bindings) {
+    for (const b of bindings) {
+      if (b.agentId === agentId && b.match?.channel === "lansenger") {
+        return b.match?.accountId;
+      }
     }
   }
   return undefined;
@@ -56,8 +53,7 @@ const SendFileSchema = {
     videoHeight: { type: "integer", description: "REQUIRED for video files: video height in pixels. Use ffprobe: ffprobe -v error -select_streams v:0 -show_entries stream=height -of csv=p=0 video.mp4" },
     videoDuration: { type: "integer", description: "REQUIRED for video files: video duration in seconds. Use ffprobe: ffprobe -v error -select_streams v:0 -show_entries stream=duration -of csv=p=0 video.mp4" },
     to: { type: "string", description: "Chat ID to send to. Leave empty to auto-detect from current session." },
-    appId: { type: "string", description: "REQUIRED: Your FULL Lansenger App ID (e.g. '13107200-4218880'). Available in session metadata as AppId — use the ENTIRE value including the dash and suffix." },
-    sessionKey: { type: "string", description: "Optional. Pass SessionKey from session metadata to auto-resolve the correct account credentials." },
+    appId: { type: "string", description: "Lansenger App ID. Auto-detected from active session. Only needed when overriding the default account." },
   },
   required: ["filePath"],
 };
@@ -71,8 +67,7 @@ const SendTextSchema = {
     reminderAll: { type: "boolean", description: "@mention all members in a group (only works in group chat, not DMs)." },
     reminderUserIds: { type: "array", items: { type: "string" }, description: "List of user IDs to @mention (group chat only). Lansenger API auto-prepends @姓名 — no need to include in message text." },
     reminderBotIds: { type: "array", items: { type: "string" }, description: "List of bot IDs to @mention (group chat only)." },
-    appId: { type: "string", description: "REQUIRED: Your FULL Lansenger App ID (e.g. '13107200-4218880'). Available in session metadata as AppId — use the ENTIRE value including the dash and suffix." },
-    sessionKey: { type: "string", description: "Optional. Pass SessionKey from session metadata to auto-resolve the correct account credentials." },
+    appId: { type: "string", description: "Lansenger App ID. Auto-detected from active session. Only needed when overriding the default account." },
   },
   required: ["content"],
 };
@@ -85,8 +80,7 @@ const SendFormatTextSchema = {
     reminderAll: { type: "boolean", description: "@mention all members in a group (group chat only)." },
     reminderUserIds: { type: "array", items: { type: "string" }, description: "List of user IDs to @mention (group chat only). Lansenger API auto-prepends @姓名 — no need to include in text." },
     reminderBotIds: { type: "array", items: { type: "string" }, description: "List of bot IDs to @mention (group chat only)." },
-    appId: { type: "string", description: "REQUIRED: Your FULL Lansenger App ID (e.g. '13107200-4218880'). Available in session metadata as AppId — use the ENTIRE value including the dash and suffix." },
-    sessionKey: { type: "string", description: "Optional. Pass SessionKey from session metadata to auto-resolve the correct account credentials." },
+    appId: { type: "string", description: "Lansenger App ID. Auto-detected from active session. Only needed when overriding the default account." },
   },
   required: ["content"],
 };
@@ -97,8 +91,7 @@ const SendImageUrlSchema = {
     imageUrl: { type: "string", description: "URL of the image to download and send. Must be directly reachable from the gateway host." },
     caption: { type: "string", description: "Optional plain-text caption (no Markdown)." },
     to: { type: "string", description: "Chat ID to send to. Leave empty to auto-detect from current session." },
-    appId: { type: "string", description: "REQUIRED: Your FULL Lansenger App ID (e.g. '13107200-4218880'). Available in session metadata as AppId — use the ENTIRE value including the dash and suffix." },
-    sessionKey: { type: "string", description: "Optional. Pass SessionKey from session metadata to auto-resolve the correct account credentials." },
+    appId: { type: "string", description: "Lansenger App ID. Auto-detected from active session. Only needed when overriding the default account." },
   },
   required: ["imageUrl"],
 };
@@ -109,8 +102,7 @@ const RevokeMessageSchema = {
     messageIds: { type: "array", items: { type: "string" }, description: "List of message IDs to revoke." },
     chatType: { type: "string", description: "Chat type: bot (default) or group. For group, senderId is required.", default: "bot" },
     senderId: { type: "string", description: "Sender ID (required for group chat type)." },
-    appId: { type: "string", description: "REQUIRED: Your FULL Lansenger App ID (e.g. '13107200-4218880'). Available in session metadata as AppId — use the ENTIRE value including the dash and suffix." },
-    sessionKey: { type: "string", description: "Optional. Pass SessionKey from session metadata to auto-resolve the correct account credentials." },
+    appId: { type: "string", description: "Lansenger App ID. Auto-detected from active session. Only needed when overriding the default account." },
   },
   required: ["messageIds"],
 };
@@ -126,8 +118,7 @@ const SendLinkCardSchema = {
     fromName: { type: "string", description: "Card source name (API-required, defaults to empty)." },
     fromIconLink: { type: "string", description: "Card source icon URL (API-required, defaults to empty)." },
     to: { type: "string", description: "Chat ID to send to. Leave empty to auto-detect from current session." },
-    appId: { type: "string", description: "REQUIRED: Your FULL Lansenger App ID (e.g. '13107200-4218880'). Available in session metadata as AppId — use the ENTIRE value including the dash and suffix." },
-    sessionKey: { type: "string", description: "Optional. Pass SessionKey from session metadata to auto-resolve the correct account credentials." },
+    appId: { type: "string", description: "Lansenger App ID. Auto-detected from active session. Only needed when overriding the default account." },
   },
   required: ["title", "link"],
 };
@@ -151,8 +142,7 @@ const SendAppArticlesSchema = {
       description: "List of article entries. Each must have imgUrl, title, url.",
     },
     to: { type: "string", description: "Chat ID to send to. Leave empty to auto-detect from current session." },
-    appId: { type: "string", description: "REQUIRED: Your FULL Lansenger App ID (e.g. '13107200-4218880'). Available in session metadata as AppId — use the ENTIRE value including the dash and suffix." },
-    sessionKey: { type: "string", description: "Optional. Pass SessionKey from session metadata to auto-resolve the correct account credentials." },
+    appId: { type: "string", description: "Lansenger App ID. Auto-detected from active session. Only needed when overriding the default account." },
   },
   required: ["articles"],
 };
@@ -188,8 +178,7 @@ const SendAppCardSchema = {
     staffId: { type: "string", description: "Staff openId for showing sender avatar." },
     headIconUrl: { type: "string", description: "Header icon URL." },
     to: { type: "string", description: "Chat ID to send to. Leave empty to auto-detect from current session." },
-    appId: { type: "string", description: "REQUIRED: Your FULL Lansenger App ID (e.g. '13107200-4218880'). Available in session metadata as AppId — use the ENTIRE value including the dash and suffix." },
-    sessionKey: { type: "string", description: "Optional. Pass SessionKey from session metadata to auto-resolve the correct account credentials." },
+    appId: { type: "string", description: "Lansenger App ID. Auto-detected from active session. Only needed when overriding the default account." },
   },
   required: ["bodyTitle"],
 };
@@ -212,8 +201,7 @@ const UpdateDynamicCardSchema = {
       description: "Updated link entries (max 3).",
     },
     isLastUpdate: { type: "boolean", description: "True = final state, card becomes static (default: false).", default: false },
-    appId: { type: "string", description: "REQUIRED: Your FULL Lansenger App ID (e.g. '13107200-4218880'). Available in session metadata as AppId — use the ENTIRE value including the dash and suffix." },
-    sessionKey: { type: "string", description: "Optional. Pass SessionKey from session metadata to auto-resolve the correct account credentials." },
+    appId: { type: "string", description: "Lansenger App ID. Auto-detected from active session. Only needed when overriding the default account." },
   },
   required: ["msgId"],
 };
@@ -298,8 +286,7 @@ const SendApproveCardSchema = {
     },
     expireTime: { type: "integer", description: "Card expiration time in seconds." },
     to: { type: "string", description: "Chat ID to send to. Leave empty to auto-detect from current session." },
-    appId: { type: "string", description: "REQUIRED: Your FULL Lansenger App ID (e.g. '13107200-4218880'). Available in session metadata as AppId — use the ENTIRE value including the dash and suffix." },
-    sessionKey: { type: "string", description: "Optional. Pass SessionKey from session metadata to auto-resolve the correct account credentials." },
+    appId: { type: "string", description: "Lansenger App ID. Auto-detected from active session. Only needed when overriding the default account." },
   },
   required: ["head", "body"],
 };
@@ -309,18 +296,16 @@ const QueryGroupsSchema = {
   properties: {
     pageOffset: { type: "integer", description: "Page offset, 0-based (default: 0).", default: 0 },
     pageSize: { type: "integer", description: "Groups per page (max 100, default: 100).", default: 100 },
-    appId: { type: "string", description: "REQUIRED: Your FULL Lansenger App ID (e.g. '13107200-4218880'). Available in session metadata as AppId — use the ENTIRE value including the dash and suffix." },
-    sessionKey: { type: "string", description: "Optional. Pass SessionKey from session metadata to auto-resolve the correct account credentials." },
+    appId: { type: "string", description: "Lansenger App ID. Auto-detected from active session. Only needed when overriding the default account." },
   },
-  required: ["appId"],
+  required: [],
 };
 
 const GroupInfoSchema = {
   type: "object",
   properties: {
     groupId: { type: "string", description: "Group ID to query." },
-    appId: { type: "string", description: "REQUIRED: Your FULL Lansenger App ID (e.g. '13107200-4218880'). Available in session metadata as AppId — use the ENTIRE value including the dash and suffix." },
-    sessionKey: { type: "string", description: "Optional. Pass SessionKey from session metadata to auto-resolve the correct account credentials." },
+    appId: { type: "string", description: "Lansenger App ID. Auto-detected from active session. Only needed when overriding the default account." },
   },
   required: ["groupId"],
 };
@@ -331,8 +316,7 @@ const GroupMembersSchema = {
     groupId: { type: "string", description: "Group ID to query." },
     pageOffset: { type: "integer", description: "Page offset (default: 0).", default: 0 },
     pageSize: { type: "integer", description: "Members per page. Omit to return all.", default: 100 },
-    appId: { type: "string", description: "REQUIRED: Your FULL Lansenger App ID (e.g. '13107200-4218880'). Available in session metadata as AppId — use the ENTIRE value including the dash and suffix." },
-    sessionKey: { type: "string", description: "Optional. Pass SessionKey from session metadata to auto-resolve the correct account credentials." },
+    appId: { type: "string", description: "Lansenger App ID. Auto-detected from active session. Only needed when overriding the default account." },
   },
   required: ["groupId"],
 };
@@ -342,20 +326,19 @@ const GroupCheckMembershipSchema = {
   properties: {
     groupId: { type: "string", description: "Group ID to check." },
     staffId: { type: "string", description: "Staff ID to check. If omitted, checks whether the bot itself is in the group." },
-    appId: { type: "string", description: "REQUIRED: Your FULL Lansenger App ID (e.g. '13107200-4218880'). Available in session metadata as AppId — use the ENTIRE value including the dash and suffix." },
-    sessionKey: { type: "string", description: "Optional. Pass SessionKey from session metadata to auto-resolve the correct account credentials." },
+    appId: { type: "string", description: "Lansenger App ID. Auto-detected from active session. Only needed when overriding the default account." },
   },
   required: ["groupId"],
 };
 
 export function registerLansengerTools(api: any) {
-  cacheAgentBindings(api.config);
-  api.registerTool({
+  api.registerTool((ctx: any) => ({
     name: "lansenger_send_file",
     description: "Send a local file as an attachment on Lansenger (蓝信). Any local file works — workspace, Documents, /tmp, etc. Do NOT use MEDIA: tags for files outside the workspace; they silently fail. Always use this tool instead.",
     parameters: SendFileSchema,
     async execute(_toolCallId: string, params: any) {
-      const tc = makeToolClient(resolveAccountFromSessionKey(params.sessionKey ?? params._sessionKey));
+      const accountId = resolveToolAccountId(ctx, params);
+      const tc = makeToolClient(accountId);
       if (!tc) return jsonResult({ error: "Lansenger account not configured or not running." });
       const filePath = params.filePath;
       const caption = params.caption ?? "";
@@ -385,14 +368,15 @@ export function registerLansengerTools(api: any) {
       const result = await tc.client.sendFile(to, resolved, caption, undefined, undefined, resolvedCover, videoWidth, videoHeight, videoDuration);
       return jsonResult({ success: result.success, messageId: result.messageId ?? null });
     },
-  });
+  }));
 
-  api.registerTool({
+  api.registerTool((ctx: any) => ({
     name: "lansenger_send_text",
     description: "Send plain text on Lansenger (蓝信) with optional file attachment and @mentions. Uses msgType=text: plain text ONLY (NO Markdown). For Markdown, just write normally — it renders automatically in replies. If you need both Markdown AND a file, send Markdown first, then call this tool for the file.",
     parameters: SendTextSchema,
     async execute(_toolCallId: string, params: any) {
-      const tc = makeToolClient(resolveAccountFromSessionKey(params.sessionKey ?? params._sessionKey));
+      const accountId = resolveToolAccountId(ctx, params);
+      const tc = makeToolClient(accountId);
       if (!tc) return jsonResult({ error: "Lansenger account not configured or not running." });
       const content = params.content ?? "";
       const filePath = params.filePath ?? "";
@@ -416,14 +400,15 @@ export function registerLansengerTools(api: any) {
       const result = await client.sendText(to, content, reminder ? { reminder } : undefined);
       return jsonResult({ success: result.success, messageId: result.messageId ?? null });
     },
-  });
+  }));
 
-  api.registerTool({
+  api.registerTool((ctx: any) => ({
     name: "lansenger_send_format_text",
     description: "Send Markdown-formatted text on Lansenger (蓝信) with optional @mentions. Uses msgType=formatText: Markdown renders as rich text. Supports @mentions via reminder params. Does NOT support file attachments — for Markdown + file, write the Markdown reply normally first, then use lansenger_send_file separately.",
     parameters: SendFormatTextSchema,
     async execute(_toolCallId: string, params: any) {
-      const tc = makeToolClient(resolveAccountFromSessionKey(params.sessionKey ?? params._sessionKey));
+      const accountId = resolveToolAccountId(ctx, params);
+      const tc = makeToolClient(accountId);
       if (!tc) return jsonResult({ error: "Lansenger account not configured or not running." });
       const content = params.content ?? "";
       const to = resolveTarget(params.to);
@@ -434,14 +419,15 @@ export function registerLansengerTools(api: any) {
       const result = await tc.client.sendFormatText(to, content, reminder ? { reminder } : undefined);
       return jsonResult({ success: result.success, messageId: result.messageId ?? null });
     },
-  });
+  }));
 
-  api.registerTool({
+  api.registerTool((ctx: any) => ({
     name: "lansenger_send_image_url",
     description: "Send an image from a URL to a Lansenger (蓝信) user or group. Downloads the image first, then uploads and sends. URL must be directly reachable from the gateway host. For local files, use lansenger_send_file instead.",
     parameters: SendImageUrlSchema,
     async execute(_toolCallId: string, params: any) {
-      const tc = makeToolClient(resolveAccountFromSessionKey(params.sessionKey ?? params._sessionKey));
+      const accountId = resolveToolAccountId(ctx, params);
+      const tc = makeToolClient(accountId);
       if (!tc) return jsonResult({ error: "Lansenger account not configured or not running." });
       const imageUrl = params.imageUrl;
       const caption = params.caption ?? "";
@@ -451,14 +437,15 @@ export function registerLansengerTools(api: any) {
       const result = await tc.client.sendImageUrl(to, imageUrl, caption);
       return jsonResult({ success: result.success, messageId: result.messageId ?? null });
     },
-  });
+  }));
 
-  api.registerTool({
+  api.registerTool((ctx: any) => ({
     name: "lansenger_revoke_message",
     description: "Revoke previously sent Lansenger (蓝信) messages. The recipient sees a 'message revoked' notification. For group chat, senderId is required.",
     parameters: RevokeMessageSchema,
     async execute(_toolCallId: string, params: any) {
-      const tc = makeToolClient(resolveAccountFromSessionKey(params.sessionKey ?? params._sessionKey));
+      const accountId = resolveToolAccountId(ctx, params);
+      const tc = makeToolClient(accountId);
       if (!tc) return jsonResult({ error: "Lansenger account not configured or not running." });
       const messageIds = params.messageIds;
       if (!messageIds || messageIds.length === 0) return jsonResult({ error: "messageIds is required" });
@@ -470,14 +457,15 @@ export function registerLansengerTools(api: any) {
       const result = await tc.client.revokeMessage(messageIds, chatType, senderId);
       return jsonResult({ success: result.success });
     },
-  });
+  }));
 
-  api.registerTool({
+  api.registerTool((ctx: any) => ({
     name: "lansenger_send_link_card",
     description: "Send a link preview card on Lansenger (蓝信). Displays title, description, icon, and clickable link. API requires description, iconLink, fromName, fromIconLink (defaults to empty string if omitted).",
     parameters: SendLinkCardSchema,
     async execute(_toolCallId: string, params: any) {
-      const tc = makeToolClient(resolveAccountFromSessionKey(params.sessionKey ?? params._sessionKey));
+      const accountId = resolveToolAccountId(ctx, params);
+      const tc = makeToolClient(accountId);
       if (!tc) return jsonResult({ error: "Lansenger account not configured or not running." });
       const title = params.title;
       const link = params.link;
@@ -493,14 +481,15 @@ export function registerLansengerTools(api: any) {
       });
       return jsonResult({ success: result.success, messageId: result.messageId ?? null });
     },
-  });
+  }));
 
-  api.registerTool({
+  api.registerTool((ctx: any) => ({
     name: "lansenger_send_app_articles",
     description: "Send a multi-article card (图文卡片) on Lansenger (蓝信). Each article has an image, title, and link. Article summary field is 'summary' (NOT 'description' — that field is silently ignored by the API). For a single link card, use lansenger_send_link_card instead.",
     parameters: SendAppArticlesSchema,
     async execute(_toolCallId: string, params: any) {
-      const tc = makeToolClient(resolveAccountFromSessionKey(params.sessionKey ?? params._sessionKey));
+      const accountId = resolveToolAccountId(ctx, params);
+      const tc = makeToolClient(accountId);
       if (!tc) return jsonResult({ error: "Lansenger account not configured or not running." });
       const articles = params.articles;
       const to = resolveTarget(params.to);
@@ -509,14 +498,15 @@ export function registerLansengerTools(api: any) {
       const result = await tc.client.sendAppArticles(to, articles);
       return jsonResult({ success: result.success, messageId: result.messageId ?? null });
     },
-  });
+  }));
 
-  api.registerTool({
+  api.registerTool((ctx: any) => ({
     name: "lansenger_send_app_card",
     description: "Send a rich formatted card (应用卡片) on Lansenger (蓝信). Supports div-style formatting (color, font-size, text-align, text-indent). Set isDynamic=true for approval workflows. ⚠️ font-size MUST use pt units (12pt–36pt) — px causes 'invalid bodyContent'. ⚠️ text-indent MUST have units — bare 0 causes silent failure, use 0em. ⚠️ headStatusInfo: description is status TEXT (supports div-style for color, max 30 bytes), colour is the DOT/圆点 color (hex like #FFB116). These are TWO different things — text color vs dot color. ⚠️ Group chat does NOT support appCard msgType — falls back to plain text.",
     parameters: SendAppCardSchema,
     async execute(_toolCallId: string, params: any) {
-      const tc = makeToolClient(resolveAccountFromSessionKey(params.sessionKey ?? params._sessionKey));
+      const accountId = resolveToolAccountId(ctx, params);
+      const tc = makeToolClient(accountId);
       if (!tc) return jsonResult({ error: "Lansenger account not configured or not running." });
       const bodyTitle = params.bodyTitle;
       const to = resolveTarget(params.to);
@@ -545,14 +535,15 @@ export function registerLansengerTools(api: any) {
       const result = await tc.client.sendAppCard(to, cardData as any);
       return jsonResult({ success: result.success, messageId: result.messageId ?? null });
     },
-  });
+  }));
 
-  api.registerTool({
+  api.registerTool((ctx: any) => ({
     name: "lansenger_update_dynamic_card",
     description: "Update a dynamic appCard's status in-place on Lansenger (蓝信). The card must have been sent with isDynamic=true via lansenger_send_app_card. Use this for approval workflows: pending → approved/rejected. headStatusInfo: description supports div-style for color, colour is the status dot color.",
     parameters: UpdateDynamicCardSchema,
     async execute(_toolCallId: string, params: any) {
-      const tc = makeToolClient(resolveAccountFromSessionKey(params.sessionKey ?? params._sessionKey));
+      const accountId = resolveToolAccountId(ctx, params);
+      const tc = makeToolClient(accountId);
       if (!tc) return jsonResult({ error: "Lansenger account not configured or not running." });
       const msgId = params.msgId;
       if (!msgId) return jsonResult({ error: "msgId is required" });
@@ -564,14 +555,15 @@ export function registerLansengerTools(api: any) {
       );
       return jsonResult({ success: result.success });
     },
-  });
+  }));
 
-  api.registerTool({
+  api.registerTool((ctx: any) => ({
     name: "lansenger_send_approve_card",
     description: "Send an approval card (审批卡片) on Lansenger (蓝信). Richer than appCard: supports structured head/body, @mentions (reminder), button themes (1=primary blue, 2=secondary-blue, 3=secondary-black, 4=warning), button states (0=available, 1=disabled, 2=hidden), permission scopes (permittedStaffs/prohibitedStaffs), expiration (expireTime in seconds), and callback info. Use for multi-button approval/policy workflows that need controlled permissions.",
     parameters: SendApproveCardSchema,
     async execute(_toolCallId: string, params: any) {
-      const tc = makeToolClient(resolveAccountFromSessionKey(params.sessionKey ?? params._sessionKey));
+      const accountId = resolveToolAccountId(ctx, params);
+      const tc = makeToolClient(accountId);
       if (!tc) return jsonResult({ error: "Lansenger account not configured or not running." });
       const to = resolveTarget(params.to);
       if (!to) return jsonResult({ error: "No target specified. Provide a 'to' parameter (chat ID)." });
@@ -588,57 +580,61 @@ export function registerLansengerTools(api: any) {
       const result = await tc.client.sendApproveCard(to, cardData);
       return jsonResult({ success: result.success, messageId: result.messageId ?? null });
     },
-  });
+  }));
 
-  api.registerTool({
+  api.registerTool((ctx: any) => ({
     name: "lansenger_query_groups",
     description: "Query the bot's group list on Lansenger (蓝信). Returns total count and group IDs. ⚠️ May return errCode=10005 'API服务无权限' on enterprise deployments where /v2/groups/fetch is not authorized. If permission denied, ask the user for group chatIds manually.",
     parameters: QueryGroupsSchema,
     async execute(_toolCallId: string, params: any) {
-      const tc = makeToolClient(resolveAccountFromSessionKey(params.sessionKey ?? params._sessionKey));
+      const accountId = resolveToolAccountId(ctx, params);
+      const tc = makeToolClient(accountId);
       if (!tc) return jsonResult({ error: "Lansenger account not configured or not running." });
       const result = await tc.client.queryGroups(params.pageOffset ?? 0, params.pageSize ?? 100);
       if ("error" in result) return jsonResult({ error: result.error });
       return jsonResult({ success: true, totalGroupIds: result.totalGroupIds, groupIds: result.groupIds });
     },
-  });
+  }));
 
-  api.registerTool({
+  api.registerTool((ctx: any) => ({
     name: "lansenger_group_info",
     description: "Get detailed group info on Lansenger (蓝信): name, avatar, description, owner, member count, settings, etc. Use this when you need to know what a group is about before interacting with it.",
     parameters: GroupInfoSchema,
     async execute(_toolCallId: string, params: any) {
-      const tc = makeToolClient(resolveAccountFromSessionKey(params.sessionKey ?? params._sessionKey));
+      const accountId = resolveToolAccountId(ctx, params);
+      const tc = makeToolClient(accountId);
       if (!tc) return jsonResult({ error: "Lansenger account not configured or not running." });
       const info = await tc.client.getGroupInfo(params.groupId);
       if (!info) return jsonResult({ error: `Failed to get group info for ${params.groupId}. Group may not exist or bot lacks permission.` });
       return jsonResult({ success: true, groupId: params.groupId, ...info });
     },
-  });
+  }));
 
-  api.registerTool({
+  api.registerTool((ctx: any) => ({
     name: "lansenger_group_members",
     description: "Get group member list on Lansenger (蓝信). Returns member count and member list with names, roles (0=member, 1=assistOwner, 2=owner), and avatar URLs. Supports pagination for large groups.",
     parameters: GroupMembersSchema,
     async execute(_toolCallId: string, params: any) {
-      const tc = makeToolClient(resolveAccountFromSessionKey(params.sessionKey ?? params._sessionKey));
+      const accountId = resolveToolAccountId(ctx, params);
+      const tc = makeToolClient(accountId);
       if (!tc) return jsonResult({ error: "Lansenger account not configured or not running." });
       const data = await tc.client.getGroupMembers(params.groupId, params.pageOffset ?? 0, params.pageSize);
       if (!data) return jsonResult({ error: `Failed to get group members for ${params.groupId}.` });
       return jsonResult({ success: true, groupId: params.groupId, totalMembers: data.totalMembers, members: data.members });
     },
-  });
+  }));
 
-  api.registerTool({
+  api.registerTool((ctx: any) => ({
     name: "lansenger_group_check_membership",
     description: "Check if a staff member (or the bot itself) is in a Lansenger (蓝信) group. If staffId is omitted, checks whether the bot is in the group. Returns a boolean isInGroup result.",
     parameters: GroupCheckMembershipSchema,
     async execute(_toolCallId: string, params: any) {
-      const tc = makeToolClient(resolveAccountFromSessionKey(params.sessionKey ?? params._sessionKey));
+      const accountId = resolveToolAccountId(ctx, params);
+      const tc = makeToolClient(accountId);
       if (!tc) return jsonResult({ error: "Lansenger account not configured or not running." });
       const isInGroup = await tc.client.checkMembership(params.groupId, params.staffId);
       if (isInGroup === null) return jsonResult({ error: `Failed to check membership for group ${params.groupId}.` });
       return jsonResult({ success: true, groupId: params.groupId, staffId: params.staffId ?? null, isInGroup });
     },
-  });
+  }));
 }

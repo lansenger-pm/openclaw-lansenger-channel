@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { getLastInboundChatId, getLastInboundTime, getRunningClient, getRunningAccount, startLansengerGateway, mergeInboundEvents } from "./runtime.js";
+import { getLastInboundChatId, getLastInboundTime, getRunningClient, getRunningAccount, startLansengerGateway, mergeInboundEvents, _clearTestState } from "./runtime.js";
 import { LansengerClient } from "./client.js";
 import type { InboundEvent } from "./client.js";
 
@@ -94,6 +94,7 @@ describe("getRunningAccount", () => {
 
 describe("startLansengerGateway", () => {
   beforeEach(() => {
+    _clearTestState();
     vi.stubGlobal("fetch", async (url: string | Request) => {
       const u = typeof url === "string" ? url : url.url;
       if (u.includes("apptoken")) return new Response(JSON.stringify({ errCode: 0, errMsg: "", data: { appToken: "tok", expiresIn: 7200 } }), { headers: { "content-type": "application/json" } });
@@ -476,6 +477,7 @@ describe("handleInbound policies (via webhook)", () => {
   });
 
   afterEach(() => {
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
@@ -1210,6 +1212,7 @@ describe("Group autoMentionReply three-level priority", () => {
   });
 
   afterEach(() => {
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
@@ -2033,5 +2036,210 @@ describe("DM pairing store allowFrom merge", () => {
 
     expect(inboundRun).not.toHaveBeenCalled();
     expect(pairingCodeSent).toBe(true);
+  });
+});
+
+// =====================================================================
+// ackMessage / revokeAckMessage (independent describe to avoid test
+// pollution from deliverReply's fetch stub leaking via stubGlobal)
+// =====================================================================
+describe("ackMessage / revokeAckMessage", () => {
+  let api: any;
+
+  function makeNoCredApi(channelOverrides?: Record<string, any>): any {
+    return makeApi({
+      config: {
+        channels: {
+          lansenger: {
+            appId: "",
+            appSecret: "",
+            dmPolicy: "pairing",
+            allowFrom: [] as string[],
+            autoMentionReply: false,
+            autoQuoteReply: false,
+            ...(channelOverrides ?? {}),
+          },
+        },
+      },
+    });
+  }
+
+  beforeEach(() => {
+    _clearTestState();
+    vi.stubGlobal("fetch", async (url: string | Request) => {
+      const u = typeof url === "string" ? url : url.url;
+      if (u.includes("apptoken"))
+        return new Response(
+          JSON.stringify({ errCode: 0, errMsg: "", data: { appToken: "tok", expiresIn: 7200 } }),
+          { headers: { "content-type": "application/json" } },
+        );
+      return new Response(
+        JSON.stringify({ errCode: 0, errMsg: "", data: { msgId: "m1" } }),
+        { headers: { "content-type": "application/json" } },
+      );
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("ackMessage=true sends ack before reply and revokes by default", async () => {
+    api = makeNoCredApi({
+      dmPolicy: "open",
+      ackMessage: true,
+      // revokeAckMessage defaults to true
+    });
+    startLansengerGateway(api);
+
+    const allFetchCalls: Array<{ url: string; body: any }> = [];
+    const inboundRun = vi.fn().mockImplementation(async (params: any) => {
+      const turn = params.adapter.resolveTurn();
+      await turn.delivery.deliver(
+        { text: "Hello from bot", to: "user-1" },
+        { kind: "final" },
+      );
+    });
+    api.runtime.channel.inbound.run = inboundRun;
+
+    vi.stubGlobal("fetch", async (url: string | Request, init?: any) => {
+      const u = typeof url === "string" ? url : url.url;
+      if (u.includes("apptoken"))
+        return new Response(
+          JSON.stringify({ errCode: 0, errMsg: "", data: { appToken: "tok", expiresIn: 7200 } }),
+          { headers: { "content-type": "application/json" } },
+        );
+      if (u.includes("bot/messages/create") || u.includes("messages/revoke")) {
+        const body = init?.body ? JSON.parse(init.body.toString()) : {};
+        allFetchCalls.push({ url: u, body });
+      }
+      return new Response(
+        JSON.stringify({ errCode: 0, errMsg: "", data: { msgId: "m1" } }),
+        { headers: { "content-type": "application/json" } },
+      );
+    });
+
+    const route = api._httpRoutes.at(-1)!;
+    await route.handler(makeReq(dmWebhookBody({ senderId: "user-1" })), makeRes());
+
+    expect(inboundRun).toHaveBeenCalledTimes(1);
+
+    // ack + reply = 2 message sends
+    const msgCalls = allFetchCalls.filter(
+      (c) => c.body.msgType === "formatText" || c.body.msgType === "text",
+    );
+    expect(msgCalls.length).toBeGreaterThanOrEqual(2);
+
+    // First call should be ack text
+    const firstContent = msgCalls[0]!.body.msgData?.text?.content
+      ?? msgCalls[0]!.body.msgData?.formatText?.text ?? "";
+    expect(firstContent).toContain("收到，正在处理");
+
+    // Should have revoke call
+    const revokeCalls = allFetchCalls.filter((c) => c.url.includes("revoke"));
+    expect(revokeCalls.length).toBe(1);
+  });
+
+  it("revokeAckMessage=false keeps ack message (no revoke)", async () => {
+    api = makeNoCredApi({
+      dmPolicy: "open",
+      ackMessage: true,
+      revokeAckMessage: false,
+    });
+    startLansengerGateway(api);
+
+    const allFetchCalls: Array<{ url: string; body: any }> = [];
+    const inboundRun = vi.fn().mockImplementation(async (params: any) => {
+      const turn = params.adapter.resolveTurn();
+      await turn.delivery.deliver(
+        { text: "Hello from bot", to: "user-1" },
+        { kind: "final" },
+      );
+    });
+    api.runtime.channel.inbound.run = inboundRun;
+
+    vi.stubGlobal("fetch", async (url: string | Request, init?: any) => {
+      const u = typeof url === "string" ? url : url.url;
+      if (u.includes("apptoken"))
+        return new Response(
+          JSON.stringify({ errCode: 0, errMsg: "", data: { appToken: "tok", expiresIn: 7200 } }),
+          { headers: { "content-type": "application/json" } },
+        );
+      if (u.includes("bot/messages/create") || u.includes("messages/revoke")) {
+        const body = init?.body ? JSON.parse(init.body.toString()) : {};
+        allFetchCalls.push({ url: u, body });
+      }
+      return new Response(
+        JSON.stringify({ errCode: 0, errMsg: "", data: { msgId: "m1" } }),
+        { headers: { "content-type": "application/json" } },
+      );
+    });
+
+    const route = api._httpRoutes.at(-1)!;
+    await route.handler(makeReq(dmWebhookBody({ senderId: "user-1" })), makeRes());
+
+    expect(inboundRun).toHaveBeenCalledTimes(1);
+
+    // ack + reply sent, but NO revoke
+    const msgCalls = allFetchCalls.filter(
+      (c) => c.body.msgType === "formatText" || c.body.msgType === "text",
+    );
+    expect(msgCalls.length).toBeGreaterThanOrEqual(2);
+
+    const revokeCalls = allFetchCalls.filter((c) => c.url.includes("revoke"));
+    expect(revokeCalls.length).toBe(0);
+  });
+
+  it("ackMessage=false sends no ack", async () => {
+    api = makeNoCredApi({
+      dmPolicy: "open",
+      ackMessage: false,
+    });
+    startLansengerGateway(api);
+
+    const allFetchCalls: Array<{ url: string; body: any }> = [];
+    const inboundRun = vi.fn().mockImplementation(async (params: any) => {
+      const turn = params.adapter.resolveTurn();
+      await turn.delivery.deliver(
+        { text: "Hello from bot", to: "user-1" },
+        { kind: "final" },
+      );
+    });
+    api.runtime.channel.inbound.run = inboundRun;
+
+    vi.stubGlobal("fetch", async (url: string | Request, init?: any) => {
+      const u = typeof url === "string" ? url : url.url;
+      if (u.includes("apptoken"))
+        return new Response(
+          JSON.stringify({ errCode: 0, errMsg: "", data: { appToken: "tok", expiresIn: 7200 } }),
+          { headers: { "content-type": "application/json" } },
+        );
+      if (u.includes("bot/messages/create") || u.includes("messages/revoke")) {
+        const body = init?.body ? JSON.parse(init.body.toString()) : {};
+        allFetchCalls.push({ url: u, body });
+      }
+      return new Response(
+        JSON.stringify({ errCode: 0, errMsg: "", data: { msgId: "m1" } }),
+        { headers: { "content-type": "application/json" } },
+      );
+    });
+
+    const route = api._httpRoutes.at(-1)!;
+    await route.handler(makeReq(dmWebhookBody({ senderId: "user-1" })), makeRes());
+
+    expect(inboundRun).toHaveBeenCalledTimes(1);
+
+    // Only 1 message call (reply), no ack
+    const msgCalls = allFetchCalls.filter(
+      (c) => c.body.msgType === "formatText" || c.body.msgType === "text",
+    );
+    expect(msgCalls.length).toBe(1);
+
+    const contents = msgCalls.map(
+      (c) => c.body.msgData?.text?.content ?? c.body.msgData?.formatText?.text ?? "",
+    );
+    const hasAck = contents.some((t: string) => t.includes("收到，正在处理"));
+    expect(hasAck).toBe(false);
   });
 });

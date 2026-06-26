@@ -76,6 +76,15 @@ const accountStatusSinks = new Map<string, (patch: Omit<ChannelAccountSnapshot, 
 const lastInboundChatIds = new Map<string, string>();
 const lastInboundTimes = new Map<string, number>();
 const sessionDeliveryTracker = new Map<string, Set<string>>();
+
+// Exported for unit tests
+export function _clearTestState(): void {
+  sessionDeliveryTracker.clear();
+  lastInboundChatIds.clear();
+  lastInboundTimes.clear();
+  sessionAccountTracker.clear();
+  runningAccounts.clear();
+}
 const sessionAccountTracker = new Map<string, string>();
 
 let pluginApi: OpenClawPluginApi | null = null;
@@ -233,16 +242,6 @@ export function setSessionAccountId(sessionKey: string, accountId: string): void
 
 export function getSessionAccountId(sessionKey: string): string | undefined {
   return sessionAccountTracker.get(sessionKey);
-}
-
-/** Find which running account's client has seen this chatId (via chatTypeMap cache). */
-export function findAccountIdByChatId(chatId: string): string | undefined {
-  for (const [, entry] of runningAccounts) {
-    if (entry.client.hasChatId(chatId)) {
-      return entry.account.appId;
-    }
-  }
-  return undefined;
 }
 
 export function startLansengerGateway(api: OpenClawPluginApi): void {
@@ -895,12 +894,47 @@ async function handleInbound(
       }
     }
 
+    // personal bot: the DM sender IS the owner — only one person can DM a personal bot
+    const entry = runningAccounts.get(runningKey);
+    if (entry) entry.client.ownerId = event.senderId;
+
+    // Auto-configure homeChannel on the first DM so tools/apps can resolve the owner ID
+    // without needing a DM to come in first (survives gateway restart).
+    // Check the raw account-level config, not the merged ResolvedAccount.homeChannel
+    // (which may inherit from section-level and hide a missing account-level value).
+    if (event.senderId && account.appId) {
+      const section = (api.config.channels as any)?.["lansenger"];
+      if (section?.configWrites !== false) {
+        const isMultiAccount = !!section?.accounts;
+        const accountKey = account.accountId || account.appId;
+        const rawHomeChannel: string | undefined = isMultiAccount
+          ? section?.accounts?.[accountKey]?.homeChannel
+          : section?.homeChannel;
+        if (!rawHomeChannel) {
+          const configPath = isMultiAccount
+            ? `channels.lansenger.accounts.${accountKey}.homeChannel`
+            : "channels.lansenger.homeChannel";
+          try {
+            execSync(
+              `openclaw config set ${configPath} "${event.senderId}"`,
+              { stdio: "pipe", timeout: 5000 },
+            );
+            log.info(`autoConfigureHomeChannel: set ${configPath} = "${event.senderId}"`);
+          } catch (e: any) {
+            log.warn(`autoConfigureHomeChannel: ${e.message}`);
+          }
+        }
+      }
+    }
+
     // autoMentionReply / autoQuoteReply for DMs: account > section
     if (account.autoMentionReply && event.senderId) {
       reminder = { userIds: [event.senderId] };
+      log.info(`inbound: autoMentionReply enabled (DM), reminder set for sender=${event.senderId}`);
     }
     if (account.autoQuoteReply && event.messageId) {
       refMsgId = event.messageId;
+      log.info(`inbound: autoQuoteReply enabled (DM), refMsgId=${event.messageId}`);
     }
   }
 
@@ -975,9 +1009,11 @@ async function handleInbound(
         ?? account.respondToAtAll ?? false;
       if (autoMentionReply && event.senderId) {
         reminder = { userIds: [event.senderId] };
+        log.info(`inbound: autoMentionReply enabled (group), reminder set for sender=${event.senderId}`);
       }
       if (autoQuoteReply && event.messageId) {
         refMsgId = event.messageId;
+        log.info(`inbound: autoQuoteReply enabled (group), refMsgId=${event.messageId}`);
       }
 
       // Resolve requireMention: account-level requireMention overrides SDK default.
@@ -1314,7 +1350,8 @@ async function handleInbound(
       try {
         const entry = runningAccounts.get(runningKey);
         const revokeClient = entry?.client ?? makeClient(account, sdkLogger());
-        const revokeResult = await revokeClient.revokeMessage([ackMessageId], "bot");
+        const revokeChatType = event.isGroup ? "group" : "bot";
+        const revokeResult = await revokeClient.revokeMessage([ackMessageId], revokeChatType);
         log.info(`inbound: ack message revoked: messageId=${ackMessageId} success=${revokeResult.success}`);
       } catch (e: unknown) {
         log.error(`inbound: ack message revoke failed — ${e instanceof Error ? e.message : String(e)}`);
@@ -1326,7 +1363,8 @@ async function handleInbound(
       try {
         const entry = runningAccounts.get(runningKey);
         const revokeClient = entry?.client ?? makeClient(account, sdkLogger());
-        await revokeClient.revokeMessage([ackMessageId], "bot");
+        const revokeChatType = event.isGroup ? "group" : "bot";
+        await revokeClient.revokeMessage([ackMessageId], revokeChatType);
       } catch {}
     }
   }
@@ -1334,7 +1372,7 @@ async function handleInbound(
 
 async function deliverReply(client: LansengerClient, to: string, text: string, opts?: { reminder?: ReminderParams; refMsgId?: string }): Promise<ApiResult> {
   log.info(`deliverReply: to=${to} textLen=${text.length} preview="${text.slice(0, 100)}"`);
-  log.debug(`deliverReply: refMsgId=${opts?.refMsgId ?? "none"} reminderUserIds=[${(opts?.reminder?.userIds ?? []).join(",")}]`);
+  log.info(`deliverReply: refMsgId=${opts?.refMsgId ?? "none"} reminderUserIds=[${(opts?.reminder?.userIds ?? []).join(",")}]`);
   if (!text.trim()) {
     log.warn(`deliverReply: empty text after OpenClaw MEDIA processing, skipping delivery`);
     return { success: true, messageId: undefined };
