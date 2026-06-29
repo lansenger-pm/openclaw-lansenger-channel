@@ -205,6 +205,18 @@
             "default": "Received, processing...",
             "description": "English ack message text (used when user writes in English) / 英文确认消息文案（用户使用英文时）"
           },
+          "execApprovals": {
+            "type": "object",
+            "description": "Exec approval configuration. Falls back to commands.ownerAllowFrom when not set. / 执行审批配置。未设置时 fallback 到 commands.ownerAllowFrom。",
+            "additionalProperties": false,
+            "properties": {
+              "approvers": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Lansenger user IDs allowed to approve exec commands / 允许审批执行命令的蓝信用户 ID 列表"
+              }
+            }
+          },
           "accounts": {
             "type": "object",
             "description": "Multi-bot configuration / 多机器人配置（key 为 AppId）",
@@ -229,6 +241,18 @@
                 "revokeAckMessage": { "type": "boolean", "description": "Auto-revoke ack message after agent reply (inherits from top-level if unset, default true) / 代理回复后自动撤回确认消息（未设置时继承顶层配置，默认 true）" },
                 "ackMessageTextZh": { "type": "string", "description": "Chinese ack message text (inherits from top-level if unset) / 中文确认消息文案（未设置时继承顶层配置）" },
                 "ackMessageTextEn": { "type": "string", "description": "English ack message text (inherits from top-level if unset) / 英文确认消息文案（未设置时继承顶层配置）" },
+                "execApprovals": {
+                  "type": "object",
+                  "description": "Exec approval configuration for this account. Falls back to commands.ownerAllowFrom when not set. / 该账号的执行审批配置。未设置时 fallback 到 commands.ownerAllowFrom。",
+                  "additionalProperties": false,
+                  "properties": {
+                    "approvers": {
+                      "type": "array",
+                      "items": { "type": "string" },
+                      "description": "Lansenger user IDs allowed to approve exec commands for this account / 允许审批该账号执行命令的蓝信用户 ID 列表"
+                    }
+                  }
+                },
                 "groups": {
                   "type": "object",
                   "description": "Per-group configuration for this account / 该账号的单群配置（key 为群聊 chatId）",

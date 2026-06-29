@@ -674,6 +674,41 @@ describe("LansengerClient.isWsAlive", () => {
     const client = makeClient();
     expect(client.isWsAlive()).toBe(false);
   });
+
+  it("returns true when ws is OPEN and lastPongAt is recent", () => {
+    const client = makeClient();
+    (client as any).ws = { readyState: 1 }; // WebSocket.OPEN
+    (client as any).lastPongAt = Date.now() - 10_000; // 10s ago, within threshold
+    expect(client.isWsAlive()).toBe(true);
+  });
+
+  it("returns true when ws is OPEN and lastPongAt is 0 (pre-heartbeat)", () => {
+    const client = makeClient();
+    (client as any).ws = { readyState: 1 };
+    (client as any).lastPongAt = 0; // never received pong yet (just connected)
+    expect(client.isWsAlive()).toBe(true);
+  });
+
+  it("returns false when ws is OPEN but lastPongAt is stale (zombie detection)", () => {
+    const client = makeClient();
+    (client as any).ws = { readyState: 1 };
+    (client as any).lastPongAt = Date.now() - 120_000; // 120s ago, well beyond 70s threshold
+    expect(client.isWsAlive()).toBe(false);
+  });
+
+  it("returns false when ws is CLOSING", () => {
+    const client = makeClient();
+    (client as any).ws = { readyState: 2 }; // WebSocket.CLOSING
+    (client as any).lastPongAt = Date.now();
+    expect(client.isWsAlive()).toBe(false);
+  });
+
+  it("returns false when ws is CLOSED", () => {
+    const client = makeClient();
+    (client as any).ws = { readyState: 3 }; // WebSocket.CLOSED
+    (client as any).lastPongAt = Date.now();
+    expect(client.isWsAlive()).toBe(false);
+  });
 });
 
 describe("LansengerClient.setMessageHandler", () => {

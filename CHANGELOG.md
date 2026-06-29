@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.16.20] - 2026-06-29
+
+### Fixed
+
+- **Approve card showing "Denied" instead of "Approved"**: `buildResolvedResult` was checking `resolved?.kind` instead of the already-resolved `strategyKind` variable. When the framework nests the approval kind inside `resolved.strategy.kind`, the check failed → card incorrectly showed denied status.
+- **`buildAccountSnapshot` GUI name field**: `name` was hardcoded to `account.appId` instead of using the user-defined account key (`account.accountId`). Multi-account users now see their custom key name in the GUI instead of the raw App ID.
+
+### Added
+
+- **Zombie WebSocket detection**: `isWsAlive()` now checks `lastPongAt` timestamp. If no pong received for >70s, the connection is considered a zombie (e.g. after machine sleep) and `autoStart` will force a reconnection.
+- **`execApprovals.approvers` config**: Added `execApprovals` to both section-level and `accounts.*` config schema, aligned with official Slack/Discord/Telegram channel pattern. `resolveLansengerApprovers` now reads `execApprovals.approvers` first, then falls back to `commands.ownerAllowFrom` → `allowFrom` → `homeChannel`.
+
+### Changed
+
+- **SKILL.md**: Corrected multi-account key description — the accounts key is a user-defined name, not necessarily the App ID.
+
+### Removed
+
+- **`autoConfigureApprovalAllowFrom`**: Was writing to non-existent config path `approvals.exec.allowFrom.lansenger` (not recognized by OpenClaw SDK). Approver resolution now uses `execApprovals.approvers` (channel-level) with fallback to `commands.ownerAllowFrom` (framework-level).
+
 ## [3.16.19] - 2026-06-26
 
 ### Fixed

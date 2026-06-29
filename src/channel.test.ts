@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { lansengerPlugin, resolveAccount, pendingApprovalCards } from "./channel.js";
+import { lansengerPlugin, resolveAccount, pendingApprovalCards, resolveLansengerApprovers } from "./channel.js";
 import { LansengerClient, mediaTypeFromPath, uploadMediaTypeFromPath, buildI18n } from "./client.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -443,6 +443,27 @@ describe("resolveAccount edge cases", () => {
     const cfg = { channels: { lansenger: { appSecret: "secret" } } } as any;
     const account = resolveAccount(cfg, undefined);
     expect(account.enabled).toBe(false);
+  });
+
+  it("extracts execApprovals from account config", () => {
+    const cfg = {
+      channels: {
+        lansenger: {
+          appId: "id", appSecret: "secret",
+          execApprovals: { approvers: ["user-1", "user-2"] },
+        },
+      },
+    } as any;
+    const account = resolveAccount(cfg, undefined);
+    expect(account.execApprovals).toEqual({ approvers: ["user-1", "user-2"] });
+  });
+
+  it("execApprovals is undefined when not configured", () => {
+    const cfg = {
+      channels: { lansenger: { appId: "id", appSecret: "secret" } },
+    } as any;
+    const account = resolveAccount(cfg, undefined);
+    expect(account.execApprovals).toBeUndefined();
   });
 });
 
@@ -906,10 +927,64 @@ describe("actions.handleAction", () => {
 });
 
 describe("resolveLansengerApprovers", () => {
-  it("returns explicit ownerAllowFrom", () => {
-    const isConfigured = (lansengerPlugin as any).approvalCapability?.nativeRuntime?.availability?.isConfigured;
-    const cfg = { channels: { lansenger: { appId: "id", appSecret: "secret" } }, commands: { ownerAllowFrom: ["approver-1"] } };
-    expect(isConfigured({ cfg, accountId: undefined })).toBe(true);
+  it("Priority 1: returns execApprovals.approvers from account config", () => {
+    const cfg = {
+      channels: {
+        lansenger: {
+          appId: "id", appSecret: "secret",
+          execApprovals: { approvers: ["approver-from-exec"] },
+        },
+      },
+      commands: { ownerAllowFrom: ["approver-from-commands"] },
+    } as any;
+    const result = resolveLansengerApprovers({ cfg, accountId: undefined });
+    expect(result).toEqual(["approver-from-exec"]);
+  });
+
+  it("Priority 2: falls back to commands.ownerAllowFrom when no execApprovals", () => {
+    const cfg = {
+      channels: { lansenger: { appId: "id", appSecret: "secret" } },
+      commands: { ownerAllowFrom: ["approver-1", "lansenger:approver-2"] },
+    } as any;
+    const result = resolveLansengerApprovers({ cfg, accountId: undefined });
+    expect(result).toEqual(["approver-1", "approver-2"]);
+  });
+
+  it("strips lansenger: prefix from ownerAllowFrom entries", () => {
+    const cfg = {
+      channels: { lansenger: { appId: "id", appSecret: "secret" } },
+      commands: { ownerAllowFrom: ["lansenger:user-a", "user-b"] },
+    } as any;
+    const result = resolveLansengerApprovers({ cfg, accountId: undefined });
+    expect(result).toEqual(["user-a", "user-b"]);
+  });
+
+  it("Priority 3: falls back to allowFrom when no execApprovals or ownerAllowFrom", () => {
+    const cfg = {
+      channels: {
+        lansenger: { appId: "id", appSecret: "secret", allowFrom: ["from-allow"] },
+      },
+    } as any;
+    const result = resolveLansengerApprovers({ cfg, accountId: undefined });
+    expect(result).toEqual(["from-allow"]);
+  });
+
+  it("Priority 4: falls back to homeChannel as last resort", () => {
+    const cfg = {
+      channels: {
+        lansenger: { appId: "id", appSecret: "secret", homeChannel: "home-user" },
+      },
+    } as any;
+    const result = resolveLansengerApprovers({ cfg, accountId: undefined });
+    expect(result).toEqual(["home-user"]);
+  });
+
+  it("returns empty array when nothing configured", () => {
+    const cfg = {
+      channels: { lansenger: { appId: "id", appSecret: "secret" } },
+    } as any;
+    const result = resolveLansengerApprovers({ cfg, accountId: undefined });
+    expect(result).toEqual([]);
   });
 });
 
@@ -975,6 +1050,17 @@ describe("approvalCapability", () => {
     const result = build({ cfg, resolved: { kind: "denied" }, entry: {} });
     expect(result.kind).toBe("update");
     expect(result.payload.status).toBe("denied");
+  });
+
+  it("buildResolvedResult returns approved when kind is nested in strategy.kind", () => {
+    const build = (lansengerPlugin as any).approvalCapability?.nativeRuntime?.presentation?.buildResolvedResult;
+    const cfg = { channels: { lansenger: { appId: "id", appSecret: "secret" } } };
+    // Simulates framework nesting approval kind inside strategy.kind:
+    // resolved.kind="resolved" (not in approvedKinds), strategy.kind="allow-once" (approved)
+    const result = build({ cfg, resolved: { kind: "resolved", strategy: { kind: "allow-once" } }, entry: {} });
+    expect(result.kind).toBe("update");
+    expect(result.payload.status).toBe("approved");
+    expect(result.payload.strategyKind).toBe("allow-once");
   });
 });
 

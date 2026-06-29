@@ -162,7 +162,7 @@ openclaw config set commands.ownerAllowFrom '["lansenger:<orgId>-<staffId>"]'
 # 查看当前多账号设置
 openclaw config get channels.lansenger.accounts
 
-# 添加新机器人账号（key 为 accountId，通常与 App ID 相同）
+# 添加新机器人账号（key 为 accountId，用户自定义名称，可随意命名，如 bot1、qianxin 等）
 openclaw config set channels.lansenger.accounts.<accountId>.appId "<appId>"
 openclaw config set channels.lansenger.accounts.<accountId>.appSecret "<appSecret>"
 openclaw config set channels.lansenger.accounts.<accountId>.enabled true

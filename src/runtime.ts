@@ -494,29 +494,6 @@ export function startLansengerGateway(api: OpenClawPluginApi): void {
 }
 
 /**
- * Auto-configure approvals.exec.allowFrom.lansenger from the bot owner's
- * homeChannel when no explicit allowFrom is set. This ensures the bot
- * owner can approve exec commands without manual config.
- */
-async function autoConfigureApprovalAllowFrom(cfg: any, account: ResolvedAccount): Promise<void> {
-  try {
-    const execApprovals = cfg?.approvals?.exec;
-    const existing = execApprovals?.allowFrom?.lansenger;
-    if (existing && existing.length > 0) return; // already configured
-    const ownerId = account.homeChannel;
-    if (!ownerId) return;
-    execSync(
-      `openclaw config set approvals.exec.allowFrom.lansenger '["${ownerId}"]'`,
-      { stdio: "pipe", timeout: 5000 },
-    );
-    log.info(`autoConfigureApprovalAllowFrom: set approvals.exec.allowFrom.lansenger = ["${ownerId}"]`);
-  } catch (e: any) {
-    // Not fatal — user can still use /approve via resolveLansengerApprovers fallback
-    log.warn(`autoConfigureApprovalAllowFrom: ${e.message}`);
-  }
-}
-
-/**
  * Sync native slash commands built from OpenClaw's native command registry.
  * Respects `commands.native` config flag. Syncs to both private (scopeType=6)
  * and group (scopeType=5) scopes separately.
@@ -742,8 +719,6 @@ export async function gatewayStartAccount(ctx: ChannelGatewayContext<ResolvedAcc
       context: { appId: account.appId },
       abortSignal: ctx.abortSignal,
     });
-    // Auto-configure approvals.exec.allowFrom.lansenger from homeChannel if not set
-    await autoConfigureApprovalAllowFrom(ctx.cfg, account);
     // Sync native slash commands (fire-and-forget — don't block gateway startup)
     if (pluginApi) {
       syncLansengerNativeCommands(client, pluginApi, key, account).catch((e) =>

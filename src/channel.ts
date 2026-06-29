@@ -81,6 +81,7 @@ type LansengerAccount = {
   autoMentionReply?: boolean;
   autoQuoteReply?: boolean;
   respondToAtAll?: boolean;
+  execApprovals?: { approvers?: string[] };
 }
 
 type ResolvedAccount = {
@@ -102,6 +103,7 @@ type ResolvedAccount = {
   autoMentionReply: boolean;
   autoQuoteReply: boolean;
   respondToAtAll: boolean;
+  execApprovals?: { approvers?: string[] };
 };
 
 function resolveSecretValue(raw: unknown): string {
@@ -205,6 +207,7 @@ function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): Resolve
   const autoMentionReply = account?.autoMentionReply !== undefined ? account.autoMentionReply : (section?.autoMentionReply ?? false);
   const autoQuoteReply = account?.autoQuoteReply !== undefined ? account.autoQuoteReply : (section?.autoQuoteReply ?? false);
   const respondToAtAll = account?.respondToAtAll !== undefined ? account.respondToAtAll : (section?.respondToAtAll ?? false);
+  const execApprovals = account?.execApprovals ?? section?.execApprovals;
 
   return {
     accountId: resolvedAccountId || appId || null,
@@ -224,6 +227,7 @@ function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): Resolve
     autoMentionReply,
     autoQuoteReply,
     respondToAtAll,
+    execApprovals,
   };
 }
 
@@ -240,14 +244,20 @@ function makeClient(account: ResolvedAccount, logger?: ClientLogger): LansengerC
 }
 
 function resolveLansengerApprovers({ cfg, accountId }: { cfg: OpenClawConfig; accountId?: string | null }): string[] {
+  // Priority 1: per-account execApprovals.approvers (official OpenClaw channel pattern)
+  const account = resolveAccount(cfg, accountId);
+  if (account.execApprovals?.approvers && account.execApprovals.approvers.length > 0) {
+    return account.execApprovals.approvers.map(String);
+  }
+  // Priority 2: commands.ownerAllowFrom (framework-level owner list)
   const commands = (cfg as any).commands ?? {};
   const explicitApprovers: string[] = commands.ownerAllowFrom ?? [];
   if (explicitApprovers.length > 0) {
     return explicitApprovers.map(String).map((id) => id.startsWith("lansenger:") ? id.slice("lansenger:".length) : id);
   }
-  const account = resolveAccount(cfg, accountId);
+  // Priority 3: channel allowFrom
   if (account.allowFrom.length > 0) return account.allowFrom;
-  // Fallback: bot owner from homeChannel
+  // Priority 4: homeChannel fallback
   const homeChannel = account.homeChannel;
   if (homeChannel) return [homeChannel];
   return [];
@@ -828,7 +838,7 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
         accountId: account.accountId ?? account.appId ?? DEFAULT_ACCOUNT_ID,
         enabled: account.enabled,
         configured: account.configured ?? (Boolean(account.appId && account.appSecret) || Boolean(process.env.LANSENGER_APP_ID && process.env.LANSENGER_APP_SECRET)),
-        name: account.appId,
+        name: account.accountId ?? account.appId ?? DEFAULT_ACCOUNT_ID,
         appId: account.appId,
         running: connected || (runtime?.running ?? false),
         lastStartAt: runtime?.lastStartAt ?? null,
@@ -1013,7 +1023,7 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
           // Only consider known approved kinds as approved; everything else is denied.
           // This is safer than trying to enumerate all possible deny values.
           const approvedKinds = new Set(["approved", "allow-once", "allow-session", "allow-always"]);
-          if (approvedKinds.has(resolved?.kind)) {
+          if (approvedKinds.has(strategyKind)) {
             return { kind: "update", payload: { status: "approved", strategyKind, buttonTheme: resolvedButtonTheme } };
           }
           return { kind: "update", payload: { status: "denied", strategyKind: "deny", buttonTheme: 4 } };
@@ -1197,5 +1207,5 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
   },
 };
 
-export { resolveAccount, makeClient, isPathAllowed, pendingApprovalCards, pendingApprovalCallbacks, LANSENGER_TEXT_CHUNK_LIMIT };
+export { resolveAccount, makeClient, isPathAllowed, pendingApprovalCards, pendingApprovalCallbacks, LANSENGER_TEXT_CHUNK_LIMIT, resolveLansengerApprovers };
 export type { ResolvedAccount };

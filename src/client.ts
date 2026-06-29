@@ -49,6 +49,8 @@ function convertPxToPtCard(card: AppCardData): AppCardData {
 const RECONNECT_BACKOFF = [2, 5, 10, 30, 60];
 const HEARTBEAT_INTERVAL_MS = 30_000;
 const PONG_TIMEOUT_MS = 10_000;
+/** If no pong for this long, the connection is considered a zombie */
+const STALE_PONG_THRESHOLD_MS = 2 * HEARTBEAT_INTERVAL_MS + PONG_TIMEOUT_MS; // 70s
 const CHINESE_RE = /[\u4e00-\u9fff\u3400-\u4dbf]/;
 
 const API_ENDPOINTS = {
@@ -149,7 +151,21 @@ export class LansengerClient {
 
   isWsAlive(): boolean {
     if (!this.ws) return false;
-    return this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING;
+    if (this.ws.readyState !== WebSocket.OPEN && this.ws.readyState !== WebSocket.CONNECTING) {
+      return false;
+    }
+    // Detect zombie connections: if we haven't received a pong for too long
+    // (e.g. after machine sleep), the TCP is dead even though readyState is OPEN.
+    if (this.lastPongAt > 0) {
+      const staleMs = Date.now() - this.lastPongAt;
+      if (staleMs > STALE_PONG_THRESHOLD_MS) {
+        this.log.info(
+          `isWsAlive: zombie detected — last pong ${Math.round(staleMs / 1000)}s ago (threshold=${STALE_PONG_THRESHOLD_MS / 1000}s)`,
+        );
+        return false;
+      }
+    }
+    return true;
   }
 
   wsState(): string {
