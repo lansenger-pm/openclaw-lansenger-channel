@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.16.21] - 2026-06-30
+
+### Fixed
+
+- **Slash command not recognized in group chat**: Replaced manual `@botName` stripping with SDK's `normalizeCommandBody()`, aligned with Telegram channel pattern. Handles `/cmd@bot` postfix and text alias resolution.
+- **Missing ctxPayload fields**: Added `BodyForCommands` (SDK prefers this over `CommandBody`), `SenderName` (SDK standard field, not `FromName`), `MessageSid` (for dedup), `BotUsername` (for SDK internal command normalization). `CommandBody` is now always set instead of conditionally on `hasCommand`.
+- **Agent using wrong-case groupId from SessionKey**: SDK lowercases IDs in session keys, but Lansenger API requires case-sensitive IDs. Added `GroupId` to ctxPayload and injected into `GroupInfo` JSON so Agent receives the original case-preserved groupId.
+
+### Added
+
+- **Config schema fields**: Added `respondToAtAll`, `requireMention`, `autoMentionReply`, `autoQuoteReply`, `execApprovals` to `openclaw.plugin.json` schema at section + account + per-group levels, with GUI labels and help text.
+
 ## [3.16.20] - 2026-06-29
 
 ### Fixed

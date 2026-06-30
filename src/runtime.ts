@@ -12,6 +12,7 @@ import type { ResolvedAccount } from "./channel.js";
 import { errorShape } from "openclaw/plugin-sdk/gateway-runtime";
 import { listNativeCommandSpecsForConfig } from "openclaw/plugin-sdk/native-command-registry";
 import { resolveNativeCommandsEnabled } from "openclaw/plugin-sdk/native-command-config-runtime";
+import { normalizeCommandBody } from "openclaw/plugin-sdk/command-auth";
 import { pendingApprovalCards, pendingApprovalCallbacks } from "./channel.js";
 import { BUILTIN_COMMAND_I18N } from "./command-i18n.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -1168,24 +1169,23 @@ async function handleInbound(
 
   const rawText = event.text;
 
-  // Strip @botName from group chat messages for slash command detection only.
-  // Lansenger appends @botName when the bot is @mentioned (e.g. "/models@bot" or
-  // "/models@bot openai"). This breaks command detection because
-  // isControlCommandMessage requires text to start with a registered command alias.
-  // The stripping only affects command matching — the original text (with @botName)
-  // is preserved in agentText/rawText for the Agent.
-  let textForCommands = event.text;
-  if (event.isGroup && event.isAtMe) {
+  // Resolve botUsername from event for command normalization.
+  // The SDK's normalizeCommandBody() strips @botName from slash commands
+  // (e.g. "/reset@OpenClawBot" → "/reset") when botUsername matches.
+  let botUsername: string | undefined;
+  {
     const ourBotId = event.rawMessage?.botId as string | undefined;
     const ourMention = ourBotId ? event.mentionedBots?.find(b => b.botId === ourBotId) : undefined;
-    if (ourMention) {
-      const atName = `@${ourMention.botName}`;
-      if (textForCommands.includes(atName)) {
-        textForCommands = textForCommands.split(atName).join("").trim();
-        log.debug(`inbound: stripped @botName "${atName}" for command detection — textForCommands="${textForCommands.slice(0, 60)}"`);
-      }
-    }
+    botUsername = ourMention?.botName;
   }
+
+  // Normalize command text via the SDK — handles @botName suffix on slash commands,
+  // colon variants, and text alias resolution (same pattern used by Telegram channel plugin).
+  const textForCommands = normalizeCommandBody(event.text, { botUsername });
+  if (textForCommands !== event.text) {
+    log.debug(`inbound: normalized command body — "${event.text.slice(0, 60)}" → "${textForCommands.slice(0, 60)}"`);
+  }
+
   let allowTextCommands = false;
   let shouldComputeAuth = false;
   let hasCommand = false;
@@ -1299,6 +1299,15 @@ async function handleInbound(
   }
 
   try {
+    log.debug(
+      `inbound: pre-run ctxPayload — ` +
+      `Body="${(event.text as string).slice(0, 80)}" ` +
+      `BodyForAgent="${agentText.slice(0, 80)}" ` +
+      `CommandBody="${textForCommands.slice(0, 80)}" ` +
+      `hasCommand=${hasCommand} commandAuthorized=${commandAuthorized} ` +
+      `allowTextCommands=${allowTextCommands} shouldComputeAuth=${shouldComputeAuth} ` +
+      `chatType=${chatType} isGroup=${event.isGroup} isAtMe=${event.isAtMe}`
+    );
     log.info(`inbound.run starting: sessionKey=${sessionKey} agentId=${agentId} accountId=${account.accountId}`);
     await api.runtime.channel.inbound.run({
       channel: "lansenger",
@@ -1331,15 +1340,19 @@ async function handleInbound(
             ctxPayload: {
               Body: event.text,
               BodyForAgent: agentText,
-              ...(hasCommand ? { CommandBody: rawText } : {}),
+              CommandBody: textForCommands,
+              BodyForCommands: textForCommands,
               CommandAuthorized: commandAuthorized,
               CommandSource: "text",
+              ...(botUsername ? { BotUsername: botUsername } : {}),
               From: event.senderId,
+              SenderName: event.userName,
               FromName: event.userName,
               FromType: event.fromType,
               SessionKey: sessionKey,
               ChatType: chatType,
               ChatName: event.chatName,
+              MessageSid: event.messageId,
               GroupName: event.groupName,
               IsGroup: event.isGroup,
               IsAtMe: event.isAtMe,
@@ -1349,7 +1362,10 @@ async function handleInbound(
               Surface: "lansenger",
               To: replyTo,
               AppId: account.appId,
-              ...(groupMeta?.groupInfo ? { GroupInfo: JSON.stringify(groupMeta.groupInfo) } : {}),
+              ...(event.isGroup ? { 
+                GroupId: event.chatId,
+                GroupInfo: JSON.stringify({ groupId: event.chatId, ...(groupMeta?.groupInfo ?? {}) }),
+              } : {}),
               ...(groupMeta?.members ? { GroupMembers: JSON.stringify(groupMeta.members) } : {}),
               ...(groupMeta ? { GroupMemberCount: groupMeta.memberCount } : {}),
             },

@@ -167,6 +167,11 @@
             "default": false,
             "description": "Auto quote the inbound message when replying (groups and DMs) / 回复时是否自动引用入站消息（群聊和私聊均生效）"
           },
+          "respondToAtAll": {
+            "type": "boolean",
+            "default": false,
+            "description": "Treat @all as a valid mention trigger in groups (security: only enable if you trust group members). Can be overridden per-group. / 群聊中是否将 @所有人 视为有效触发（安全：仅在信任群成员时启用）。可在单群配置中覆盖。"
+          },
           "groups": {
             "type": "object",
             "description": "Per-group configuration / 单群配置（key 为群聊 chatId）",
@@ -176,6 +181,7 @@
                 "requireMention": { "type": "boolean", "description": "Require @mention to trigger / 是否需要 @提及才触发" },
                 "autoMentionReply": { "type": "boolean", "description": "Auto @mention the sender when replying in this group / 该群自动回复时是否 @发送者" },
                 "autoQuoteReply": { "type": "boolean", "description": "Auto quote the inbound message when replying in this group / 该群回复时是否自动引用入站消息" },
+                "respondToAtAll": { "type": "boolean", "description": "Treat @all as a valid mention trigger in this group / 该群中是否将 @所有人 视为有效触发" },
                 "enabled": { "type": "boolean", "description": "Enable/disable this group / 启用/禁用该群" },
                 "allowFrom": { "type": "array", "items": { "type": "string" }, "description": "Sender IDs allowed in this group. If set, only these users can trigger the bot in this group. / 该群允许的发送者 ID。设置后仅这些用户可在该群触发机器人。" }
               }
@@ -237,6 +243,7 @@
                 "requireMention": { "type": "boolean", "description": "Require @mention to trigger in groups (inherits from top-level if unset) / 群聊中是否需要 @提及才触发（未设置时继承顶层配置）" },
                 "autoMentionReply": { "type": "boolean", "description": "Auto @mention the sender when replying in groups (inherits from top-level if unset) / 群聊自动回复时是否 @发送者（未设置时继承顶层配置）" },
                 "autoQuoteReply": { "type": "boolean", "description": "Auto quote the inbound message when replying (inherits from top-level if unset, applies to groups and DMs) / 回复时是否自动引用入站消息（未设置时继承顶层配置，群聊和私聊均生效）" },
+                "respondToAtAll": { "type": "boolean", "description": "Treat @all as a valid mention trigger in groups (inherits from top-level if unset, default false) / 群聊中是否将 @所有人 视为有效触发（未设置时继承顶层配置，默认 false）" },
                 "ackMessage": { "type": "boolean", "description": "Send ack message before agent processing (inherits from top-level if unset) / 代理处理前发送确认消息（未设置时继承顶层配置）" },
                 "revokeAckMessage": { "type": "boolean", "description": "Auto-revoke ack message after agent reply (inherits from top-level if unset, default true) / 代理回复后自动撤回确认消息（未设置时继承顶层配置，默认 true）" },
                 "ackMessageTextZh": { "type": "string", "description": "Chinese ack message text (inherits from top-level if unset) / 中文确认消息文案（未设置时继承顶层配置）" },
@@ -263,6 +270,7 @@
                       "requireMention": { "type": "boolean", "description": "Require @mention to trigger / 是否需要 @提及才触发" },
                       "autoMentionReply": { "type": "boolean", "description": "Auto @mention the sender when replying / 自动回复时是否 @发送者" },
                       "autoQuoteReply": { "type": "boolean", "description": "Auto quote the inbound message when replying / 回复时是否自动引用入站消息" },
+                      "respondToAtAll": { "type": "boolean", "description": "Treat @all as a valid mention trigger in this group / 该群中是否将 @所有人 视为有效触发" },
                       "allowFrom": { "type": "array", "items": { "type": "string" }, "description": "Sender IDs allowed in this group / 该群允许的发送者 ID" }
                     }
                   }
@@ -370,6 +378,26 @@
           "sensitive": false,
           "help": "Lansenger user IDs allowed to trigger the bot in group chats (sender-level filter, NOT group IDs). Lansenger user IDs and group IDs share the same format — confirm via API or logs. / 群聊中允许触发机器人的蓝信用户 ID（用户级过滤，非群 ID）。蓝信用户 ID 和群 ID 格式相同，请从 API 或日志确认。"
         },
+        "requireMention": {
+          "label": "Require @Mention / 需要 @提及",
+          "help": "Require @mention to trigger the bot in groups. Default: true. Can be overridden per-group. / 群聊中是否需要 @提及机器人才触发。默认：true。可在单群配置中覆盖。"
+        },
+        "autoMentionReply": {
+          "label": "Auto @Mention Reply / 自动 @提及回复",
+          "help": "Auto @mention the sender when the bot replies in groups. Lansenger API auto-prepends the name — no need to manually write @Name in the message. Default: false. / 群聊中机器人回复时自动 @发送者。蓝信 API 会自动拼接名字，无需在消息中手动写 @姓名。默认：false。"
+        },
+        "autoQuoteReply": {
+          "label": "Auto Quote Reply / 自动引用回复",
+          "help": "Auto quote the inbound message when the bot replies (applies to both groups and DMs). Default: false. / 机器人回复时自动引用入站消息（群聊和私聊均生效）。默认：false。"
+        },
+        "respondToAtAll": {
+          "label": "Respond to @All / 响应 @所有人",
+          "help": "Treat @all as a valid mention trigger in groups. Security: only enable if you trust all group members. Default: false. / 群聊中将 @所有人 视为有效的触发方式。安全提醒：仅在信任所有群成员时启用。默认：false。"
+        },
+        "execApprovals": {
+          "label": "Exec Approvals / 执行审批",
+          "help": "Configure approvers for dangerous command execution. Falls back to commands.ownerAllowFrom when not set. / 配置危险命令执行的审批人员。未设置时 fallback 到 commands.ownerAllowFrom。"
+        },
         "groups": {
           "label": "Per-Group Config / 单群配置",
           "sensitive": false,
@@ -442,6 +470,26 @@
           "placeholder": "Add user ID / 添加用户 ID",
           "sensitive": false,
           "help": "Lansenger user IDs allowed to trigger this bot in group chats (sender-level filter, NOT group IDs). Inherits from top-level if unset. / 群聊中允许触发该机器人的蓝信用户 ID（用户级过滤，非群 ID）。未设置时继承顶层配置。"
+        },
+        "accounts.*.requireMention": {
+          "label": "Require @Mention / 需要 @提及",
+          "help": "Require @mention to trigger this bot in groups (inherits from top-level if unset) / 该机器人群聊中是否需要 @提及才触发（未设置时继承顶层配置）"
+        },
+        "accounts.*.autoMentionReply": {
+          "label": "Auto @Mention Reply / 自动 @提及回复",
+          "help": "Auto @mention the sender when this bot replies in groups (inherits from top-level if unset) / 该机器人群聊中回复时是否自动 @发送者（未设置时继承顶层配置）"
+        },
+        "accounts.*.autoQuoteReply": {
+          "label": "Auto Quote Reply / 自动引用回复",
+          "help": "Auto quote the inbound message when this bot replies (inherits from top-level if unset, applies to groups and DMs) / 该机器人回复时是否自动引用入站消息（未设置时继承顶层配置，群聊和私聊均生效）"
+        },
+        "accounts.*.respondToAtAll": {
+          "label": "Respond to @All / 响应 @所有人",
+          "help": "Treat @all as a valid mention trigger for this bot in groups (inherits from top-level if unset, default false) / 该机器人群聊中是否将 @所有人 视为有效触发（未设置时继承顶层配置，默认 false）"
+        },
+        "accounts.*.execApprovals": {
+          "label": "Exec Approvals / 执行审批",
+          "help": "Configure approvers for dangerous command execution for this account. Falls back to commands.ownerAllowFrom when not set. / 为该账号配置危险命令执行的审批人员。未设置时 fallback 到 commands.ownerAllowFrom。"
         },
         "accounts.*.ackMessage": {
           "label": "Ack Message / 确认消息",
