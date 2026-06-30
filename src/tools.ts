@@ -2,7 +2,6 @@ import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import { getLastInboundChatId, getRunningClientByAccountId, getRunningAccountByAccountId } from "./runtime.js";
 import type { LansengerClient, ApproveCardData } from "./client.js";
-import { mediaTypeFromPath, uploadMediaTypeFromPath } from "./client.js";
 import type { ResolvedAccount } from "./channel.js";
 
 function resolveTarget(to?: string): string {

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { LansengerClient, mediaTypeFromPath, uploadMediaTypeFromPath, buildI18n, DEFAULT_API_GATEWAY_URL, MAX_MESSAGE_LENGTH } from "./client.js";
+import { LansengerClient, mediaTypeFromPath, uploadMediaTypeFromPath, buildI18n, DEFAULT_API_GATEWAY_URL } from "./client.js";
 import type { ReferenceMsg } from "./client.js";
 import * as fs from "node:fs/promises";
 
@@ -541,10 +541,7 @@ describe("constants", () => {
     expect(DEFAULT_API_GATEWAY_URL).toBe("https://open.e.lanxin.cn/open/apigw");
   });
 
-  it("MAX_MESSAGE_LENGTH is 4000", () => {
-    expect(MAX_MESSAGE_LENGTH).toBe(4000);
   });
-});
 
 describe("LansengerClient.sendText", () => {
   beforeEach(() => {

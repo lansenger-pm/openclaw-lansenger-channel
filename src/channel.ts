@@ -2,6 +2,7 @@ import {
   createChatChannelPlugin,
   createChannelPluginBase,
 } from "openclaw/plugin-sdk/channel-core";
+import { createChannelMessageAdapterFromOutbound } from "openclaw/plugin-sdk/channel-outbound";
 import { DEFAULT_ACCOUNT_ID } from "openclaw/plugin-sdk/account-id";
 import type { OpenClawConfig, ChannelPlugin } from "openclaw/plugin-sdk/channel-core";
 import { createChannelApprovalCapability } from "openclaw/plugin-sdk/approval-runtime";
@@ -19,7 +20,7 @@ import * as path from "node:path";
 import * as crypto from "node:crypto";
 import { LansengerClient, DEFAULT_API_GATEWAY_URL } from "./client.js";
 import type { ApproveCardData, ApproveCardButton, I18nAppCardData, ClientLogger } from "./client.js";
-import { getRunningClient, getRunningClientByAccountId, getLastInboundTime, getLastInboundTimeByAccountId, stripOpenClawUuidSuffix, gatewayStartAccount, gatewayStopAccount } from "./runtime.js";
+import { getRunningClientByAccountId, getSessionAccountId, getLastInboundTimeByAccountId, stripOpenClawUuidSuffix, gatewayStartAccount, gatewayStopAccount } from "./runtime.js";
 import { lansengerSetupWizard } from "./setup-wizard.js";
 
 const log = createSubsystemLogger("lansenger");
@@ -239,7 +240,10 @@ function makeClient(account: ResolvedAccount, logger?: ClientLogger): LansengerC
     dangerouslyAllowPrivateNetwork: account.dangerouslyAllowPrivateNetwork,
     logger,
   });
-  client.ownerId = account.homeChannel || "";
+  // Set ownerId so isGroupChat() can correctly identify group vs DM endpoints.
+  // Without this, fresh clients default to chatId.startsWith("group:") which
+  // never matches Lansenger IDs. The running client sets this from WS data.
+  client.ownerId = account.appId;
   return client;
 }
 
@@ -527,11 +531,13 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
     attachedResults: {
       channel: "lansenger",
       sendText: async (ctx) => {
-        const sessionKey = (ctx as any).sessionKey as string | undefined;
-        const account = resolveAccount(ctx.cfg, ctx.accountId ?? undefined);
-        const client = makeClient(account);
+        const sdkSessionKey = (ctx as any).sessionKey as string | undefined;
+        const sessionAccountId = sdkSessionKey ? getSessionAccountId(sdkSessionKey) : undefined;
+        const account = resolveAccount(ctx.cfg, sessionAccountId ?? ctx.accountId);
+        const client = getRunningClientByAccountId(account.appId) ?? makeClient(account);
+        log.debug(`sendText: to=${ctx.to} textLen=${ctx.text?.length ?? 0} accountId=${ctx.accountId ?? "n/a"}`);
         const result = await client.sendFormatText(ctx.to, ctx.text);
-        return { messageId: result.messageId ?? "", sessionKey };
+        return { messageId: result.messageId ?? "", sessionKey: sdkSessionKey };
       },
       sendMedia: async (ctx) => {
         const sessionKey = (ctx as any).sessionKey as string | undefined;
@@ -589,7 +595,6 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
         const target = params.target as any;
         const payload = params.payload as any;
         const hint = params.hint as any;
-        const sessionKey = (params as any).sessionKey ?? "";
 
         if (hint?.kind === "approval-resolved") {
           const chatId = target?.to;
@@ -609,11 +614,14 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
         }
       },
       sendFormattedText: async (ctx) => {
-        const sessionKey = (ctx as any).sessionKey as string | undefined;
-        const account = resolveAccount(ctx.cfg, ctx.accountId ?? undefined);
-        const client = makeClient(account);
+        const sdkSessionKey = (ctx as any).sessionKey as string | undefined;
+        const sessionAccountId = sdkSessionKey ? getSessionAccountId(sdkSessionKey) : undefined;
+        const account = resolveAccount(ctx.cfg, sessionAccountId ?? ctx.accountId);
+        const client = getRunningClientByAccountId(account.appId) ?? makeClient(account);
+        log.debug(`sendFormattedText: to=${ctx.to} textLen=${ctx.text?.length ?? 0} accountId=${account.appId ?? "n/a"}`);
         const result = await client.sendFormatText(ctx.to, ctx.text);
-        return [{ channel: "lansenger", messageId: result.messageId ?? "", sessionKey }];
+        log.debug(`sendFormattedText: result — success=${result.success} messageId=${result.messageId ?? "none"} error=${result.error ?? "none"}`);
+        return [{ channel: "lansenger", messageId: result.messageId ?? "", sessionKey: sdkSessionKey }];
       },
       textChunkLimit: LANSENGER_TEXT_CHUNK_LIMIT,
       chunkerMode: "markdown",
@@ -625,11 +633,8 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
         return resolveTextChunkLimit(params.cfg, "lansenger", params.accountId, { fallbackLimit: LANSENGER_TEXT_CHUNK_LIMIT });
       },
       shouldSuppressLocalPayloadPrompt: (params: any) => {
-        const hint = params.hint as any;
-        if (hint?.kind === "approval-pending" && hint?.nativeRouteActive) {
-          return true;
-        }
-        return false;
+        // Suppress the native approval text — we use approval cards instead.
+        return params.hint?.kind === "approval-pending";
       },
     },
   },
@@ -859,6 +864,9 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
       if (!account.enabled) return { kind: "unsupported" };
       return { kind: "enabled" };
     },
+    delivery: {
+      shouldSuppressForwardingFallback: () => true,
+    },
     native: {
       describeDeliveryCapabilities: ({ cfg, accountId }: any) => ({
         enabled: true,
@@ -890,6 +898,7 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
           const req = request?.request ?? request;
           const commandPreview = (req?.command ?? req?.summary ?? "").slice(0, 300);
           const sessionKey = req?.sessionKey ?? "unknown";
+          log.debug(`buildPendingPayload: command="${commandPreview.slice(0, 60)}" sessionKey="${sessionKey.slice(0, 40)}" requestKeys=${Object.keys(request ?? {}).join(",")} reqKeys=${Object.keys(req ?? {}).join(",")}`);
           const requestId = request?.id ?? req?.id ?? "unknown";
           const shortId = requestId.length > 8 ? requestId.slice(0, 8) : requestId;
           const approverIds = resolveLansengerApprovers({ cfg, accountId: target?.accountId ?? null });
@@ -898,9 +907,12 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
             : undefined;
           // Expiration: view.expiresAtMs is absolute ms, compute remaining seconds
           const expireTime = view?.expiresAtMs ? Math.max(1, Math.ceil((view.expiresAtMs - nowMs) / 1000)) : undefined;
-          // "allow-always" is only available when the policy allows permanent approval
-          const execAskPolicy: string = (cfg as any)?.approvals?.exec?.ask ?? "dangerous";
-          const showAlways = execAskPolicy !== "always";
+          // Use the framework's allowedDecisions to determine which buttons to show.
+          // When exec.ask is "always", only allow-once + deny are available (no session/always).
+          const allowedDecisions: string[] = req?.allowedDecisions ?? ["allow-once", "allow-session", "allow-always", "deny"];
+          const showSession = allowedDecisions.includes("allow-session");
+          const showAlways = allowedDecisions.includes("allow-always");
+          log.debug(`buildPendingPayload: allowedDecisions=${allowedDecisions.join(",")} showSession=${showSession} showAlways=${showAlways}`);
           const zhCard: ApproveCardData = {
             head: {
               title: "⚠️ 命令审批",
@@ -930,11 +942,13 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
                   `> /approve ${shortId} allow-once`,
                   "> ```",
                   "",
-                  `> 本会话有效`,
-                  "> ```",
-                  `> /approve ${shortId} allow-session`,
-                  "> ```",
-                  "",
+                  ...(showSession ? [
+                    `> 本会话有效`,
+                    "> ```",
+                    `> /approve ${shortId} allow-session`,
+                    "> ```",
+                    "",
+                  ] : []),
                   ...(showAlways ? [
                     `> 永久允许`,
                     "> ```",
@@ -951,7 +965,7 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
             },
             buttons: [
               { text: "执行一次", buttonTheme: 1, permissionScope: buttonScope, callbackInfo: `once:${requestId}` },
-              { text: "本会话有效", buttonTheme: 2, permissionScope: buttonScope, callbackInfo: `session:${requestId}` },
+              ...(showSession ? [{ text: "本会话有效", buttonTheme: 2, permissionScope: buttonScope, callbackInfo: `session:${requestId}` }] : []),
               ...(showAlways ? [{ text: "永久允许", buttonTheme: 3, permissionScope: buttonScope, callbackInfo: `always:${requestId}` }] : []),
               { text: "拒绝执行", buttonTheme: 4, permissionScope: buttonScope, callbackInfo: `deny:${requestId}` },
             ],
@@ -986,11 +1000,13 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
                   `> /approve ${shortId} allow-once`,
                   "> ```",
                   "",
-                  `> This session`,
-                  "> ```",
-                  `> /approve ${shortId} allow-session`,
-                  "> ```",
-                  "",
+                  ...(showSession ? [
+                    `> This session`,
+                    "> ```",
+                    `> /approve ${shortId} allow-session`,
+                    "> ```",
+                    "",
+                  ] : []),
                   ...(showAlways ? [
                     `> Always allow`,
                     "> ```",
@@ -1007,7 +1023,7 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
             },
             buttons: [
               { text: "Approve Once", buttonTheme: 1, permissionScope: buttonScope, callbackInfo: `once:${requestId}` },
-              { text: "This Session", buttonTheme: 2, permissionScope: buttonScope, callbackInfo: `session:${requestId}` },
+              ...(showSession ? [{ text: "This Session", buttonTheme: 2, permissionScope: buttonScope, callbackInfo: `session:${requestId}` }] : []),
               ...(showAlways ? [{ text: "Always Allow", buttonTheme: 3, permissionScope: buttonScope, callbackInfo: `always:${requestId}` }] : []),
               { text: "Deny", buttonTheme: 4, permissionScope: buttonScope, callbackInfo: `deny:${requestId}` },
             ],
@@ -1016,18 +1032,16 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
           return { type: "approveCard", zh: zhCard, en: enCard, isDynamic: true, requestId, sessionKey };
         },
         buildResolvedResult: ({ cfg, resolved, entry }: any) => {
-          // When resolved.kind and strategy are both undefined, the resolution
-          // hasn't completed yet (e.g. resolveApprovalOverGateway is still in
-          // progress). Skip the update — the callback handler already updated
-          // the card, and the SDK will call us again once the resolution is final.
+          // Dump all params to understand the resolved structure from native approval runtime
+          const resolvedType = typeof resolved;
+          const resolvedKeys = resolved && typeof resolved === "object" ? Object.keys(resolved) : [];
+          const resolvedRaw = resolved && typeof resolved === "object" ? JSON.stringify(resolved).slice(0, 200) : String(resolved);
+          log.debug(`buildResolvedResult: resolved.type=${resolvedType} keys=[${resolvedKeys.join(",")}] raw=${resolvedRaw} entryKeys=${entry ? Object.keys(entry).join(",") : "no-entry"}`);
+          
           const kindFromStrategy = resolved?.strategy?.kind as string | undefined;
           const kindFromResolved = resolved?.kind as string | undefined;
-          if (kindFromStrategy === undefined && kindFromResolved === undefined) {
-            log.debug(`buildResolvedResult: resolution not yet complete, skipping update`);
-            return { kind: "noop" };
-          }
-          const strategyKind = kindFromStrategy ?? kindFromResolved ?? "deny";
-          log.debug(`buildResolvedResult: resolved.kind=${kindFromResolved} resolved.strategy?.kind=${kindFromStrategy} strategyKind=${strategyKind}`);
+          const decisionFromResolved = resolved?.decision as string | undefined; // webchat/control-ui resolution
+          const strategyKind = kindFromStrategy ?? kindFromResolved ?? decisionFromResolved ?? "deny";
           // Button theme: 1=primary (allow-once), 2=secondary (allow-session), 3=secondary-black (allow-always), 4=warning (deny)
           const buttonThemeMap: Record<string, number> = { "allow-once": 1, "allow-session": 2, "allow-always": 3, deny: 4 };
           const resolvedButtonTheme = buttonThemeMap[strategyKind] ?? 4;
@@ -1040,7 +1054,7 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
           return { kind: "update", payload: { status: "denied", strategyKind: "deny", buttonTheme: 4 } };
         },
         buildExpiredResult: ({ cfg, request, entry }: any) => {
-          return { kind: "delete" };
+          return { kind: "update", payload: { status: "denied", strategyKind: "expired" } };
         },
       } as any,
       transport: {
@@ -1116,6 +1130,21 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
         },
       } as any,
     } as any,
+  }),
+
+  message: createChannelMessageAdapterFromOutbound({
+    outbound: {
+      sendText: async (ctx: any) => {
+         const sdkSessionKey = (ctx as any).sessionKey as string | undefined;
+          const sessionAccountId = sdkSessionKey ? getSessionAccountId(sdkSessionKey) : undefined;
+          const account = resolveAccount(ctx.cfg, sessionAccountId ?? ctx.accountId);
+         const client = getRunningClientByAccountId(account.appId) ?? makeClient(account);
+         log.debug(`message.sendText: to=${ctx.to} textLen=${ctx.text?.length ?? 0}`);
+         const result = await client.sendFormatText(ctx.to, ctx.text);
+         log.debug(`message.sendText: result — success=${result.success} messageId=${result.messageId ?? "none"}`);
+         return { messageId: result.messageId ?? "" };
+      },
+    },
   }),
 
   commands: {

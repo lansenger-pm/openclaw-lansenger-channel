@@ -65,5 +65,5 @@ function lt(key: string): string {
   return entry[LOCALE] ?? entry.en ?? key;
 }
 
-export { lt, LOCALE };
+export { lt };
 export type { WizardLocale };

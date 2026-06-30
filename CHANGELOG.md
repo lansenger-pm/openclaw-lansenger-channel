@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.16.23] - 2026-06-30
+
+### Fixed
+
+- **Duplicate approval text messages before approval card**: Two text messages ("🔒 Exec approval required" and "Approval required") were sent before the approval card. Root causes:
+  - SDK's text fallback was not suppressed because `delivery.shouldSuppressForwardingFallback` was missing from `approvalCapability`.
+  - `shouldSuppressLocalPayloadPrompt` was placed outside the `base` outbound object, causing `resolveChatChannelOutbound` to silently drop it during flattening. Moved inside `base`.
+
+### Added
+
+- **`AccountId` to ctxPayload**: Injected into message context so LLM tools can resolve the correct account for the current session.
+- **`expired` strategy kind** for card status updates, covering expiry denial display.
+
+### Changed
+
+- **Channel**: Removed dead `approval-pending` suppression code in `beforeDeliverPayload` that was guarded by the never-set `nativeRouteActive` flag.
+- **Cleanup**: Removed unused `MAX_MESSAGE_LENGTH`, `AppCardOptions` type, `LOCALE` export, and dead imports.
+
 ## [3.16.22] - 2026-06-30
 
 ### Fixed

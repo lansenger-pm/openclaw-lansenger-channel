@@ -1350,6 +1350,7 @@ async function handleInbound(
               FromName: event.userName,
               FromType: event.fromType,
               SessionKey: sessionKey,
+              AccountId: account.accountId ?? account.appId,
               ChatType: chatType,
               ChatName: event.chatName,
               MessageSid: event.messageId,

@@ -14,7 +14,6 @@ export type ClientLogger = {
 const silentLogger: ClientLogger = { info: () => {}, error: () => {}, debug: () => {} };
 
 const DEFAULT_API_GATEWAY_URL = "https://open.e.lanxin.cn/open/apigw";
-const MAX_MESSAGE_LENGTH = 4000;
 
 function convertPxToPt(str: string): string {
   return str.replace(/font-size:\s*(\d+(?:\.\d+)?)px/gi, (_match, num) => {
@@ -468,7 +467,7 @@ export class LansengerClient {
     }
   }
 
-  async updateCardStatus(messageId: string, status: "pending" | "approved" | "denied", lang?: "zh" | "en", strategyKind?: "allow-once" | "allow-session" | "allow-always" | "deny", resolvedButtonTheme?: number): Promise<ApiResult> {
+  async updateCardStatus(messageId: string, status: "pending" | "approved" | "denied", lang?: "zh" | "en", strategyKind?: "allow-once" | "allow-session" | "allow-always" | "deny" | "expired", resolvedButtonTheme?: number): Promise<ApiResult> {
     const token = await this.getAppToken();
     if (!token) return { success: false, error: "No access token" };
     const detectedLang = lang ?? "zh";
@@ -487,6 +486,7 @@ export class LansengerClient {
       "allow-session": { zh: "已允许本会话有效", en: "Allow Session" },
       "allow-always": { zh: "已永久允许", en: "Always Allow" },
       "deny": { zh: "已拒绝执行", en: "Denied" },
+      "expired": { zh: "已超时拒绝", en: "Expired" },
     };
     const strategyCfg = strategyLabels[strategyKind ?? "deny"] ?? strategyLabels["deny"]!;
 
@@ -1252,15 +1252,6 @@ export type AppCardData = {
   cardAction?: CardAction;
 };
 
-export type AppCardOptions = {
-  isDynamic?: boolean;
-  cover?: string;
-  link?: string;
-  pcLink?: string;
-  actionLink?: string;
-  actionText?: string;
-};
-
 export type AppArticle = {
   title: string;
   summary?: string;
@@ -1447,4 +1438,4 @@ export type GroupSessionMeta = {
   memberCount: number;
 };
 
-export { DEFAULT_API_GATEWAY_URL, MAX_MESSAGE_LENGTH };
+export { DEFAULT_API_GATEWAY_URL };

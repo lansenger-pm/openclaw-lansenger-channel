@@ -1026,6 +1026,13 @@ describe("approvalCapability", () => {
     expect(result).toBeNull();
   });
 
+  it("delivery.shouldSuppressForwardingFallback returns true", () => {
+    const suppress = (lansengerPlugin as any).approvalCapability?.delivery?.shouldSuppressForwardingFallback;
+    expect(suppress).toBeDefined();
+    const result = suppress({ cfg: {}, approvalKind: "exec", target: { channel: "lansenger" }, request: { id: "test-id" } });
+    expect(result).toBe(true);
+  });
+
   it("buildPendingPayload returns appCard type", () => {
     const build = (lansengerPlugin as any).approvalCapability?.nativeRuntime?.presentation?.buildPendingPayload;
     const cfg = { channels: { lansenger: { appId: "id", appSecret: "secret" } } };
@@ -1101,25 +1108,25 @@ describe("normalizePayload", () => {
 
 describe("shouldSuppressLocalPayloadPrompt", () => {
   const outbound = (lansengerPlugin as any).outbound ?? (lansengerPlugin as any).base?.outbound;
-  const base = outbound?.base ?? outbound;
+  const suppress = (outbound?.shouldSuppressLocalPayloadPrompt ?? outbound?.base?.shouldSuppressLocalPayloadPrompt) as ((params: any) => boolean) | undefined;
 
-  it("suppresses local prompt for approval-pending with native route active", () => {
-    const result = base.shouldSuppressLocalPayloadPrompt({ payload: { text: "审批请求" }, hint: { kind: "approval-pending", approvalKind: "exec", nativeRouteActive: true } });
+  it("suppresses local prompt for approval-pending", () => {
+    const result = suppress?.({ payload: { text: "审批请求" }, hint: { kind: "approval-pending", approvalKind: "exec", nativeRouteActive: true } });
     expect(result).toBe(true);
   });
 
-  it("does not suppress local prompt for approval-pending without native route", () => {
-    const result = base.shouldSuppressLocalPayloadPrompt({ payload: { text: "审批请求" }, hint: { kind: "approval-pending", approvalKind: "exec", nativeRouteActive: false } });
-    expect(result).toBe(false);
+  it("suppresses local prompt for approval-pending regardless of nativeRouteActive", () => {
+    const result = suppress?.({ payload: { text: "审批请求" }, hint: { kind: "approval-pending", approvalKind: "exec", nativeRouteActive: false } });
+    expect(result).toBe(true);
   });
 
   it("does not suppress local prompt for approval-resolved", () => {
-    const result = base.shouldSuppressLocalPayloadPrompt({ payload: { text: "✅ 已批准" }, hint: { kind: "approval-resolved", approvalKind: "exec" } });
+    const result = suppress?.({ payload: { text: "✅ 已批准" }, hint: { kind: "approval-resolved", approvalKind: "exec" } });
     expect(result).toBe(false);
   });
 
   it("does not suppress local prompt without hint", () => {
-    const result = base.shouldSuppressLocalPayloadPrompt({ payload: { text: "hello" } });
+    const result = suppress?.({ payload: { text: "hello" } });
     expect(result).toBe(false);
   });
 });
