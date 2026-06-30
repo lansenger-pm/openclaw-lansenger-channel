@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.16.22] - 2026-06-30
+
+### Fixed
+
+- **Approve card showing "Denied" after "Approved"**: `buildResolvedResult` was called by the SDK's native approval runtime before `resolveApprovalOverGateway` completed, causing `resolved.kind` to be `undefined` and defaulting to `"deny"`. The card would briefly flash "已允许执行一次" then switch to "已拒绝执行". Now returns `{ kind: "noop" }` when resolution isn't ready yet.
+
 ## [3.16.21] - 2026-06-30
 
 ### Fixed

@@ -1016,7 +1016,18 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
           return { type: "approveCard", zh: zhCard, en: enCard, isDynamic: true, requestId, sessionKey };
         },
         buildResolvedResult: ({ cfg, resolved, entry }: any) => {
-          const strategyKind = resolved?.strategy?.kind ?? resolved?.kind ?? "deny";
+          // When resolved.kind and strategy are both undefined, the resolution
+          // hasn't completed yet (e.g. resolveApprovalOverGateway is still in
+          // progress). Skip the update — the callback handler already updated
+          // the card, and the SDK will call us again once the resolution is final.
+          const kindFromStrategy = resolved?.strategy?.kind as string | undefined;
+          const kindFromResolved = resolved?.kind as string | undefined;
+          if (kindFromStrategy === undefined && kindFromResolved === undefined) {
+            log.debug(`buildResolvedResult: resolution not yet complete, skipping update`);
+            return { kind: "noop" };
+          }
+          const strategyKind = kindFromStrategy ?? kindFromResolved ?? "deny";
+          log.debug(`buildResolvedResult: resolved.kind=${kindFromResolved} resolved.strategy?.kind=${kindFromStrategy} strategyKind=${strategyKind}`);
           // Button theme: 1=primary (allow-once), 2=secondary (allow-session), 3=secondary-black (allow-always), 4=warning (deny)
           const buttonThemeMap: Record<string, number> = { "allow-once": 1, "allow-session": 2, "allow-always": 3, deny: 4 };
           const resolvedButtonTheme = buttonThemeMap[strategyKind] ?? 4;
