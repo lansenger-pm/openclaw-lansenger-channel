@@ -173,6 +173,10 @@ export class LansengerClient {
     return states[this.ws.readyState] ?? `UNKNOWN(${this.ws.readyState})`;
   }
 
+  // ══════════════════════════════════════════════
+  // AUTH
+  // ══════════════════════════════════════════════
+
   async getAppToken(): Promise<string | null> {
     if (this.appToken && Date.now() / 1000 < this.tokenExpiry) {
       return this.appToken;
@@ -199,6 +203,10 @@ export class LansengerClient {
       return null;
     }
   }
+
+  // ══════════════════════════════════════════════
+  // TEXT MESSAGING
+  // ══════════════════════════════════════════════
 
   async sendText(chatId: string, content: string, opts?: { reminder?: ReminderParams; refMsgId?: string }): Promise<ApiResult> {
     const token = await this.getAppToken();
@@ -269,6 +277,10 @@ export class LansengerClient {
     }
   }
 
+  // ══════════════════════════════════════════════
+  // MEDIA UPLOAD
+  // ══════════════════════════════════════════════
+
   async uploadMedia(filePath: string, uploadType?: string, originalName?: string, videoWidth?: number, videoHeight?: number, videoDuration?: number): Promise<{ mediaId: string } | { error: string }> {
     const token = await this.getAppToken();
     if (!token) return { error: "No access token" };
@@ -294,6 +306,10 @@ export class LansengerClient {
       return { error: e.message };
     }
   }
+
+  // ══════════════════════════════════════════════
+  // FILE SENDING
+  // ══════════════════════════════════════════════
 
   async sendFile(chatId: string, filePath: string, caption?: string, mediaType?: number, originalName?: string, coverImagePath?: string, videoWidth?: number, videoHeight?: number, videoDuration?: number): Promise<ApiResult> {
     const mt = mediaType ?? mediaTypeFromPath(filePath);
@@ -349,6 +365,10 @@ export class LansengerClient {
     }
   }
 
+  // ══════════════════════════════════════════════
+  // MESSAGE MANAGEMENT
+  // ══════════════════════════════════════════════
+
   async revokeMessage(messageIds: string[], chatType: string = "bot", senderId?: string): Promise<ApiResult> {
     const token = await this.getAppToken();
     if (!token) return { success: false, error: "No access token" };
@@ -368,6 +388,10 @@ export class LansengerClient {
       return { success: false, error: e.message };
     }
   }
+
+  // ══════════════════════════════════════════════
+  // CARDS
+  // ══════════════════════════════════════════════
 
   async sendLinkCard(chatId: string, title: string, link: string, options?: LinkCardOptions): Promise<ApiResult> {
     const token = await this.getAppToken();
@@ -518,7 +542,9 @@ export class LansengerClient {
     }
   }
 
-  // ---- Bot Commands API (4.37) ----
+  // ══════════════════════════════════════════════
+  // BOT COMMANDS
+  // ══════════════════════════════════════════════
 
   /**
    * Create bot Commands on Lansenger.
@@ -585,6 +611,10 @@ export class LansengerClient {
     }
   }
 
+  // ══════════════════════════════════════════════
+  // DYNAMIC CARD
+  // ══════════════════════════════════════════════
+
   async updateDynamicCard(msgId: string, headStatusInfo?: Record<string, string>, links?: Array<{ title: string; url: string }>, isLastUpdate?: boolean): Promise<ApiResult> {
     const token = await this.getAppToken();
     if (!token) return { success: false, error: "No access token" };
@@ -626,7 +656,9 @@ export class LansengerClient {
     }
   }
 
-  // ---- Group info & members API ----
+  // ══════════════════════════════════════════════
+  // GROUP QUERIES
+  // ══════════════════════════════════════════════
 
   async getGroupInfo(groupId: string): Promise<GroupInfoData | null> {
     const cached = this.groupInfoCache.get(groupId);
@@ -728,6 +760,10 @@ export class LansengerClient {
     };
   }
 
+  // ══════════════════════════════════════════════
+  // LANGUAGE
+  // ══════════════════════════════════════════════
+
   detectLang(text: string): "zh" | "en" {
     return CHINESE_RE.test(text) ? "zh" : "en";
   }
@@ -745,6 +781,10 @@ export class LansengerClient {
     if (this.ownerId) return chatId !== this.ownerId;
     return chatId.startsWith("group:");
   }
+
+  // ══════════════════════════════════════════════
+  // MEDIA DOWNLOAD
+  // ══════════════════════════════════════════════
 
   async downloadMedia(mediaId: string): Promise<{ bytes: Buffer; ext?: string } | null> {
     const token = await this.getAppToken();
@@ -788,6 +828,10 @@ export class LansengerClient {
       return null;
     }
   }
+
+  // ══════════════════════════════════════════════
+  // MESSAGE PROCESSING
+  // ══════════════════════════════════════════════
 
   async processRawMessage(raw: string): Promise<InboundEvent[]> {
     let wsMsg: LansengerWsMessage;
@@ -899,6 +943,10 @@ export class LansengerClient {
     }
     return results;
   }
+
+  // ══════════════════════════════════════════════
+  // WEBSOCKET LIFECYCLE
+  // ══════════════════════════════════════════════
 
   async connect(): Promise<boolean> {
     if (!this.appId || !this.appSecret) {
@@ -1027,6 +1075,10 @@ export class LansengerClient {
     }
   }
 
+  // ══════════════════════════════════════════════
+  // HEARTBEAT
+  // ══════════════════════════════════════════════
+
   private startHeartbeat(ws: WebSocket): void {
     this.stopHeartbeat();
     this.clearPongTimeout();
@@ -1068,6 +1120,10 @@ export class LansengerClient {
     this.clearPongTimeout();
   }
 
+  // ══════════════════════════════════════════════
+  // MESSAGE ROUTING (private)
+  // ══════════════════════════════════════════════
+
   private msgTarget(chatId: string): { url: string; wrap: (msgData: Record<string, unknown>) => Record<string, unknown> } {
     const isGroup = this.isGroupChat(chatId);
     const endpoint = isGroup ? API_ENDPOINTS.groupMessage : API_ENDPOINTS.privateMessage;
@@ -1087,6 +1143,10 @@ export class LansengerClient {
       return { userIdList: [chatId], msgType: mt, msgData: data };
     } };
   }
+
+  // ══════════════════════════════════════════════
+  // TEXT EXTRACTION (private)
+  // ══════════════════════════════════════════════
 
   private async extractText(eventData: Record<string, any>): Promise<{ text: string | null; mediaPaths?: string[] }> {
     const msgType = eventData.msgType ?? "text";
@@ -1152,6 +1212,10 @@ export class LansengerClient {
     return { text: null };
   }
 
+  // ══════════════════════════════════════════════
+  // REFERENCE PARSING (private)
+  // ══════════════════════════════════════════════
+
   private parseReferenceMsg(rawRef: Record<string, any>): ReferenceMsg {
     return {
       from: rawRef.from,
@@ -1177,6 +1241,10 @@ export class LansengerClient {
     }
     return result;
   }
+
+  // ══════════════════════════════════════════════
+  // INTERNAL HELPERS (private)
+  // ══════════════════════════════════════════════
 
   private async downloadAllMedia(ids: string[], mediaKind: string): Promise<string[]> {
     const paths: string[] = [];
@@ -1211,6 +1279,10 @@ export class LansengerClient {
     }
   }
 }
+
+// ══════════════════════════════════════════════
+// TYPES
+// ══════════════════════════════════════════════
 
 export type ReminderParams = { all?: boolean; userIds?: string[]; botIds?: string[] };
 

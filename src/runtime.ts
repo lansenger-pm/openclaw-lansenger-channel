@@ -847,345 +847,264 @@ async function handleApproveCardCallback(
   pendingApprovalCards.delete(cardKey);
   log.info(`approveCard callback: cleaned up — requestId=${requestId} chatId=${chatId}`);
 }
+interface PolicyResult {
+  allowed: boolean;
+  reminder?: ReminderParams;
+  refMsgId?: string;
+}
 
-async function handleInbound(
+async function handleDmPolicy(
   api: OpenClawPluginApi,
   event: InboundEvent,
   account: ResolvedAccount,
   runningKey: string,
-): Promise<void> {
-  const chatType = event.isGroup ? "group" : "dm";
-  log.debug(
-    `inbound: raw event — chatType=${chatType} chatId=${event.chatId} ` +
-    `senderId=${event.senderId} msgType=${event.msgType ?? "text"} eventType=${event.eventType ?? "n/a"} ` +
-    `isAtMe=${event.isAtMe ?? false} isAtAll=${event.isAtAll ?? false} ` +
-    `mediaCount=${event.mediaPaths?.length ?? 0} ` +
-    `text=${(event.text ?? "").slice(0, 80)}`
-  );
-
-  // Handle approveCard button click callbacks
-  if (event.approveCardCallback) {
-    await handleApproveCardCallback(api, event, account, runningKey);
-    return;
-  }
-  const turnTextDelivered = new Set<string>();
-  const turnMediaDelivered = new Set<string>();
-  let reminder: ReminderParams | undefined;
-  let refMsgId: string | undefined;
-
-  if (chatType === "dm") {
-    const dmPolicy = account.dmPolicy ?? "pairing";
-    const configAllowFrom = account.allowFrom ?? [];
-    const pairing = (api.runtime as any)?.channel?.pairing;
-    let storeAllowFrom: string[] = [];
-    try {
-      if (pairing?.readAllowFromStore) {
-        storeAllowFrom = await pairing.readAllowFromStore({ channel: "lansenger", accountId: account.accountId ?? undefined });
-      }
-    } catch (e: unknown) {
-      log.error(`inbound: readAllowFromStore failed — ${e instanceof Error ? e.message : String(e)}`);
+): Promise<PolicyResult> {
+  const dmPolicy = account.dmPolicy ?? "pairing";
+  const configAllowFrom = account.allowFrom ?? [];
+  const pairing = (api.runtime as any)?.channel?.pairing;
+  let storeAllowFrom: string[] = [];
+  try {
+    if (pairing?.readAllowFromStore) {
+      storeAllowFrom = await pairing.readAllowFromStore({ channel: "lansenger", accountId: account.accountId ?? undefined });
     }
-    const effectiveAllowFrom = [...new Set([...configAllowFrom, ...storeAllowFrom])];
-    log.debug(
-      `inbound: dm config — dmPolicy=${dmPolicy} ` +
-      `configAllowFrom=[${configAllowFrom.join(",")}] ` +
-      `storeAllowFrom=[${storeAllowFrom.join(",")}] ` +
-      `senderAllowed=${effectiveAllowFrom.some((id: string) => {
-        const bare = id.replace(/^lansenger:/, "");
-        return bare === event.senderId || id === event.senderId;
-      })}`
-    );
-    const senderAllowed = effectiveAllowFrom.some((id: string) => {
+  } catch (e: unknown) {
+    log.error(`inbound: readAllowFromStore failed — ${e instanceof Error ? e.message : String(e)}`);
+  }
+  const effectiveAllowFrom = [...new Set([...configAllowFrom, ...storeAllowFrom])];
+  log.debug(
+    `inbound: dm config — dmPolicy=${dmPolicy} ` +
+    `configAllowFrom=[${configAllowFrom.join(",")}] ` +
+    `storeAllowFrom=[${storeAllowFrom.join(",")}] ` +
+    `senderAllowed=${effectiveAllowFrom.some((id: string) => {
       const bare = id.replace(/^lansenger:/, "");
       return bare === event.senderId || id === event.senderId;
-    });
+    })}`
+  );
+  const senderAllowed = effectiveAllowFrom.some((id: string) => {
+    const bare = id.replace(/^lansenger:/, "");
+    return bare === event.senderId || id === event.senderId;
+  });
 
-    if (!senderAllowed) {
-      if (dmPolicy === "pairing" && pairing?.upsertPairingRequest) {
-        log.info(`inbound: dm pairing required — sender=${event.senderId} not in allowFrom`);
-        try {
-          const { code } = await pairing.upsertPairingRequest({
-            channel: "lansenger",
-            id: event.senderId,
-            accountId: account.accountId ?? undefined,
-            meta: { name: event.userName },
-          });
-          const reply = pairing.buildPairingReply({
-            channel: "lansenger",
-            idLine: `Your Lansenger user ID: ${event.senderId} / 你的蓝信用户 ID：${event.senderId}`,
-            code,
-          });
-          const entry = runningAccounts.get(runningKey);
-          const client = entry?.client ?? makeClient(account, sdkLogger());
-          await client.sendFormatText(event.senderId, reply);
-          log.info(`inbound: pairing code sent to sender=${event.senderId}`);
-        } catch (e: unknown) {
-          log.error(`inbound: pairing flow failed — ${e instanceof Error ? e.message : String(e)}, dropping message`);
-        }
-        return;
-      }
-      if (dmPolicy === "disabled") {
-        log.info(`inbound: dm dropped — dmPolicy=disabled sender=${event.senderId}`);
-        return;
-      }
-      if (dmPolicy === "allowlist") {
-        log.info(`inbound: dm dropped — sender=${event.senderId} not in allowFrom (dmPolicy=allowlist)`);
-        return;
-      }
-    }
-
-    // personal bot: the DM sender IS the owner — only one person can DM a personal bot
-    const entry = runningAccounts.get(runningKey);
-    if (entry) entry.client.ownerId = event.senderId;
-
-    // Auto-configure homeChannel on the first DM so tools/apps can resolve the owner ID
-    // without needing a DM to come in first (survives gateway restart).
-    // Check the raw account-level config, not the merged ResolvedAccount.homeChannel
-    // (which may inherit from section-level and hide a missing account-level value).
-    if (event.senderId && account.appId) {
-      const section = (api.config.channels as any)?.["lansenger"];
-      if (section?.configWrites !== false) {
-        const isMultiAccount = !!section?.accounts;
-        const accountKey = account.accountId || account.appId;
-        const rawHomeChannel: string | undefined = isMultiAccount
-          ? section?.accounts?.[accountKey]?.homeChannel
-          : section?.homeChannel;
-        if (!rawHomeChannel) {
-          const configPath = isMultiAccount
-            ? `channels.lansenger.accounts.${accountKey}.homeChannel`
-            : "channels.lansenger.homeChannel";
-          try {
-            execSync(
-              `openclaw config set ${configPath} "${event.senderId}"`,
-              { stdio: "pipe", timeout: 5000 },
-            );
-            log.info(`autoConfigureHomeChannel: set ${configPath} = "${event.senderId}"`);
-          } catch (e: any) {
-            log.warn(`autoConfigureHomeChannel: ${e.message}`);
-          }
-        }
-      }
-    }
-
-    // Auto-configure commands.ownerAllowFrom on first DM so the owner can use
-    // slash commands without manually adding themselves to the allow list.
-    // Only runs with real accounts (not test/mock environments).
-    if (account.appId) {
+  if (!senderAllowed) {
+    if (dmPolicy === "pairing" && pairing?.upsertPairingRequest) {
+      log.info(`inbound: dm pairing required — sender=${event.senderId} not in allowFrom`);
       try {
-        const commandsCfg = (api.config as any)?.commands ?? {};
-        const existing: string[] = commandsCfg?.ownerAllowFrom ?? [];
-        const id = `lansenger:${event.senderId}`;
-        const bare = event.senderId;
-        const alreadyExists = existing.some(
-          (e: string) => e === id || e === bare || e.replace(/^lansenger:/, "") === bare,
-        );
-        if (!alreadyExists) {
-          const updated = [...existing, id];
+        const { code } = await pairing.upsertPairingRequest({
+          channel: "lansenger",
+          id: event.senderId,
+          accountId: account.accountId ?? undefined,
+          meta: { name: event.userName },
+        });
+        const reply = pairing.buildPairingReply({
+          channel: "lansenger",
+          idLine: `Your Lansenger user ID: ${event.senderId} / 你的蓝信用户 ID：${event.senderId}`,
+          code,
+        });
+        const entry = runningAccounts.get(runningKey);
+        const client = entry?.client ?? makeClient(account, sdkLogger());
+        await client.sendFormatText(event.senderId, reply);
+        log.info(`inbound: pairing code sent to sender=${event.senderId}`);
+      } catch (e: unknown) {
+        log.error(`inbound: pairing flow failed — ${e instanceof Error ? e.message : String(e)}, dropping message`);
+      }
+      return { allowed: false };
+    }
+    if (dmPolicy === "disabled") {
+      log.info(`inbound: dm dropped — dmPolicy=disabled sender=${event.senderId}`);
+      return { allowed: false };
+    }
+    if (dmPolicy === "allowlist") {
+      log.info(`inbound: dm dropped — sender=${event.senderId} not in allowFrom (dmPolicy=allowlist)`);
+      return { allowed: false };
+    }
+  }
+
+  // personal bot: the DM sender IS the owner — only one person can DM a personal bot
+  const entry = runningAccounts.get(runningKey);
+  if (entry) entry.client.ownerId = event.senderId;
+
+  // Auto-configure homeChannel on the first DM so tools/apps can resolve the owner ID
+  // without needing a DM to come in first (survives gateway restart).
+  if (event.senderId && account.appId) {
+    const section = (api.config.channels as any)?.["lansenger"];
+    if (section?.configWrites !== false) {
+      const isMultiAccount = !!section?.accounts;
+      const accountKey = account.accountId || account.appId;
+      const rawHomeChannel: string | undefined = isMultiAccount
+        ? section?.accounts?.[accountKey]?.homeChannel
+        : section?.homeChannel;
+      if (!rawHomeChannel) {
+        const configPath = isMultiAccount
+          ? `channels.lansenger.accounts.${accountKey}.homeChannel`
+          : "channels.lansenger.homeChannel";
+        try {
           execSync(
-            `openclaw config set commands.ownerAllowFrom '${JSON.stringify(updated)}'`,
+            `openclaw config set ${configPath} "${event.senderId}"`,
             { stdio: "pipe", timeout: 5000 },
           );
-          log.info(`autoConfigureCommandOwner: set commands.ownerAllowFrom = ${JSON.stringify(updated)}`);
+          log.info(`autoConfigureHomeChannel: set ${configPath} = "${event.senderId}"`);
+        } catch (e: any) {
+          log.warn(`autoConfigureHomeChannel: ${e.message}`);
         }
-      } catch (e: any) {
-        log.warn(`autoConfigureCommandOwner: ${e.message}`);
       }
     }
-
-    // autoMentionReply / autoQuoteReply for DMs: account > section
-    if (account.autoMentionReply && event.senderId) {
-      reminder = { userIds: [event.senderId] };
-      log.info(`inbound: autoMentionReply enabled (DM), reminder set for sender=${event.senderId}`);
-    }
-    if (account.autoQuoteReply && event.messageId) {
-      refMsgId = event.messageId;
-      log.info(`inbound: autoQuoteReply enabled (DM), refMsgId=${event.messageId}`);
-    }
   }
 
-  // Retry command sync on first owner DM (in case startup sync failed)
-  if (!ownerSyncDone.has(runningKey)) {
-    ownerSyncDone.add(runningKey);
-    const entry = runningAccounts.get(runningKey);
-    if (entry) {
-      log.info(`syncCommands: triggered by first owner DM (key=${runningKey})`);
-      cancelSyncRetry(runningKey);
-      syncLansengerNativeCommands(entry.client, api, runningKey, account).catch((e) =>
-        log.error(`syncCommands: owner-triggered sync error — ${e instanceof Error ? e.message : String(e)} (key=${runningKey})`),
-      );
-    }
-  }
-
-  if (event.isGroup) {
+  // Auto-configure commands.ownerAllowFrom on first DM so the owner can use
+  // slash commands without manually adding themselves to the allow list.
+  if (account.appId) {
     try {
-      const channelCfg = (api.config as Record<string, unknown>)?.channels as Record<string, unknown> | undefined;
-      const lansengerCfg = channelCfg?.lansenger as Record<string, unknown> | undefined;
-      const accountCfg = (lansengerCfg?.accounts as Record<string, Record<string, unknown>> | undefined)?.[account.accountId ?? "default"];
-      const channelGroupAllowFrom = (lansengerCfg?.groupAllowFrom as unknown[]) ?? [];
-      const accountGroupAllowFrom = (accountCfg?.groupAllowFrom as unknown[]) ?? [];
-      const hasGroupAllowFrom = channelGroupAllowFrom.length > 0 || accountGroupAllowFrom.length > 0;
-      // Resolve effective groupPolicy mode: account > section > default "open".
-      // Matches the SDK's own resolution (resolveChannelGroupPolicyMode).
-      // Used only for the SDK bug workaround below.
-      const effectiveGroupPolicyMode = (accountCfg?.groupPolicy as string | undefined)
-        ?? (lansengerCfg?.groupPolicy as string | undefined)
-        ?? "open";
-
-      const groupPolicy = api.runtime.channel.groups.resolveGroupPolicy({
-        cfg: api.config,
-        channel: "lansenger",
-        groupId: event.chatId,
-        accountId: account.accountId,
-        hasGroupAllowFrom,
-      });
-      log.debug(
-        `inbound: groupPolicy resolved — chatId=${event.chatId} ` +
-        `mode=${effectiveGroupPolicyMode ?? "default"} ` +
-        `allowlistEnabled=${groupPolicy.allowlistEnabled} ` +
-        `allowed=${groupPolicy.allowed} ` +
-        `hasGroupConfig=${Boolean(groupPolicy.groupConfig)} ` +
-        `hasDefaultConfig=${Boolean(groupPolicy.defaultConfig)} ` +
-        `hasGroupAllowFrom=${hasGroupAllowFrom} ` +
-        `accountId=${account.accountId}`
+      const commandsCfg = (api.config as any)?.commands ?? {};
+      const existing: string[] = commandsCfg?.ownerAllowFrom ?? [];
+      const id = `lansenger:${event.senderId}`;
+      const bare = event.senderId;
+      const alreadyExists = existing.some(
+        (e: string) => e === id || e === bare || e.replace(/^lansenger:/, "") === bare,
       );
-      if (!groupPolicy.allowed) {
-        // Workaround SDK bug: when open mode has groups entries, the SDK
-        // incorrectly sets allowlistEnabled=true and blocks unlisted groups.
-        // Only apply when config explicitly says "open" and this group has no
-        // specific config — disabled/allowlist should NOT pass through.
-        if (effectiveGroupPolicyMode === "open" && !groupPolicy.groupConfig) {
-          // pass through — open mode allows unlisted groups
-        } else {
-          log.info(`inbound: group dropped — groupPolicy not allowed for chatId=${event.chatId}`);
-          return;
-        }
+      if (!alreadyExists) {
+        const updated = [...existing, id];
+        execSync(
+          `openclaw config set commands.ownerAllowFrom '${JSON.stringify(updated)}'`,
+          { stdio: "pipe", timeout: 5000 },
+        );
+        log.info(`autoConfigureCommandOwner: set commands.ownerAllowFrom = ${JSON.stringify(updated)}`);
       }
-      // Sender filter: per-group allowFrom replaces global groupAllowFrom.
-      // Fallback priority:
-      //   account.groups.<id>.allowFrom > section.groups.<id>.allowFrom  (SDK handled)
-      //   > account.groupAllowFrom > section.groupAllowFrom
-      const groupConfig = groupPolicy.groupConfig as Record<string, unknown> | undefined;
-      const perGroupAllowFrom = groupConfig?.allowFrom as string[] | undefined;
-      const effectiveGroupAllowFrom = perGroupAllowFrom && perGroupAllowFrom.length > 0
-        ? perGroupAllowFrom
-        : (accountGroupAllowFrom.length > 0 ? accountGroupAllowFrom : channelGroupAllowFrom);
-      if (effectiveGroupAllowFrom.length > 0 && !effectiveGroupAllowFrom.includes(event.senderId)) {
-        log.info(`inbound: group dropped — sender=${event.senderId} not in allowFrom for chatId=${event.chatId}`);
-        return;
-      }
-      if (groupConfig?.enabled === false) {
-        log.info(`inbound: group dropped — enabled=false for chatId=${event.chatId}`);
-        return;
-      }
-
-      // autoMentionReply / autoQuoteReply: per-group > account > section
-      const autoMentionReply = groupConfig?.autoMentionReply as boolean | undefined
-        ?? account.autoMentionReply ?? false;
-      const autoQuoteReply = groupConfig?.autoQuoteReply as boolean | undefined
-        ?? account.autoQuoteReply ?? false;
-      const respondToAtAll = groupConfig?.respondToAtAll as boolean | undefined
-        ?? account.respondToAtAll ?? false;
-      if (autoMentionReply && event.senderId) {
-        reminder = { userIds: [event.senderId] };
-        log.info(`inbound: autoMentionReply enabled (group), reminder set for sender=${event.senderId}`);
-      }
-      if (autoQuoteReply && event.messageId) {
-        refMsgId = event.messageId;
-        log.info(`inbound: autoQuoteReply enabled (group), refMsgId=${event.messageId}`);
-      }
-
-      // Resolve requireMention: account-level requireMention overrides SDK default.
-      // The SDK only reads per-group config (groups.<id>.requireMention), so we
-      // pass account/section-level settings as requireMentionOverride.
-      const configRequireMention = accountCfg?.requireMention as boolean | undefined
-        ?? lansengerCfg?.requireMention as boolean | undefined;
-      const requireMention = api.runtime.channel.groups.resolveRequireMention({
-        cfg: api.config,
-        channel: "lansenger",
-        groupId: event.chatId,
-        accountId: account.accountId,
-        ...(configRequireMention !== undefined ? { requireMentionOverride: configRequireMention } : {}),
-      });
-      const atMe = event.isAtMe ?? false;
-      const atAll = event.isAtAll ?? false;
-      log.info(`inbound: group allowed — chatId=${event.chatId} requireMention=${requireMention} isAtMe=${atMe} isAtAll=${atAll}`);
-      // @all is only a valid mention when respondToAtAll is enabled.
-      // Otherwise only explicit @bot triggers.
-      const effectiveAt = atMe || (atAll && respondToAtAll);
-      if (requireMention && !effectiveAt) {
-        log.info(`inbound: group dropped — requireMention but bot not @mentioned`);
-        return;
-      }
-    } catch (e: unknown) {
-      log.error(`inbound: group policy check failed — ${e instanceof Error ? e.message : String(e)}`);
+    } catch (e: any) {
+      log.warn(`autoConfigureCommandOwner: ${e.message}`);
     }
   }
 
-  let agentId: string;
-  let sessionKey: string;
+  // autoMentionReply / autoQuoteReply for DMs: account > section
+  let reminder: ReminderParams | undefined;
+  let refMsgId: string | undefined;
+  if (account.autoMentionReply && event.senderId) {
+    reminder = { userIds: [event.senderId] };
+    log.info(`inbound: autoMentionReply enabled (DM), reminder set for sender=${event.senderId}`);
+  }
+  if (account.autoQuoteReply && event.messageId) {
+    refMsgId = event.messageId;
+    log.info(`inbound: autoQuoteReply enabled (DM), refMsgId=${event.messageId}`);
+  }
+
+  return { allowed: true, reminder, refMsgId };
+}
+
+async function handleGroupPolicy(
+  api: OpenClawPluginApi,
+  event: InboundEvent,
+  account: ResolvedAccount,
+  runningKey: string,
+): Promise<PolicyResult> {
   try {
-    const route = api.runtime.channel.routing.resolveAgentRoute({
+    const channelCfg = (api.config as Record<string, unknown>)?.channels as Record<string, unknown> | undefined;
+    const lansengerCfg = channelCfg?.lansenger as Record<string, unknown> | undefined;
+    const accountCfg = (lansengerCfg?.accounts as Record<string, Record<string, unknown>> | undefined)?.[account.accountId ?? "default"];
+    const channelGroupAllowFrom = (lansengerCfg?.groupAllowFrom as unknown[]) ?? [];
+    const accountGroupAllowFrom = (accountCfg?.groupAllowFrom as unknown[]) ?? [];
+    const hasGroupAllowFrom = channelGroupAllowFrom.length > 0 || accountGroupAllowFrom.length > 0;
+    // Resolve effective groupPolicy mode: account > section > default "open".
+    const effectiveGroupPolicyMode = (accountCfg?.groupPolicy as string | undefined)
+      ?? (lansengerCfg?.groupPolicy as string | undefined)
+      ?? "open";
+
+    const groupPolicy = api.runtime.channel.groups.resolveGroupPolicy({
       cfg: api.config,
       channel: "lansenger",
+      groupId: event.chatId,
       accountId: account.accountId,
-      peer: { kind: chatType as "direct" | "group" | "channel", id: event.chatId },
+      hasGroupAllowFrom,
     });
-    agentId = route.agentId;
-    sessionKey = route.sessionKey;
-  } catch (e: unknown) {
-    log.error(`inbound: route resolution failed — ${e instanceof Error ? e.message : String(e)}, using defaults`);
-    agentId = "main";
-    const accountIdPart = account.accountId ? `:${account.accountId.slice(0, 20)}` : "";
-    sessionKey = `agent:main:lansenger${accountIdPart}:${chatType}:${event.chatId}`;
-  }
-  const replyTo = event.chatId;
-  lastInboundChatIds.set(runningKey, event.chatId);
-  lastInboundTimes.set(runningKey, Date.now());
-  if (account.accountId) {
-    setSessionAccountId(sessionKey, account.accountId);
-  }
-
-  const sessionDeliveredSet = sessionDeliveryTracker.get(sessionKey) ?? new Set<string>();
-  sessionDeliveryTracker.set(sessionKey, sessionDeliveredSet);
-
-  log.info(`inbound: ${chatType} from=${event.senderId} bot=${account.appId.slice(0, 20)}... agent=${agentId} session=${sessionKey.slice(0, 32)}`);
-
-  let agentText = event.text;
-  if (event.mediaPaths?.length) {
-    agentText = `${event.text}\n\nAttached files saved locally — use the read tool to view:\n${event.mediaPaths.map((p, i) => `${i + 1}. ${p}`).join("\n")}`;
-  }
-  if (event.referenceMsg) {
-    try {
-      const refEntry = runningAccounts.get(runningKey);
-      const refClient = refEntry?.client ?? makeClient(account, sdkLogger());
-      const refText = await refClient.extractReferenceText(event.referenceMsg);
-      if (refText) {
-        agentText = `${agentText}\n\n${refText}`;
+    log.debug(
+      `inbound: groupPolicy resolved — chatId=${event.chatId} ` +
+      `mode=${effectiveGroupPolicyMode ?? "default"} ` +
+      `allowlistEnabled=${groupPolicy.allowlistEnabled} ` +
+      `allowed=${groupPolicy.allowed} ` +
+      `hasGroupConfig=${Boolean(groupPolicy.groupConfig)} ` +
+      `hasDefaultConfig=${Boolean(groupPolicy.defaultConfig)} ` +
+      `hasGroupAllowFrom=${hasGroupAllowFrom} ` +
+      `accountId=${account.accountId}`
+    );
+    if (!groupPolicy.allowed) {
+      // Workaround SDK bug: when open mode has groups entries, the SDK
+      // incorrectly sets allowlistEnabled=true and blocks unlisted groups.
+      if (effectiveGroupPolicyMode === "open" && !groupPolicy.groupConfig) {
+        // pass through — open mode allows unlisted groups
+      } else {
+        log.info(`inbound: group dropped — groupPolicy not allowed for chatId=${event.chatId}`);
+        return { allowed: false };
       }
-    } catch (e: unknown) {
-      log.error(`inbound: reference message extraction failed — ${e instanceof Error ? e.message : String(e)}`);
     }
+    const groupConfig = groupPolicy.groupConfig as Record<string, unknown> | undefined;
+    const perGroupAllowFrom = groupConfig?.allowFrom as string[] | undefined;
+    const effectiveGroupAllowFrom = perGroupAllowFrom && perGroupAllowFrom.length > 0
+      ? perGroupAllowFrom
+      : (accountGroupAllowFrom.length > 0 ? accountGroupAllowFrom : channelGroupAllowFrom);
+    if (effectiveGroupAllowFrom.length > 0 && !effectiveGroupAllowFrom.includes(event.senderId)) {
+      log.info(`inbound: group dropped — sender=${event.senderId} not in allowFrom for chatId=${event.chatId}`);
+      return { allowed: false };
+    }
+    if (groupConfig?.enabled === false) {
+      log.info(`inbound: group dropped — enabled=false for chatId=${event.chatId}`);
+      return { allowed: false };
+    }
+
+    // autoMentionReply / autoQuoteReply: per-group > account > section
+    let reminder: ReminderParams | undefined;
+    let refMsgId: string | undefined;
+    const autoMentionReply = groupConfig?.autoMentionReply as boolean | undefined
+      ?? account.autoMentionReply ?? false;
+    const autoQuoteReply = groupConfig?.autoQuoteReply as boolean | undefined
+      ?? account.autoQuoteReply ?? false;
+    const respondToAtAll = groupConfig?.respondToAtAll as boolean | undefined
+      ?? account.respondToAtAll ?? false;
+    if (autoMentionReply && event.senderId) {
+      reminder = { userIds: [event.senderId] };
+      log.info(`inbound: autoMentionReply enabled (group), reminder set for sender=${event.senderId}`);
+    }
+    if (autoQuoteReply && event.messageId) {
+      refMsgId = event.messageId;
+      log.info(`inbound: autoQuoteReply enabled (group), refMsgId=${event.messageId}`);
+    }
+
+    // Resolve requireMention: account-level requireMention overrides SDK default.
+    const configRequireMention = accountCfg?.requireMention as boolean | undefined
+      ?? lansengerCfg?.requireMention as boolean | undefined;
+    const requireMention = api.runtime.channel.groups.resolveRequireMention({
+      cfg: api.config,
+      channel: "lansenger",
+      groupId: event.chatId,
+      accountId: account.accountId,
+      ...(configRequireMention !== undefined ? { requireMentionOverride: configRequireMention } : {}),
+    });
+    const atMe = event.isAtMe ?? false;
+    const atAll = event.isAtAll ?? false;
+    log.info(`inbound: group allowed — chatId=${event.chatId} requireMention=${requireMention} isAtMe=${atMe} isAtAll=${atAll}`);
+    // @all is only a valid mention when respondToAtAll is enabled.
+    const effectiveAt = atMe || (atAll && respondToAtAll);
+    if (requireMention && !effectiveAt) {
+      log.info(`inbound: group dropped — requireMention but bot not @mentioned`);
+      return { allowed: false };
+    }
+    return { allowed: true, reminder, refMsgId };
+  } catch (e: unknown) {
+    log.error(`inbound: group policy check failed — ${e instanceof Error ? e.message : String(e)}`);
+    return { allowed: true };
   }
+}
 
-  const rawText = event.text;
+interface CommandAuthResult {
+  allowTextCommands: boolean;
+  shouldComputeAuth: boolean;
+  hasCommand: boolean;
+  commandAuthorized: boolean | undefined;
+}
 
-  // Resolve botUsername from event for command normalization.
-  // The SDK's normalizeCommandBody() strips @botName from slash commands
-  // (e.g. "/reset@OpenClawBot" → "/reset") when botUsername matches.
-  let botUsername: string | undefined;
-  {
-    const ourBotId = event.rawMessage?.botId as string | undefined;
-    const ourMention = ourBotId ? event.mentionedBots?.find(b => b.botId === ourBotId) : undefined;
-    botUsername = ourMention?.botName;
-  }
-
-  // Normalize command text via the SDK — handles @botName suffix on slash commands,
-  // colon variants, and text alias resolution (same pattern used by Telegram channel plugin).
-  const textForCommands = normalizeCommandBody(event.text, { botUsername });
-  if (textForCommands !== event.text) {
-    log.debug(`inbound: normalized command body — "${event.text.slice(0, 60)}" → "${textForCommands.slice(0, 60)}"`);
-  }
-
+function checkCommandAuth(
+  api: OpenClawPluginApi,
+  event: InboundEvent,
+  account: ResolvedAccount,
+  textForCommands: string,
+): CommandAuthResult {
   let allowTextCommands = false;
   let shouldComputeAuth = false;
   let hasCommand = false;
@@ -1203,6 +1122,7 @@ async function handleInbound(
     );
   } catch (e: unknown) {
     log.error(`inbound: command detection failed — ${e instanceof Error ? e.message : String(e)}, skipping command checks`);
+    return { allowTextCommands: false, shouldComputeAuth: false, hasCommand: false, commandAuthorized: undefined };
   }
 
   let commandAuthorized: boolean | undefined = undefined;
@@ -1257,6 +1177,136 @@ async function handleInbound(
     );
   }
 
+  return { allowTextCommands, shouldComputeAuth, hasCommand, commandAuthorized };
+}
+
+async function handleInbound(
+  api: OpenClawPluginApi,
+  event: InboundEvent,
+  account: ResolvedAccount,
+  runningKey: string,
+): Promise<void> {
+  const chatType = event.isGroup ? "group" : "dm";
+  log.debug(
+    `inbound: raw event — chatType=${chatType} chatId=${event.chatId} ` +
+    `senderId=${event.senderId} msgType=${event.msgType ?? "text"} eventType=${event.eventType ?? "n/a"} ` +
+    `isAtMe=${event.isAtMe ?? false} isAtAll=${event.isAtAll ?? false} ` +
+    `mediaCount=${event.mediaPaths?.length ?? 0} ` +
+    `text=${(event.text ?? "").slice(0, 80)}`
+  );
+
+  // Handle approveCard button click callbacks
+  if (event.approveCardCallback) {
+    await handleApproveCardCallback(api, event, account, runningKey);
+    return;
+  }
+  const turnTextDelivered = new Set<string>();
+  const turnMediaDelivered = new Set<string>();
+
+  // ── DM POLICY ──
+  let reminder: ReminderParams | undefined;
+  let refMsgId: string | undefined;
+  if (chatType === "dm") {
+    const dmResult = await handleDmPolicy(api, event, account, runningKey);
+    if (!dmResult.allowed) return;
+    reminder = dmResult.reminder;
+    refMsgId = dmResult.refMsgId;
+  }
+
+  // ── SYNC COMMANDS ON FIRST OWNER DM ──
+  if (!ownerSyncDone.has(runningKey)) {
+    ownerSyncDone.add(runningKey);
+    const entry = runningAccounts.get(runningKey);
+    if (entry) {
+      log.info(`syncCommands: triggered by first owner DM (key=${runningKey})`);
+      cancelSyncRetry(runningKey);
+      syncLansengerNativeCommands(entry.client, api, runningKey, account).catch((e) =>
+        log.error(`syncCommands: owner-triggered sync error — ${e instanceof Error ? e.message : String(e)} (key=${runningKey})`),
+      );
+    }
+  }
+
+  // ── GROUP POLICY ──
+  if (event.isGroup) {
+    const grpResult = await handleGroupPolicy(api, event, account, runningKey);
+    if (!grpResult.allowed) return;
+    reminder = grpResult.reminder;
+    refMsgId = grpResult.refMsgId;
+  }
+
+  // ── AGENT ROUTING ──
+  let agentId: string;
+  let sessionKey: string;
+  try {
+    const route = api.runtime.channel.routing.resolveAgentRoute({
+      cfg: api.config,
+      channel: "lansenger",
+      accountId: account.accountId,
+      peer: { kind: chatType as "direct" | "group" | "channel", id: event.chatId },
+    });
+    agentId = route.agentId;
+    sessionKey = route.sessionKey;
+  } catch (e: unknown) {
+    log.error(`inbound: route resolution failed — ${e instanceof Error ? e.message : String(e)}, using defaults`);
+    agentId = "main";
+    const accountIdPart = account.accountId ? `:${account.accountId.slice(0, 20)}` : "";
+    sessionKey = `agent:main:lansenger${accountIdPart}:${chatType}:${event.chatId}`;
+  }
+  const replyTo = event.chatId;
+  lastInboundChatIds.set(runningKey, event.chatId);
+  lastInboundTimes.set(runningKey, Date.now());
+  if (account.accountId) {
+    setSessionAccountId(sessionKey, account.accountId);
+  }
+
+  const sessionDeliveredSet = sessionDeliveryTracker.get(sessionKey) ?? new Set<string>();
+  sessionDeliveryTracker.set(sessionKey, sessionDeliveredSet);
+
+  log.info(`inbound: ${chatType} from=${event.senderId} bot=${account.appId.slice(0, 20)}... agent=${agentId} session=${sessionKey.slice(0, 32)}`);
+
+  // ── TEXT ASSEMBLY ──
+  let agentText = event.text;
+  if (event.mediaPaths?.length) {
+    agentText = `${event.text}\n\nAttached files saved locally — use the read tool to view:\n${event.mediaPaths.map((p, i) => `${i + 1}. ${p}`).join("\n")}`;
+  }
+  if (event.referenceMsg) {
+    try {
+      const refEntry = runningAccounts.get(runningKey);
+      const refClient = refEntry?.client ?? makeClient(account, sdkLogger());
+      const refText = await refClient.extractReferenceText(event.referenceMsg);
+      if (refText) {
+        agentText = `${agentText}\n\n${refText}`;
+      }
+    } catch (e: unknown) {
+      log.error(`inbound: reference message extraction failed — ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  // ── COMMAND NORMALIZATION ──
+  const rawText = event.text;
+
+  // Resolve botUsername from event for command normalization.
+  // The SDK's normalizeCommandBody() strips @botName from slash commands
+  // (e.g. "/reset@OpenClawBot" → "/reset") when botUsername matches.
+  let botUsername: string | undefined;
+  {
+    const ourBotId = event.rawMessage?.botId as string | undefined;
+    const ourMention = ourBotId ? event.mentionedBots?.find(b => b.botId === ourBotId) : undefined;
+    botUsername = ourMention?.botName;
+  }
+
+  // Normalize command text via the SDK — handles @botName suffix on slash commands,
+  // colon variants, and text alias resolution (same pattern used by Telegram channel plugin).
+  const textForCommands = normalizeCommandBody(event.text, { botUsername });
+  if (textForCommands !== event.text) {
+    log.debug(`inbound: normalized command body — "${event.text.slice(0, 60)}" → "${textForCommands.slice(0, 60)}"`);
+  }
+
+  // ── COMMAND AUTH ──
+  const auth = checkCommandAuth(api, event, account, textForCommands);
+  const { allowTextCommands, shouldComputeAuth, hasCommand, commandAuthorized } = auth;
+
+  // ── COMMAND BLOCK CHECK ──
   if (allowTextCommands && hasCommand && commandAuthorized !== true) {
     log.info(`inbound: command blocked — sender=${event.senderId} not authorized`);
     // Reply with an unauthorized message instead of silently dropping
@@ -1269,6 +1319,7 @@ async function handleInbound(
     return;
   }
 
+  // ── ACK MESSAGE ──
   let ackMessageId: string | undefined = undefined;
   if (account.ackMessage) {
     try {
@@ -1286,7 +1337,7 @@ async function handleInbound(
     }
   }
 
-  // Pre-fetch group metadata for session context injection
+  // ── GROUP METADATA ──
   let groupMeta: GroupSessionMeta | null = null;
   if (event.isGroup) {
     try {
@@ -1298,6 +1349,7 @@ async function handleInbound(
     }
   }
 
+  // ── INBOUND CORE ──
   try {
     log.debug(
       `inbound: pre-run ctxPayload — ` +
