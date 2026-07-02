@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.17.0] - 2026-07-02
+
+### Changed
+
+- **Refactor**: Extracted helper functions and added section headers to `channel.ts`, `client.ts`, and `runtime.ts` for improved readability and maintainability. Pure code reorganization, no behavior changes.
+
 ## [3.16.23] - 2026-06-30
 
 ### Fixed
