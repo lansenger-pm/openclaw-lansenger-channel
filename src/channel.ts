@@ -28,10 +28,6 @@ const LANSENGER_TEXT_CHUNK_LIMIT = 4000;
 
 import { PersistentStore } from "./persistent-store.js";
 
-// ══════════════════════════════════════════════
-// PERSISTENT STORES
-// ══════════════════════════════════════════════
-
 const APPROVAL_CARD_FILE = path.join(os.homedir(), ".openclaw", "lansenger-approval-cards.json");
 
 class PersistentApprovalCardStore extends PersistentStore<{ messageId: string; lang: "zh" | "en" }> {
@@ -52,10 +48,6 @@ class PersistentApprovalCallbackStore extends PersistentStore<{ messageId: strin
 
 const pendingApprovalCallbacks = new PersistentApprovalCallbackStore();
 
-// ══════════════════════════════════════════════
-// PATH UTILS
-// ══════════════════════════════════════════════
-
 function isPathAllowed(filePath: string, roots: string[]): boolean {
   if (roots.length === 0) return true;
   const resolved = path.resolve(filePath);
@@ -65,10 +57,6 @@ function isPathAllowed(filePath: string, roots: string[]): boolean {
   }
   return false;
 }
-
-// ══════════════════════════════════════════════
-// TYPES
-// ══════════════════════════════════════════════
 
 type LansengerProbeResult = {
   ok: boolean;
@@ -118,10 +106,6 @@ type ResolvedAccount = {
   respondToAtAll: boolean;
   execApprovals?: { approvers?: string[] };
 };
-
-// ══════════════════════════════════════════════
-// ACCOUNT RESOLUTION
-// ══════════════════════════════════════════════
 
 function resolveSecretValue(raw: unknown): string {
   if (typeof raw === "string" && raw.trim()) return raw;
@@ -248,10 +232,6 @@ function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): Resolve
   };
 }
 
-// ══════════════════════════════════════════════
-// CLIENT & APPROVER FACTORY
-// ══════════════════════════════════════════════
-
 function makeClient(account: ResolvedAccount, logger?: ClientLogger): LansengerClient {
   const client = new LansengerClient({
     appId: account.appId,
@@ -292,10 +272,6 @@ const approverAuth = createResolvedApproverActionAuthAdapter({
   resolveApprovers: resolveLansengerApprovers,
 });
 
-// ══════════════════════════════════════════════
-// PROBE
-// ══════════════════════════════════════════════
-
 async function probeLansengerAccount(account: ResolvedAccount): Promise<LansengerProbeResult> {
   if (!account.appId || !account.appSecret) {
     return { ok: false, error: "missing credentials (appId, appSecret)" };
@@ -315,10 +291,6 @@ async function probeLansengerAccount(account: ResolvedAccount): Promise<Lansenge
     };
   }
 }
-
-// ══════════════════════════════════════════════
-// CHAT PLUGIN (base)
-// ══════════════════════════════════════════════
 
 const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
   base: createChannelPluginBase({
@@ -623,6 +595,15 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
         const target = params.target as any;
         const payload = params.payload as any;
         const hint = params.hint as any;
+        const sessionKey = (params as any).sessionKey ?? "";
+
+        if (hint?.kind === "approval-pending" && hint?.nativeRouteActive) {
+          // SDK already delivered the approval via native card. Suppress
+          // the markdown text fallback to avoid duplicates.
+          params.payload.text = "";
+          delete params.payload.presentation;
+          return;
+        }
 
         if (hint?.kind === "approval-resolved") {
           const chatId = target?.to;
@@ -667,10 +648,6 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
     },
   },
 });
-
-// ══════════════════════════════════════════════
-// ONBOARDING
-// ══════════════════════════════════════════════
 
 const lansengerOnboarding = {
   configuredCheck: (cfg: any) => {
@@ -842,86 +819,6 @@ const lansengerOnboarding = {
   },
 };
 
-function buildApprovalCards(params: {
-  sessionKey: string;
-  commandPreview: string;
-  requestId: string;
-  shortId: string;
-  buttonScope: ApproveCardButton["permissionScope"];
-  expireTime: number | undefined;
-  allowedDecisions: string[];
-}): { zh: ApproveCardData; en: ApproveCardData } {
-  const { sessionKey, commandPreview, requestId, shortId, buttonScope, expireTime, allowedDecisions } = params;
-  const showSession = allowedDecisions.includes("allow-session");
-  const showAlways = allowedDecisions.includes("allow-always");
-
-  // --- zh card ---
-  const zhCard: ApproveCardData = {
-    head: {
-      title: "⚠️ 命令审批",
-      headStatus: { describe: "待审批", colour: "#FFB116", statusIcon: 1 },
-    },
-    body: {
-      title: "危险命令审批请求",
-      content: {
-        formatType: 1,
-        text: [
-          "**会话 ID**", sessionKey, "",
-          "**命令**", "```", commandPreview, "```", "",
-          `> 按钮不可用时请发送命令审批：`, "",
-          `> 执行一次`, "> ```", `> /approve ${shortId} allow-once`, "> ```", "",
-          ...(showSession ? [`> 本会话有效`, "> ```", `> /approve ${shortId} allow-session`, "> ```", ""] : []),
-          ...(showAlways ? [`> 永久允许`, "> ```", `> /approve ${shortId} allow-always`, "> ```", ""] : []),
-          `> 拒绝执行`, "> ```", `> /approve ${shortId} deny`, "> ```",
-        ].join("\n"),
-      },
-    },
-    buttons: [
-      { text: "执行一次", buttonTheme: 1, permissionScope: buttonScope, callbackInfo: `once:${requestId}` },
-      ...(showSession ? [{ text: "本会话有效", buttonTheme: 2, permissionScope: buttonScope, callbackInfo: `session:${requestId}` }] : []),
-      ...(showAlways ? [{ text: "永久允许", buttonTheme: 3, permissionScope: buttonScope, callbackInfo: `always:${requestId}` }] : []),
-      { text: "拒绝执行", buttonTheme: 4, permissionScope: buttonScope, callbackInfo: `deny:${requestId}` },
-    ],
-    expireTime,
-  };
-
-  // --- en card ---
-  const enCard: ApproveCardData = {
-    head: {
-      title: "⚠️ Command Approval",
-      headStatus: { describe: "Pending", colour: "#FFB116", statusIcon: 1 },
-    },
-    body: {
-      title: "Dangerous Command Approval Request",
-      content: {
-        formatType: 1,
-        text: [
-          "**Session**", sessionKey, "",
-          "**Command**", "```", commandPreview, "```", "",
-          `> If buttons are unavailable, use:`, "",
-          `> Approve once`, "> ```", `> /approve ${shortId} allow-once`, "> ```", "",
-          ...(showSession ? [`> This session`, "> ```", `> /approve ${shortId} allow-session`, "> ```", ""] : []),
-          ...(showAlways ? [`> Always allow`, "> ```", `> /approve ${shortId} allow-always`, "> ```", ""] : []),
-          `> Deny`, "> ```", `> /approve ${shortId} deny`, "> ```",
-        ].join("\n"),
-      },
-    },
-    buttons: [
-      { text: "Approve Once", buttonTheme: 1, permissionScope: buttonScope, callbackInfo: `once:${requestId}` },
-      ...(showSession ? [{ text: "This Session", buttonTheme: 2, permissionScope: buttonScope, callbackInfo: `session:${requestId}` }] : []),
-      ...(showAlways ? [{ text: "Always Allow", buttonTheme: 3, permissionScope: buttonScope, callbackInfo: `always:${requestId}` }] : []),
-      { text: "Deny", buttonTheme: 4, permissionScope: buttonScope, callbackInfo: `deny:${requestId}` },
-    ],
-    expireTime,
-  };
-
-  return { zh: zhCard, en: enCard };
-}
-
-// ══════════════════════════════════════════════
-// MAIN PLUGIN
-// ══════════════════════════════════════════════
-
 export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResult> = {
   ...chatPlugin as any,
   setupWizard: lansengerSetupWizard,
@@ -1022,16 +919,125 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
           // Use the framework's allowedDecisions to determine which buttons to show.
           // When exec.ask is "always", only allow-once + deny are available (no session/always).
           const allowedDecisions: string[] = req?.allowedDecisions ?? ["allow-once", "allow-session", "allow-always", "deny"];
-          log.debug(`buildPendingPayload: allowedDecisions=${allowedDecisions.join(",")}`);
-          const { zh: zhCard, en: enCard } = buildApprovalCards({
-            sessionKey,
-            commandPreview,
-            requestId,
-            shortId,
-            buttonScope,
+          const showSession = allowedDecisions.includes("allow-session");
+          const showAlways = allowedDecisions.includes("allow-always");
+          log.debug(`buildPendingPayload: allowedDecisions=${allowedDecisions.join(",")} showSession=${showSession} showAlways=${showAlways}`);
+          const zhCard: ApproveCardData = {
+            head: {
+              title: "⚠️ 命令审批",
+              headStatus: {
+                describe: "待审批",
+                colour: "#FFB116",
+                statusIcon: 1,
+              },
+            },
+            body: {
+              title: "危险命令审批请求",
+              content: {
+                formatType: 1,
+                text: [
+                  `**会话 ID**`,
+                  sessionKey,
+                  "",
+                  `**命令**`,
+                  "```",
+                  commandPreview,
+                  "```",
+                  "",
+                  `> 按钮不可用时请发送命令审批：`,
+                  "",
+                  `> 执行一次`,
+                  "> ```",
+                  `> /approve ${shortId} allow-once`,
+                  "> ```",
+                  "",
+                  ...(showSession ? [
+                    `> 本会话有效`,
+                    "> ```",
+                    `> /approve ${shortId} allow-session`,
+                    "> ```",
+                    "",
+                  ] : []),
+                  ...(showAlways ? [
+                    `> 永久允许`,
+                    "> ```",
+                    `> /approve ${shortId} allow-always`,
+                    "> ```",
+                    "",
+                  ] : []),
+                  `> 拒绝执行`,
+                  "> ```",
+                  `> /approve ${shortId} deny`,
+                  "> ```",
+                ].join("\n"),
+              },
+            },
+            buttons: [
+              { text: "执行一次", buttonTheme: 1, permissionScope: buttonScope, callbackInfo: `once:${requestId}` },
+              ...(showSession ? [{ text: "本会话有效", buttonTheme: 2, permissionScope: buttonScope, callbackInfo: `session:${requestId}` }] : []),
+              ...(showAlways ? [{ text: "永久允许", buttonTheme: 3, permissionScope: buttonScope, callbackInfo: `always:${requestId}` }] : []),
+              { text: "拒绝执行", buttonTheme: 4, permissionScope: buttonScope, callbackInfo: `deny:${requestId}` },
+            ],
             expireTime,
-            allowedDecisions,
-          });
+          };
+          const enCard: ApproveCardData = {
+            head: {
+              title: "⚠️ Command Approval",
+              headStatus: {
+                describe: "Pending",
+                colour: "#FFB116",
+                statusIcon: 1,
+              },
+            },
+            body: {
+              title: "Dangerous Command Approval Request",
+              content: {
+                formatType: 1,
+                text: [
+                  `**Session**`,
+                  sessionKey,
+                  "",
+                  `**Command**`,
+                  "```",
+                  commandPreview,
+                  "```",
+                  "",
+                  `> If buttons are unavailable, use:`,
+                  "",
+                  `> Approve once`,
+                  "> ```",
+                  `> /approve ${shortId} allow-once`,
+                  "> ```",
+                  "",
+                  ...(showSession ? [
+                    `> This session`,
+                    "> ```",
+                    `> /approve ${shortId} allow-session`,
+                    "> ```",
+                    "",
+                  ] : []),
+                  ...(showAlways ? [
+                    `> Always allow`,
+                    "> ```",
+                    `> /approve ${shortId} allow-always`,
+                    "> ```",
+                    "",
+                  ] : []),
+                  `> Deny`,
+                  "> ```",
+                  `> /approve ${shortId} deny`,
+                  "> ```",
+                ].join("\n"),
+              },
+            },
+            buttons: [
+              { text: "Approve Once", buttonTheme: 1, permissionScope: buttonScope, callbackInfo: `once:${requestId}` },
+              ...(showSession ? [{ text: "This Session", buttonTheme: 2, permissionScope: buttonScope, callbackInfo: `session:${requestId}` }] : []),
+              ...(showAlways ? [{ text: "Always Allow", buttonTheme: 3, permissionScope: buttonScope, callbackInfo: `always:${requestId}` }] : []),
+              { text: "Deny", buttonTheme: 4, permissionScope: buttonScope, callbackInfo: `deny:${requestId}` },
+            ],
+            expireTime,
+          };
           return { type: "approveCard", zh: zhCard, en: enCard, isDynamic: true, requestId, sessionKey };
         },
         buildResolvedResult: ({ cfg, resolved, entry }: any) => {

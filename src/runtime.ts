@@ -978,8 +978,9 @@ async function handleDmPolicy(
   let reminder: ReminderParams | undefined;
   let refMsgId: string | undefined;
   if (account.autoMentionReply && event.senderId) {
-    reminder = { userIds: [event.senderId] };
-    log.info(`inbound: autoMentionReply enabled (DM), reminder set for sender=${event.senderId}`);
+    const isBot = event.fromType === 1;
+    reminder = isBot ? { botIds: [event.senderId] } : { userIds: [event.senderId] };
+    log.info(`inbound: autoMentionReply enabled (DM), reminder set for sender=${event.senderId} (${isBot ? "bot" : "user"})`);
   }
   if (account.autoQuoteReply && event.messageId) {
     refMsgId = event.messageId;
@@ -1058,8 +1059,9 @@ async function handleGroupPolicy(
     const respondToAtAll = groupConfig?.respondToAtAll as boolean | undefined
       ?? account.respondToAtAll ?? false;
     if (autoMentionReply && event.senderId) {
-      reminder = { userIds: [event.senderId] };
-      log.info(`inbound: autoMentionReply enabled (group), reminder set for sender=${event.senderId}`);
+      const isBot = event.fromType === 1;
+      reminder = isBot ? { botIds: [event.senderId] } : { userIds: [event.senderId] };
+      log.info(`inbound: autoMentionReply enabled (group), reminder set for sender=${event.senderId} (${isBot ? "bot" : "user"})`);
     }
     if (autoQuoteReply && event.messageId) {
       refMsgId = event.messageId;
@@ -1087,8 +1089,8 @@ async function handleGroupPolicy(
     }
     return { allowed: true, reminder, refMsgId };
   } catch (e: unknown) {
-    log.error(`inbound: group policy check failed — ${e instanceof Error ? e.message : String(e)}`);
-    return { allowed: true };
+    log.error(`inbound: group policy check failed — ${e instanceof Error ? e.message : String(e)}, rejecting message for safety`);
+    return { allowed: false };
   }
 }
 
@@ -1361,7 +1363,17 @@ async function handleInbound(
       `chatType=${chatType} isGroup=${event.isGroup} isAtMe=${event.isAtMe}`
     );
     log.info(`inbound.run starting: sessionKey=${sessionKey} agentId=${agentId} accountId=${account.accountId}`);
-    await api.runtime.channel.inbound.run({
+
+    // Retry on session initialization conflict — the previous session may still be
+    // tearing down when the next message arrives. Exponential backoff (5s → 10s → 20s,
+    // max 60s), same pattern used by the Telegram channel plugin.
+    const REPLY_SESSION_INIT_CONFLICT_RE = /reply session initialization conflicted for \S+/u;
+    const INBOUND_RETRY_BASE_MS = 5000;
+    const INBOUND_RETRY_MAX_MS = 60000;
+    const MAX_INBOUND_RETRIES = 3;
+    for (let attempt = 0; attempt < MAX_INBOUND_RETRIES; attempt++) {
+      try {
+        await api.runtime.channel.inbound.run({
       channel: "lansenger",
       accountId: account.accountId ?? undefined,
       raw: event,
@@ -1491,6 +1503,18 @@ async function handleInbound(
         },
       },
     } as any);
+        break; // success — exit retry loop
+      } catch (e: unknown) {
+        const errMsg = e instanceof Error ? e.message : String(e);
+        if (REPLY_SESSION_INIT_CONFLICT_RE.test(errMsg) && attempt < MAX_INBOUND_RETRIES - 1) {
+          const delayMs = Math.min(INBOUND_RETRY_MAX_MS, INBOUND_RETRY_BASE_MS * Math.pow(2, attempt));
+          log.warn(`inbound.run: session conflict, retrying in ${delayMs}ms (attempt ${attempt + 1}/${MAX_INBOUND_RETRIES})...`);
+          await new Promise((r) => setTimeout(r, delayMs));
+          continue;
+        }
+        throw e;
+      }
+    }
     log.info(`inbound.run completed: sessionKey=${sessionKey.slice(0, 32)}`);
     if (ackMessageId && account.revokeAckMessage) {
       try {

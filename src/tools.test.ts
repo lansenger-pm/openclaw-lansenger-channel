@@ -129,9 +129,11 @@ describe("lansenger_send_file", () => {
     expect(parseResult(result).error).toContain("Not a file");
   });
 
-  it("uses lastInboundChatId as default target", async () => {
+  it("uses session deliveryContext as default target", async () => {
+    // The mock ctx doesn't have deliveryContext, so passing no 'to' should
+    // result in a "No target" error since the session target is empty.
     const result = await api._tools["lansenger_send_file"].execute("tc1", { _sessionKey: "agent:test:lansenger:dm:user1",  appId: "test-id",  filePath: "/tmp" });
-    expect(parseResult(result).error).toContain("Not a file");
+    expect(parseResult(result).error).toContain("No target");
   });
 });
 

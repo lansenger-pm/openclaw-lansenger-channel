@@ -900,7 +900,10 @@ export class LansengerClient {
       }
 
       const extracted = await this.extractText(eventData);
-      if (!extracted.text) continue;
+      if (!extracted.text) {
+        this.log.info(`inbound: unknown msgType skipped — msgType=${eventData.msgType ?? "n/a"} sender=${eventData.from ?? "n/a"} eventType=${eventType} rawKeys=${Object.keys(eventData).slice(0, 10).join(",")}`);
+        continue;
+      }
       if (extracted.mediaPaths?.length) {
         this.log.debug(`inbound media: msgType=${eventData.msgType ?? "n/a"} count=${extracted.mediaPaths.length}`);
       }
@@ -1186,6 +1189,7 @@ export class LansengerClient {
       return { text: paths.length > 0 ? "[Voice]" : "[Voice]", mediaPaths: paths.length > 0 ? paths : undefined };
     }
     if (msgType === "formatText") return { text: payload.formatText?.text?.trim() ?? null };
+    if (msgType === "format") return { text: payload.format?.text?.trim() ?? payload.format?.content?.trim() ?? null };
     if (msgType === "position") {
       const pos = payload.position ?? {};
       const parts = [pos.name ?? "", pos.address ?? ""].filter(Boolean);

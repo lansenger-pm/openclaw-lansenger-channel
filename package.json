@@ -20,6 +20,7 @@
     "dist/src/runtime.js",
     "dist/src/runtime.d.ts",
     "dist/src/runtime.js.map",
+    "dist/src/secret-contract.*",
     "dist/src/setup-i18n.*",
     "dist/src/setup-wizard.js",
     "dist/src/setup-wizard.d.ts",
