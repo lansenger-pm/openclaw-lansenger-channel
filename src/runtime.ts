@@ -1035,6 +1035,12 @@ async function handleGroupPolicy(
         return { allowed: false };
       }
     }
+    // When allowlist mode is active but the group has no config entry
+    // (SDK sets allowlistEnabled=false in this case), enforce it ourselves.
+    if (effectiveGroupPolicyMode === "allowlist" && !groupPolicy.groupConfig) {
+      log.info(`inbound: group dropped — allowlist mode, group not in list for chatId=${event.chatId}`);
+      return { allowed: false };
+    }
     const groupConfig = groupPolicy.groupConfig as Record<string, unknown> | undefined;
     const perGroupAllowFrom = groupConfig?.allowFrom as string[] | undefined;
     const effectiveGroupAllowFrom = perGroupAllowFrom && perGroupAllowFrom.length > 0
@@ -1247,7 +1253,12 @@ async function handleInbound(
       peer: { kind: chatType as "direct" | "group" | "channel", id: event.chatId },
     });
     agentId = route.agentId;
-    sessionKey = route.sessionKey;
+    // Insert accountId into session key so that different bot accounts
+    // bound to the same agent and chat don't share the same session.
+    // Format: agent:<agentId>:lansenger:<accountId>:<chatType>:<chatId>
+    sessionKey = account.accountId
+      ? route.sessionKey.replace(/^([^:]+:[^:]+:lansenger):/, `$1:${account.accountId}:`)
+      : route.sessionKey;
   } catch (e: unknown) {
     log.error(`inbound: route resolution failed — ${e instanceof Error ? e.message : String(e)}, using defaults`);
     agentId = "main";

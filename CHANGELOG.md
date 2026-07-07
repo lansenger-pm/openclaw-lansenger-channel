@@ -16,7 +16,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Added
 
-- **Secret contract module** (`secret-contract.ts`): Registers `channels.lansenger.appSecret` and `channels.lansenger.accounts.*.appSecret` fields with the OpenClaw secrets framework, enabling `openclaw secrets configure`, `openclaw secrets audit`, and automatic `SecretRef` migration.
+- **Secret contract module** (`secret-contract.ts`): Registers `channels.lansenger.appSecret` and `channels.lansenger.accounts.*.appSecret` fields with the OpenClaw secrets framework, enabling `openclaw secrets configure`, `openclaw secrets audit`, and automatic `SecretRef` migration. Wired into `lansengerPlugin.secrets`.
+- **`groupAllowFrom` / `groupPolicy` in `ResolvedAccount`**: Added per-account `groupAllowFrom` and `groupPolicy` fields to `ResolvedAccount`, resolved from `accounts.<id>.groupAllowFrom` > `section.groupAllowFrom` and `accounts.<id>.groupPolicy` > `section.groupPolicy` respectively.
+- **DM + Group allowlist adapter**: Integrated `buildDmGroupAccountAllowlistAdapter` providing framework-level DM and group allowlist management via the `allowlist` config, with `resolveDmAllowFrom`, `resolveGroupAllowFrom`, `resolveDmPolicy`, and `resolveGroupPolicy`.
+- **Directory adapter**: Added `createChannelDirectoryAdapter` with `listPeers` (resolved from `allowFrom`) and `listGroups` (stub placeholder for future group list integration).
+- **Security extended**: `security.dm` now exposes `resolveGroupAllowFrom` and `resolveGroupPolicy` alongside existing DM resolution.
+- **`buildToolContext` in threading**: Exposes `currentChannelId`, `currentChatType`, and `currentGroupId` from context payload, enabling tools to be aware of the current conversation context.
+- **Agent prompt hints** (`agentPrompt.messageToolHints`): Provides Lansenger-specific tool usage guidance to the Agent, covering targeting, rich cards, file delivery, group queries, and @mentions.
+- **Messaging target config**: Added `targetPrefixes` (`"lansenger"`), `normalizeTarget`, and `targetResolver.looksLikeId` for Lansenger ID recognition in messaging flows.
 - **`fromType` on `GroupMember`**: Added `fromType` field (0=human, 1=bot) to the `GroupMember` type, returned by `lansenger_group_members`, allowing the Agent to distinguish human members from bots.
 - **Mention parameter `fromType` guidance**: Updated `reminderUserIds` and `reminderBotIds` tool descriptions to include `fromType` guidance (e.g. "Use this for members with `fromType=0` from `lansenger_group_members`"), enabling the Agent to correctly route @-mentions.
 
@@ -24,7 +31,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 - **Tools refactor**: Extracted `registerLansengerTool` helper to reduce boilerplate across all tool registrations. Merged `makeToolClient` + `resolveToolAccountId` into single `resolveToolClient`. Replaced `getLastInboundChatId()` with `ctx.deliveryContext.to` for reliable session-context target resolution.
 - **Approval card inline**: Inlined `buildApprovalCards` helper into `buildPendingPayload`, removing the separate function for better cohesion.
-- **Cleanup**: Removed section comment dividers from `channel.ts`.
 
 ## [3.17.0] - 2026-07-02
 
