@@ -4,6 +4,28 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.17.1] - 2026-07-06
+
+### Fixed
+
+- **autoMentionReply bot/user distinction**: `autoMentionReply` previously always placed the sender ID into `userIds`, even when the sender was a bot (`fromType=1`). Now correctly uses `botIds` for bots and `userIds` for human users, in both DM and group handlers.
+- **Duplicate approval text suppression**: Added `nativeRouteActive` check in `beforeDeliverPayload` to suppress the markdown text fallback when the SDK has already delivered the approval via native card, preventing duplicate approval messages.
+- **Inbound retry on session conflict**: Added exponential backoff retry (5s → 10s → 20s, max 60s) when `inbound.run` encounters a reply session initialization conflict, matching the Telegram channel plugin pattern.
+- **Group policy error safety**: Changed group policy check failure from silently allowing the message to safely rejecting it, preventing unintended message delivery when policy resolution fails.
+- **`format` msgType text extraction**: Added support for extracting text from `format` msgType payloads (`payload.format.text` or `payload.format.content`), which was previously silently dropped.
+
+### Added
+
+- **Secret contract module** (`secret-contract.ts`): Registers `channels.lansenger.appSecret` and `channels.lansenger.accounts.*.appSecret` fields with the OpenClaw secrets framework, enabling `openclaw secrets configure`, `openclaw secrets audit`, and automatic `SecretRef` migration.
+- **`fromType` on `GroupMember`**: Added `fromType` field (0=human, 1=bot) to the `GroupMember` type, returned by `lansenger_group_members`, allowing the Agent to distinguish human members from bots.
+- **Mention parameter `fromType` guidance**: Updated `reminderUserIds` and `reminderBotIds` tool descriptions to include `fromType` guidance (e.g. "Use this for members with `fromType=0` from `lansenger_group_members`"), enabling the Agent to correctly route @-mentions.
+
+### Changed
+
+- **Tools refactor**: Extracted `registerLansengerTool` helper to reduce boilerplate across all tool registrations. Merged `makeToolClient` + `resolveToolAccountId` into single `resolveToolClient`. Replaced `getLastInboundChatId()` with `ctx.deliveryContext.to` for reliable session-context target resolution.
+- **Approval card inline**: Inlined `buildApprovalCards` helper into `buildPendingPayload`, removing the separate function for better cohesion.
+- **Cleanup**: Removed section comment dividers from `channel.ts`.
+
 ## [3.17.0] - 2026-07-02
 
 ### Changed
