@@ -4,33 +4,31 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [3.17.1] - 2026-07-06
-
-### Fixed
-
-- **autoMentionReply bot/user distinction**: `autoMentionReply` previously always placed the sender ID into `userIds`, even when the sender was a bot (`fromType=1`). Now correctly uses `botIds` for bots and `userIds` for human users, in both DM and group handlers.
-- **Duplicate approval text suppression**: Added `nativeRouteActive` check in `beforeDeliverPayload` to suppress the markdown text fallback when the SDK has already delivered the approval via native card, preventing duplicate approval messages.
-- **Inbound retry on session conflict**: Added exponential backoff retry (5s → 10s → 20s, max 60s) when `inbound.run` encounters a reply session initialization conflict, matching the Telegram channel plugin pattern.
-- **Group policy error safety**: Changed group policy check failure from silently allowing the message to safely rejecting it, preventing unintended message delivery when policy resolution fails.
-- **`format` msgType text extraction**: Added support for extracting text from `format` msgType payloads (`payload.format.text` or `payload.format.content`), which was previously silently dropped.
+## [3.17.1] - 2026-07-07
 
 ### Added
 
-- **Secret contract module** (`secret-contract.ts`): Registers `channels.lansenger.appSecret` and `channels.lansenger.accounts.*.appSecret` fields with the OpenClaw secrets framework, enabling `openclaw secrets configure`, `openclaw secrets audit`, and automatic `SecretRef` migration. Wired into `lansengerPlugin.secrets`.
-- **`groupAllowFrom` / `groupPolicy` in `ResolvedAccount`**: Added per-account `groupAllowFrom` and `groupPolicy` fields to `ResolvedAccount`, resolved from `accounts.<id>.groupAllowFrom` > `section.groupAllowFrom` and `accounts.<id>.groupPolicy` > `section.groupPolicy` respectively.
-- **DM + Group allowlist adapter**: Integrated `buildDmGroupAccountAllowlistAdapter` providing framework-level DM and group allowlist management via the `allowlist` config, with `resolveDmAllowFrom`, `resolveGroupAllowFrom`, `resolveDmPolicy`, and `resolveGroupPolicy`.
-- **Directory adapter**: Added `createChannelDirectoryAdapter` with `listPeers` (resolved from `allowFrom`) and `listGroups` (stub placeholder for future group list integration).
-- **Security extended**: `security.dm` now exposes `resolveGroupAllowFrom` and `resolveGroupPolicy` alongside existing DM resolution.
-- **`buildToolContext` in threading**: Exposes `currentChannelId`, `currentChatType`, and `currentGroupId` from context payload, enabling tools to be aware of the current conversation context.
-- **Agent prompt hints** (`agentPrompt.messageToolHints`): Provides Lansenger-specific tool usage guidance to the Agent, covering targeting, rich cards, file delivery, group queries, and @mentions.
-- **Messaging target config**: Added `targetPrefixes` (`"lansenger"`), `normalizeTarget`, and `targetResolver.looksLikeId` for Lansenger ID recognition in messaging flows.
-- **`fromType` on `GroupMember`**: Added `fromType` field (0=human, 1=bot) to the `GroupMember` type, returned by `lansenger_group_members`, allowing the Agent to distinguish human members from bots.
-- **Mention parameter `fromType` guidance**: Updated `reminderUserIds` and `reminderBotIds` tool descriptions to include `fromType` guidance (e.g. "Use this for members with `fromType=0` from `lansenger_group_members`"), enabling the Agent to correctly route @-mentions.
+- **`groupAllowFrom` / `groupPolicy` config**: Per-account group-level allowlist and policy fields, resolved with account > section priority. Integrated `buildDmGroupAccountAllowlistAdapter` for framework-level allowlist management and `createChannelDirectoryAdapter` with `listPeers` (from `allowFrom`) + `listGroups` (stub).
+- **Secret contract** (`secret-contract.ts`): Registers `appSecret` fields with the OpenClaw secrets framework for `openclaw secrets configure` / `audit` / `SecretRef` migration.
+- **`threading.buildToolContext`**: Exposes `currentChannelId`, `currentChatType`, `currentGroupId` to tool execution context.
+- **`agentPrompt.messageToolHints`**: Lansenger-specific tool usage guidance for the Agent (targeting, cards, files, groups, @mentions).
+- **`messaging` target config**: `targetPrefixes`, `normalizeTarget`, `targetResolver.looksLikeId` for Lansenger ID recognition.
+- **`fromType` on `GroupMember`** (0=human, 1=bot): Returned by `lansenger_group_members`, and referenced in `reminderUserIds` / `reminderBotIds` tool descriptions so the Agent correctly routes @-mentions.
+
+### Fixed
+
+- **`autoMentionReply` bot/user routing**: Uses `botIds` for bot senders (`fromType=1`) and `userIds` for human senders (`fromType=0`), in both DM and group handlers.
+- **Allowlist enforcement**: When `groupPolicy=allowlist` and no `groups` entries exist, messages are now correctly dropped instead of passed through.
+- **Session isolation**: Two bots sharing the same Agent and group now get separate sessions (`agent:<id>:lansenger:<accountId>:<chatType>:<chatId>`).
+- **Duplicate approval text**: Suppressed markdown fallback when SDK handles approval via native card.
+- **Inbound retry**: Exponential backoff (5s → 10s → 20s) on reply session initialization conflicts.
+- **Group policy safety**: Policy check failures now reject the message instead of silently allowing.
+- **`format` msgType**: Text extraction from `format` msgType payloads.
 
 ### Changed
 
-- **Tools refactor**: Extracted `registerLansengerTool` helper to reduce boilerplate across all tool registrations. Merged `makeToolClient` + `resolveToolAccountId` into single `resolveToolClient`. Replaced `getLastInboundChatId()` with `ctx.deliveryContext.to` for reliable session-context target resolution.
-- **Approval card inline**: Inlined `buildApprovalCards` helper into `buildPendingPayload`, removing the separate function for better cohesion.
+- **Tools refactor**: Extracted `registerLansengerTool` helper. Merged `makeToolClient` + `resolveToolAccountId` into `resolveToolClient`. Replaced `getLastInboundChatId()` with `ctx.deliveryContext.to`.
+- **Approval card inline**: Inlined `buildApprovalCards` helper into `buildPendingPayload`.
 
 ## [3.17.0] - 2026-07-02
 
