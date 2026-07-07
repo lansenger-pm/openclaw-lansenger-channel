@@ -12,6 +12,8 @@ import {
 } from "openclaw/plugin-sdk/channel-status";
 import { createSubsystemLogger } from "openclaw/plugin-sdk/logging-core";
 import { coerceSecretRef, type SecretRef } from "openclaw/plugin-sdk/secret-ref-runtime";
+import { createChannelDirectoryAdapter, listResolvedDirectoryUserEntriesFromAllowFrom, listResolvedDirectoryGroupEntriesFromMapKeys } from "openclaw/plugin-sdk/directory-runtime";
+import { buildDmGroupAccountAllowlistAdapter } from "openclaw/plugin-sdk/allowlist-config-edit";
 import { isPrivateNetworkOptInEnabled } from "openclaw/plugin-sdk/ssrf-policy";
 import { chunkMarkdownTextWithMode, resolveTextChunkLimit } from "openclaw/plugin-sdk/reply-chunking";
 import * as fs from "node:fs/promises";
@@ -22,11 +24,16 @@ import { LansengerClient, DEFAULT_API_GATEWAY_URL } from "./client.js";
 import type { ApproveCardData, ApproveCardButton, I18nAppCardData, ClientLogger } from "./client.js";
 import { getRunningClientByAccountId, getSessionAccountId, getLastInboundTimeByAccountId, stripOpenClawUuidSuffix, gatewayStartAccount, gatewayStopAccount } from "./runtime.js";
 import { lansengerSetupWizard } from "./setup-wizard.js";
+import { channelSecrets } from "./secret-contract.js";
 
 const log = createSubsystemLogger("lansenger");
 const LANSENGER_TEXT_CHUNK_LIMIT = 4000;
 
 import { PersistentStore } from "./persistent-store.js";
+
+// ══════════════════════════════════════════════
+// PERSISTENT STORES
+// ══════════════════════════════════════════════
 
 const APPROVAL_CARD_FILE = path.join(os.homedir(), ".openclaw", "lansenger-approval-cards.json");
 
@@ -48,6 +55,10 @@ class PersistentApprovalCallbackStore extends PersistentStore<{ messageId: strin
 
 const pendingApprovalCallbacks = new PersistentApprovalCallbackStore();
 
+// ══════════════════════════════════════════════
+// PATH UTILS
+// ══════════════════════════════════════════════
+
 function isPathAllowed(filePath: string, roots: string[]): boolean {
   if (roots.length === 0) return true;
   const resolved = path.resolve(filePath);
@@ -57,6 +68,10 @@ function isPathAllowed(filePath: string, roots: string[]): boolean {
   }
   return false;
 }
+
+// ══════════════════════════════════════════════
+// TYPES
+// ══════════════════════════════════════════════
 
 type LansengerProbeResult = {
   ok: boolean;
@@ -69,8 +84,10 @@ type LansengerAccount = {
   appSecret?: string;
   apiGatewayUrl?: string;
   allowFrom?: string[];
+  groupAllowFrom?: string[];
   dmPolicy?: string;
   dmSecurity?: string;
+  groupPolicy?: string;
   homeChannel?: string;
   enabled?: boolean;
   ackMessage?: boolean;
@@ -91,7 +108,9 @@ type ResolvedAccount = {
   appSecret: string;
   apiGatewayUrl: string;
   allowFrom: string[];
+  groupAllowFrom: string[];
   dmPolicy: string | undefined;
+  groupPolicy: string | undefined;
   homeChannel: string | undefined;
   enabled: boolean;
   configured?: boolean;
@@ -106,6 +125,10 @@ type ResolvedAccount = {
   respondToAtAll: boolean;
   execApprovals?: { approvers?: string[] };
 };
+
+// ══════════════════════════════════════════════
+// ACCOUNT RESOLUTION
+// ══════════════════════════════════════════════
 
 function resolveSecretValue(raw: unknown): string {
   if (typeof raw === "string" && raw.trim()) return raw;
@@ -196,7 +219,9 @@ function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): Resolve
   // ─────────────────────────────────────────────────────────────────────────
 
   const allowFrom: string[] = section?.allowFrom ?? account?.allowFrom ?? [];
+  const groupAllowFrom: string[] = account?.groupAllowFrom ?? section?.groupAllowFrom ?? [];
   const dmPolicy = section?.dmPolicy ?? section?.dmSecurity ?? account?.dmPolicy ?? account?.dmSecurity;
+  const groupPolicy = account?.groupPolicy ?? section?.groupPolicy;
   const homeChannel = section?.homeChannel ?? account?.homeChannel;
   const enabled = Boolean(appId && appSecret);
   const ackMessage = account?.ackMessage !== undefined ? account.ackMessage : (section?.ackMessage ?? false);
@@ -216,7 +241,9 @@ function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): Resolve
     appSecret,
     apiGatewayUrl,
     allowFrom,
+    groupAllowFrom,
     dmPolicy,
+    groupPolicy,
     homeChannel,
     enabled,
     ackMessage,
@@ -231,6 +258,10 @@ function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): Resolve
     execApprovals,
   };
 }
+
+// ══════════════════════════════════════════════
+// CLIENT & APPROVER FACTORY
+// ══════════════════════════════════════════════
 
 function makeClient(account: ResolvedAccount, logger?: ClientLogger): LansengerClient {
   const client = new LansengerClient({
@@ -272,6 +303,10 @@ const approverAuth = createResolvedApproverActionAuthAdapter({
   resolveApprovers: resolveLansengerApprovers,
 });
 
+// ══════════════════════════════════════════════
+// PROBE
+// ══════════════════════════════════════════════
+
 async function probeLansengerAccount(account: ResolvedAccount): Promise<LansengerProbeResult> {
   if (!account.appId || !account.appSecret) {
     return { ok: false, error: "missing credentials (appId, appSecret)" };
@@ -291,6 +326,10 @@ async function probeLansengerAccount(account: ResolvedAccount): Promise<Lansenge
     };
   }
 }
+
+// ══════════════════════════════════════════════
+// CHAT PLUGIN (base)
+// ══════════════════════════════════════════════
 
 const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
   base: createChannelPluginBase({
@@ -387,15 +426,67 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
         return { ...cfg, channels };
       },
     },
+    // @ts-expect-error: mentions is a valid runtime property (used by Discord, etc.)
+    mentions: { stripPatterns: () => [] },
+    agentPrompt: {
+      messageToolHints: () => [
+        "- Lansenger targeting: omit `to` to auto-detect from the current conversation. Explicit targets: user ID for DMs, group ID for group chats.",
+        "- Rich cards: use lansenger_send_link_card for link previews, lansenger_send_app_card for formatted cards (supports div-style CSS with pt units for font-size), lansenger_send_app_articles for multi-article cards, lansenger_send_approve_card for approval workflows with permission-scoped buttons.",
+        "- File delivery: use lansenger_send_file for any local file. For images from URLs, use lansenger_send_image_url. Video files require coverImagePath + videoWidth/videoHeight/videoDuration.",
+        "- Group queries: use lansenger_query_groups, lansenger_group_info, lansenger_group_members to get group metadata and member lists.",
+        "- @mentions: use lansenger_send_text or lansenger_send_format_text with reminderUserIds[] or reminderBotIds[] to @mention specific users or bots in group chats. The bot itself is @mentioned via reminder data.isAtMe, not by name.",
+      ],
+    },
+    messaging: {
+      targetPrefixes: ["lansenger"],
+      normalizeTarget: (target: string) =>
+        target.trim().replace(/^lansenger:/i, "").trim(),
+      targetResolver: {
+        looksLikeId: (id: string) => {
+          const trimmed = id?.trim();
+          if (!trimmed) return false;
+          return /^\d+-\w+$/.test(trimmed) || /^lansenger:/i.test(trimmed);
+        },
+        hint: "<userId|groupId>",
+      },
+    },
+    allowlist: buildDmGroupAccountAllowlistAdapter({
+      channelId: "lansenger",
+      resolveAccount: (ctx: { cfg: OpenClawConfig; accountId?: string | null }) =>
+        resolveAccount(ctx.cfg, ctx.accountId),
+      normalize: (params: { values: (string | number)[] }) =>
+        params.values.map((v) => String(v).trim()).filter(Boolean),
+      resolveDmAllowFrom: (account: ResolvedAccount) => account.allowFrom,
+      resolveGroupAllowFrom: (account: ResolvedAccount) => account.groupAllowFrom ?? [],
+      resolveDmPolicy: (account: ResolvedAccount) => account.dmPolicy,
+      resolveGroupPolicy: (account: ResolvedAccount) => account.groupPolicy,
+    }),
+    directory: createChannelDirectoryAdapter({
+      listPeers: async (params: any) =>
+        listResolvedDirectoryUserEntriesFromAllowFrom({
+          ...params,
+          resolveAccount: (ctx: any) => resolveAccount(ctx.cfg, ctx.accountId),
+          resolveAllowFrom: (account: ResolvedAccount) => account.allowFrom,
+        }),
+      listGroups: async (params: any) =>
+        listResolvedDirectoryGroupEntriesFromMapKeys({
+          ...params,
+          resolveAccount: (ctx: any) => resolveAccount(ctx.cfg, ctx.accountId),
+          resolveGroups: (_account: ResolvedAccount) =>
+            ({} as Record<string, unknown>),
+        }),
+    }),
   }) as any,
 
   security: {
     dm: {
       channelKey: "lansenger",
-      resolvePolicy: (account) => account.dmPolicy ?? "pairing",
-      resolveAllowFrom: (account) => account.allowFrom,
+      resolvePolicy: (account: ResolvedAccount) => account.dmPolicy ?? "pairing",
+      resolveAllowFrom: (account: ResolvedAccount) => account.allowFrom,
+      resolveGroupAllowFrom: (account: any) => (account as ResolvedAccount).groupAllowFrom ?? [],
+      resolveGroupPolicy: (account: any) => (account as ResolvedAccount).groupPolicy,
       defaultPolicy: "pairing",
-    },
+    } as any,
     collectWarnings: (ctx) => {
       const warnings: string[] = [];
       const section = (ctx.cfg.channels as Record<string, any>)?.["lansenger"];
@@ -525,7 +616,14 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
     },
   },
 
-  threading: { topLevelReplyToMode: "reply" },
+  threading: {
+    topLevelReplyToMode: "reply",
+    buildToolContext: ({ context }: any) => ({
+      currentChannelId: (context as any).To as string | undefined,
+      currentChatType: (context as any).ChatType as string | undefined,
+      currentGroupId: (context as any).GroupId as string | undefined,
+    }),
+  },
 
   outbound: {
     attachedResults: {
@@ -648,6 +746,10 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
     },
   },
 });
+
+// ══════════════════════════════════════════════
+// ONBOARDING
+// ══════════════════════════════════════════════
 
 const lansengerOnboarding = {
   configuredCheck: (cfg: any) => {
@@ -819,9 +921,14 @@ const lansengerOnboarding = {
   },
 };
 
+// ══════════════════════════════════════════════
+// MAIN PLUGIN
+// ══════════════════════════════════════════════
+
 export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResult> = {
   ...chatPlugin as any,
   setupWizard: lansengerSetupWizard,
+  secrets: channelSecrets,
   gateway: {
     startAccount: gatewayStartAccount,
     stopAccount: gatewayStopAccount,

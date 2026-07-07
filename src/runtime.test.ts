@@ -2242,4 +2242,75 @@ describe("ackMessage / revokeAckMessage", () => {
     const hasAck = contents.some((t: string) => t.includes("收到，正在处理"));
     expect(hasAck).toBe(false);
   });
+
+  describe("Session conflict retry", () => {
+    beforeEach(() => {
+      _clearTestState();
+      vi.restoreAllMocks();
+    });
+
+    it("retries on session initialization conflicted and succeeds", { timeout: 20000 }, async () => {
+      const api = makeNoCredApi({ dmPolicy: "open" });
+      startLansengerGateway(api);
+
+      let callCount = 0;
+      const inboundRun = vi.fn().mockImplementation(async (_params: any) => {
+        callCount++;
+        if (callCount <= 2) {
+          throw new Error("reply session initialization conflicted for sess-1");
+        }
+      });
+      api.runtime.channel.inbound.run = inboundRun;
+
+      vi.stubGlobal("fetch", async (url: string | Request, init?: any) => {
+        const u = typeof url === "string" ? url : url.url;
+        if (u.includes("apptoken"))
+          return new Response(
+            JSON.stringify({ errCode: 0, errMsg: "", data: { appToken: "tok", expiresIn: 7200 } }),
+            { headers: { "content-type": "application/json" } },
+          );
+        if (u.includes("bot/messages/create") && init?.body) {
+          return new Response(
+            JSON.stringify({ errCode: 0, errMsg: "", data: { msgId: "m1" } }),
+            { headers: { "content-type": "application/json" } },
+          );
+        }
+        return new Response(JSON.stringify({ errCode: 0, errMsg: "" }));
+      });
+
+      const route = api._httpRoutes.at(-1)!;
+      await route.handler(makeReq(dmWebhookBody({ senderId: "user-1" })), makeRes());
+
+      expect(callCount).toBe(3);
+      expect(inboundRun).toHaveBeenCalledTimes(3);
+    });
+
+    it("does NOT retry non-conflict errors", async () => {
+      const api = makeNoCredApi({ dmPolicy: "open" });
+      startLansengerGateway(api);
+
+      let callCount = 0;
+      const inboundRun = vi.fn().mockImplementation(async (_params: any) => {
+        callCount++;
+        throw new Error("Some other error");
+      });
+      api.runtime.channel.inbound.run = inboundRun;
+
+      vi.stubGlobal("fetch", async (url: string | Request) => {
+        const u = typeof url === "string" ? url : url.url;
+        if (u.includes("apptoken"))
+          return new Response(
+            JSON.stringify({ errCode: 0, errMsg: "", data: { appToken: "tok", expiresIn: 7200 } }),
+            { headers: { "content-type": "application/json" } },
+          );
+        return new Response(JSON.stringify({ errCode: 0, errMsg: "" }));
+      });
+
+      const route = api._httpRoutes.at(-1)!;
+      await route.handler(makeReq(dmWebhookBody({ senderId: "user-1" })), makeRes());
+
+      expect(callCount).toBe(1);
+      expect(inboundRun).toHaveBeenCalledTimes(1);
+    });
+  });
 });

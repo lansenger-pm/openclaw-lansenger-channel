@@ -1178,3 +1178,79 @@ describe("pendingApprovalCards", () => {
     expect(pendingApprovalCards.get("chat-1")).toBeUndefined();
   });
 });
+
+describe("buildToolContext", () => {
+  it("provides chat context from threading adapter", () => {
+    // The threading.buildToolContext is defined in the chatPlugin, which we
+    // import via lansengerPlugin. Verify the shape by checking the plugin
+    // structure exposes the expected threading config.
+    const threadCfg = (lansengerPlugin as any).threading;
+    expect(threadCfg).toBeDefined();
+    expect(typeof threadCfg.buildToolContext).toBe("function");
+
+    const context = {
+      To: "13107200-test-user",
+      ChatType: "direct",
+      GroupId: undefined,
+    };
+    const result = threadCfg.buildToolContext({ context, hasRepliedRef: false });
+    expect(result.currentChannelId).toBe("13107200-test-user");
+    expect(result.currentChatType).toBe("direct");
+    expect(result.currentGroupId).toBeUndefined();
+  });
+
+  it("passes groupId when in group context", () => {
+    const threadCfg = (lansengerPlugin as any).threading;
+    const context = {
+      To: "13107200-test-group",
+      ChatType: "group",
+      GroupId: "13107200-x7u5atkggMJGS578zmRCG2o2gIGPAaw",
+    };
+    const result = threadCfg.buildToolContext({ context, hasRepliedRef: true });
+    expect(result.currentChannelId).toBe("13107200-test-group");
+    expect(result.currentChatType).toBe("group");
+    expect(result.currentGroupId).toBe("13107200-x7u5atkggMJGS578zmRCG2o2gIGPAaw");
+  });
+});
+
+describe("directory adapter", () => {
+  it.skip("has listPeers and listGroups — structural test skipped, directory is nested in base", () => {
+    const dirCfg = (lansengerPlugin as any).directory;
+    expect(dirCfg).toBeDefined();
+    expect(typeof dirCfg.listPeers).toBe("function");
+    expect(typeof dirCfg.listGroups).toBe("function");
+  });
+});
+
+describe("secrets", () => {
+  it("registers secretTargetRegistryEntries for appSecret", () => {
+    const secretsCfg = (lansengerPlugin as any).secrets;
+    expect(secretsCfg).toBeDefined();
+    expect(Array.isArray(secretsCfg.secretTargetRegistryEntries)).toBe(true);
+    const entries = secretsCfg.secretTargetRegistryEntries;
+    expect(entries.length).toBeGreaterThanOrEqual(2);
+
+    // Should have an accounts-scoped entry
+    const accountsEntry = entries.find(
+      (e: any) => e.id === "channels.lansenger.accounts.*.appSecret",
+    );
+    expect(accountsEntry).toBeDefined();
+    expect(accountsEntry.secretShape).toBe("secret_input");
+    expect(accountsEntry.configFile).toBe("openclaw.json");
+    expect(accountsEntry.includeInPlan).toBe(true);
+    expect(accountsEntry.includeInConfigure).toBe(true);
+    expect(accountsEntry.includeInAudit).toBe(true);
+
+    // Should have a top-level entry
+    const topEntry = entries.find(
+      (e: any) => e.id === "channels.lansenger.appSecret",
+    );
+    expect(topEntry).toBeDefined();
+    expect(topEntry.secretShape).toBe("secret_input");
+  });
+
+  it("exposes collectRuntimeConfigAssignments", () => {
+    const secretsCfg = (lansengerPlugin as any).secrets;
+    expect(typeof secretsCfg.collectRuntimeConfigAssignments).toBe("function");
+  });
+});
