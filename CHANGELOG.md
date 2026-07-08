@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.17.2] - 2026-07-08
+
+### Fixed
+
+- **WebSocket stability improvements**: 
+  - Increased Pong timeout from 10s to 15s for more reliable heartbeat detection.
+  - Replaced `ws.terminate()` with graceful `ws.close()` on pong timeout, with a 5s fallback to `ws.terminate()` if close does not complete in time.
+  - Shortened heartbeat interval from 30s to 20s (default, overridable by server).
+
+### Changed
+
+- **Dynamic heartbeat interval**: `getWsUrl()` now reads `pingInterval` from the `/v1/ws/endpoint/create` API response (converted from seconds to milliseconds). Falls back to 20s default if not provided by server.
+
 ## [3.17.1] - 2026-07-07
 
 ### Added

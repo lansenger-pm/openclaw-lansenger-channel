@@ -46,10 +46,11 @@ function convertPxToPtCard(card: AppCardData): AppCardData {
   return result;
 }
 const RECONNECT_BACKOFF = [2, 5, 10, 30, 60];
-const HEARTBEAT_INTERVAL_MS = 30_000;
-const PONG_TIMEOUT_MS = 10_000;
-/** If no pong for this long, the connection is considered a zombie */
-const STALE_PONG_THRESHOLD_MS = 2 * HEARTBEAT_INTERVAL_MS + PONG_TIMEOUT_MS; // 70s
+/** Default heartbeat interval when API does not return pingInterval */
+const DEFAULT_HEARTBEAT_INTERVAL_MS = 20_000;
+const PONG_TIMEOUT_MS = 15_000;
+/** How long to wait for graceful close to complete before forcing terminate */
+const CLOSE_FALLBACK_MS = 5_000;
 const CHINESE_RE = /[\u4e00-\u9fff\u3400-\u4dbf]/;
 
 const API_ENDPOINTS = {
@@ -117,6 +118,7 @@ export class LansengerClient {
   private wsTask: Promise<void> | null = null;
   private running = false;
   private backoffIdx = 0;
+  private heartbeatIntervalMs = DEFAULT_HEARTBEAT_INTERVAL_MS;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private pongTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
   private lastPongAt = 0;
@@ -157,9 +159,10 @@ export class LansengerClient {
     // (e.g. after machine sleep), the TCP is dead even though readyState is OPEN.
     if (this.lastPongAt > 0) {
       const staleMs = Date.now() - this.lastPongAt;
-      if (staleMs > STALE_PONG_THRESHOLD_MS) {
+      const threshold = 2 * this.heartbeatIntervalMs + PONG_TIMEOUT_MS;
+      if (staleMs > threshold) {
         this.log.info(
-          `isWsAlive: zombie detected — last pong ${Math.round(staleMs / 1000)}s ago (threshold=${STALE_PONG_THRESHOLD_MS / 1000}s)`,
+          `isWsAlive: zombie detected — last pong ${Math.round(staleMs / 1000)}s ago (threshold=${threshold / 1000}s)`,
         );
         return false;
       }
@@ -959,13 +962,14 @@ export class LansengerClient {
     this.running = true;
     this.log.info("connect: obtaining WS endpoint URL...");
     try {
-      const wsUrl = await this.getWsUrl();
-      if (!wsUrl) {
+      const result = await this.getWsUrl();
+      if (!result) {
         this.log.error("connect: failed to obtain WS URL");
         return false;
       }
-      this.log.info(`connect: got WS URL, starting connection...`);
-      this.wsTask = this.runWs(wsUrl);
+      this.heartbeatIntervalMs = result.pingInterval;
+      this.log.info(`connect: got WS URL, starting connection (pingInterval=${this.heartbeatIntervalMs}ms)...`);
+      this.wsTask = this.runWs(result.wsEndpoint);
       return true;
     } catch (e: any) {
       this.log.error(`connect: ${e.message}`);
@@ -985,7 +989,7 @@ export class LansengerClient {
     }
   }
 
-  private async getWsUrl(): Promise<string | null> {
+  private async getWsUrl(): Promise<{ wsEndpoint: string; pingInterval: number } | null> {
     try {
       const url = `${this.apiGatewayUrl}${API_ENDPOINTS.wsEndpoint}`;
       const resp = await fetch(url, {
@@ -1002,7 +1006,13 @@ export class LansengerClient {
         this.log.error(`getWsUrl: errCode=${data.errCode} errMsg=${data.errMsg ?? "n/a"}`);
         return null;
       }
-      return data.data?.wsEndpoint ?? null;
+      const wsEndpoint = data.data?.wsEndpoint;
+      if (!wsEndpoint) return null;
+      // API returns pingInterval in seconds, convert to ms
+      const pingInterval = data.data?.pingInterval != null
+        ? data.data.pingInterval * 1000
+        : DEFAULT_HEARTBEAT_INTERVAL_MS;
+      return { wsEndpoint, pingInterval };
     } catch (e: any) {
       this.log.error(`getWsUrl: ${e.message}`);
       return null;
@@ -1074,7 +1084,10 @@ export class LansengerClient {
       await new Promise((r) => setTimeout(r, delay * 1000));
       this.backoffIdx++;
       const newUrl = await this.getWsUrl();
-      if (newUrl) currentUrl = newUrl;
+      if (newUrl) {
+        currentUrl = newUrl.wsEndpoint;
+        this.heartbeatIntervalMs = newUrl.pingInterval;
+      }
     }
   }
 
@@ -1092,8 +1105,15 @@ export class LansengerClient {
           ws.ping();
           this.pongTimeoutTimer = setTimeout(() => {
             if (Date.now() - this.lastPongAt > PONG_TIMEOUT_MS && ws.readyState === WebSocket.OPEN) {
-              this.log.error("pong timeout — terminating zombie connection");
-              ws.terminate();
+              this.log.error("pong timeout — gracefully closing zombie connection");
+              ws.close();
+              // Fallback: force terminate if graceful close doesn't complete in time
+              setTimeout(() => {
+                if (ws.readyState !== WebSocket.CLOSED) {
+                  this.log.error("graceful close timed out — forcing terminate");
+                  try { ws.terminate(); } catch {}
+                }
+              }, CLOSE_FALLBACK_MS);
             }
           }, PONG_TIMEOUT_MS);
         } catch {
@@ -1105,7 +1125,7 @@ export class LansengerClient {
         this.clearPongTimeout();
         try { ws.terminate(); } catch {}
       }
-    }, HEARTBEAT_INTERVAL_MS);
+    }, this.heartbeatIntervalMs);
   }
 
   private clearPongTimeout(): void {
@@ -1401,6 +1421,7 @@ export type LansengerApiResponse = {
     appToken?: string;
     expiresIn?: number;
     wsEndpoint?: string;
+    pingInterval?: number;
     msgId?: string;
     mediaId?: string;
     commands?: LansengerCommand[];
