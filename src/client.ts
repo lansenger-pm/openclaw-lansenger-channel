@@ -850,7 +850,6 @@ export class LansengerClient {
     } catch {
       return [];
     }
-    this.log.info(`processRawMessage: raw body — ${raw}`);
 
     const results: InboundEvent[] = [];
 
