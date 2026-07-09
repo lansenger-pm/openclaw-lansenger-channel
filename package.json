@@ -1,6 +1,6 @@
 {
   "name": "@lansenger-pm/openclaw-lansenger-channel",
-  "version": "3.17.2",
+  "version": "3.17.3",
   "type": "module",
   "main": "dist/index.js",
   "exports": {
@@ -125,7 +125,8 @@
         "lansenger_query_groups",
         "lansenger_group_info",
         "lansenger_group_members",
-        "lansenger_group_check_membership"
+        "lansenger_group_check_membership",
+        "lansenger_download_media"
       ]
     }
   },

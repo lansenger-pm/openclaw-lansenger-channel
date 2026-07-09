@@ -650,6 +650,73 @@ describe("processRawMessage additional msgTypes", () => {
     const events = await client.processRawMessage(raw);
     expect(events.length).toBe(0);
   });
+
+  it("handles linkCard message", async () => {
+    const client = makeClient();
+    const raw = JSON.stringify({
+      events: [{ data: { msgType: "linkCard", messageId: "lc-1", chatType: "p2p", from: "user-1", conversationId: "conv-1", msgData: { linkCard: { title: "My Title", description: "Desc", linkUrl: "https://example.com" } } } }],
+    });
+    const events = await client.processRawMessage(raw);
+    expect(events.length).toBe(1);
+    expect(events[0]!.text).toContain("[Link Card]");
+    expect(events[0]!.text).toContain("My Title");
+  });
+
+  it("handles appCard message", async () => {
+    const client = makeClient();
+    const raw = JSON.stringify({
+      events: [{ data: { msgType: "appCard", messageId: "ac-1", chatType: "p2p", from: "user-1", conversationId: "conv-1", msgData: { appCard: { title: "App Title", appName: "MyApp" } } } }],
+    });
+    const events = await client.processRawMessage(raw);
+    expect(events.length).toBe(1);
+    expect(events[0]!.text).toContain("[App Card]");
+    expect(events[0]!.text).toContain("App Title");
+  });
+
+  it("handles appArticles message", async () => {
+    const client = makeClient();
+    const raw = JSON.stringify({
+      events: [{ data: { msgType: "appArticles", messageId: "aa-1", chatType: "p2p", from: "user-1", conversationId: "conv-1", msgData: { appArticles: { articles: [{ title: "Article 1" }, { title: "Article 2" }] } } } }],
+    });
+    const events = await client.processRawMessage(raw);
+    expect(events.length).toBe(1);
+    expect(events[0]!.text).toContain("[Articles]");
+    expect(events[0]!.text).toContain("Article 1");
+    expect(events[0]!.text).toContain("Article 2");
+  });
+
+  it("handles verifyCard message", async () => {
+    const client = makeClient();
+    const raw = JSON.stringify({
+      events: [{ data: { msgType: "verifyCard", messageId: "vc-1", chatType: "p2p", from: "user-1", conversationId: "conv-1", msgData: { verifyCard: { title: "Verify Me", appName: "App" } } } }],
+    });
+    const events = await client.processRawMessage(raw);
+    expect(events.length).toBe(1);
+    expect(events[0]!.text).toContain("[Verify Card]");
+    expect(events[0]!.text).toContain("Verify Me");
+  });
+
+  it("handles image with caption (content field)", async () => {
+    const client = makeClient();
+    const raw = JSON.stringify({
+      events: [{ data: { msgType: "image", messageId: "img-1", chatType: "p2p", from: "user-1", conversationId: "conv-1", msgData: { image: { content: "Look at this", mediaIds: ["media-1"] } } } }],
+    });
+    const events = await client.processRawMessage(raw);
+    expect(events.length).toBe(1);
+    expect(events[0]!.text).toContain("[Image: media-1]");
+    expect(events[0]!.text).toContain("Look at this");
+  });
+
+  it("handles file with caption and mediaId in label", async () => {
+    const client = makeClient();
+    const raw = JSON.stringify({
+      events: [{ data: { msgType: "file", messageId: "f-1", chatType: "p2p", from: "user-1", conversationId: "conv-1", msgData: { file: { content: "Report", mediaIds: ["media-file-1"] } } } }],
+    });
+    const events = await client.processRawMessage(raw);
+    expect(events.length).toBe(1);
+    expect(events[0]!.text).toContain("[File: media-file-1]");
+    expect(events[0]!.text).toContain("Report");
+  });
 });
 
 describe("convertPxToPtDeep", () => {
@@ -766,16 +833,18 @@ describe("LansengerClient.extractReferenceText", () => {
   it("extracts text from simple reference", async () => {
     const client = makeClient();
     const ref: ReferenceMsg = { from: "user-2", senderName: "Bob", msgType: "text", msgData: { text: { content: "Original message" } } };
-    const text = await client.extractReferenceText(ref);
-    expect(text).toContain("[Quoted text] from Bob");
-    expect(text).toContain("Original message");
+    const result = await client.extractReferenceText(ref);
+    expect(result.text).toContain("[Quoted text] from Bob");
+    expect(result.text).toContain("Original message");
+    expect(result.mediaPaths).toEqual([]);
   });
 
   it("extracts non-text reference types", async () => {
     const client = makeClient();
     const ref: ReferenceMsg = { from: "user-2", senderName: "Bob", msgType: "image", msgData: { image: { mediaIds: [] } } };
-    const text = await client.extractReferenceText(ref);
-    expect(text).toContain("[Quoted image] from Bob");
+    const result = await client.extractReferenceText(ref);
+    expect(result.text).toContain("[Quoted image] from Bob");
+    expect(result.mediaPaths).toEqual([]);
   });
 
   it("extracts nested reference recursively", async () => {
@@ -784,23 +853,26 @@ describe("LansengerClient.extractReferenceText", () => {
       from: "user-2", senderName: "Bob", msgType: "text", msgData: { text: { content: "Second reply" } },
       referenceMsg: { from: "user-3", senderName: "Carol", msgType: "text", msgData: { text: { content: "Original" } } },
     };
-    const text = await client.extractReferenceText(ref);
-    expect(text).toContain("[Quoted text] from Bob: Second reply");
-    expect(text).toContain("[Quoted text] from Carol: Original");
+    const result = await client.extractReferenceText(ref);
+    expect(result.text).toContain("[Quoted text] from Bob: Second reply");
+    expect(result.text).toContain("[Quoted text] from Carol: Original");
+    expect(result.mediaPaths).toEqual([]);
   });
 
   it("handles reference without msgData", async () => {
     const client = makeClient();
     const ref: ReferenceMsg = { from: "user-2", senderName: "Bob" };
-    const text = await client.extractReferenceText(ref);
-    expect(text).toBe("");
+    const result = await client.extractReferenceText(ref);
+    expect(result.text).toBe("");
+    expect(result.mediaPaths).toEqual([]);
   });
 
   it("uses from as fallback when senderName missing", async () => {
     const client = makeClient();
     const ref: ReferenceMsg = { from: "user-2", msgType: "text", msgData: { text: { content: "Hello" } } };
-    const text = await client.extractReferenceText(ref);
-    expect(text).toContain("from user-2");
+    const result = await client.extractReferenceText(ref);
+    expect(result.text).toContain("from user-2");
+    expect(result.mediaPaths).toEqual([]);
   });
 });
 
@@ -1081,5 +1153,130 @@ describe("LansengerClient connect/disconnect", () => {
     const handler = async (_event: any) => {};
     client.setMessageHandler(handler);
     expect((client as any).messageHandler).toBe(handler);
+  });
+});
+
+// ---- downloadMedia ----
+
+describe("LansengerClient.downloadMedia", () => {
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it("downloads media successfully and detects ext from content-type", async () => {
+    let lastUrl = "";
+    vi.stubGlobal("fetch", async (url: string) => {
+      lastUrl = url as string;
+      if (String(url).includes("apptoken")) {
+        return successApi({ appToken: "tok-123", expireAt: Math.floor(Date.now() / 1000) + 7200 });
+      }
+      return new Response(Buffer.from("fake-png-data"), { status: 200, headers: { "content-type": "image/png" } });
+    });
+    const client = new LansengerClient({ appId: "id", appSecret: "secret" });
+    const result = await client.downloadMedia("media-1");
+    expect(result).not.toBeNull();
+    expect(result!.bytes).toBeInstanceOf(Buffer);
+    expect(result!.ext).toBe(".png");
+  });
+
+  it("returns null when no token available", async () => {
+    vi.stubGlobal("fetch", async () => errorApi(401, "Unauthorized"));
+    const client = new LansengerClient({ appId: "id", appSecret: "secret" });
+    const result = await client.downloadMedia("media-1");
+    expect(result).toBeNull();
+  });
+
+  it("returns null on HTTP error", async () => {
+    vi.stubGlobal("fetch", async (url: string) => {
+      if (String(url).includes("apptoken")) {
+        return successApi({ appToken: "tok-123", expireAt: Math.floor(Date.now() / 1000) + 7200 });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    const client = new LansengerClient({ appId: "id", appSecret: "secret" });
+    const result = await client.downloadMedia("media-1");
+    expect(result).toBeNull();
+  });
+
+  it("returns null on network error (fetch throws)", async () => {
+    vi.stubGlobal("fetch", async (url: string) => {
+      if (String(url).includes("apptoken")) {
+        return successApi({ appToken: "tok-123", expireAt: Math.floor(Date.now() / 1000) + 7200 });
+      }
+      throw new Error("network error");
+    });
+    const client = new LansengerClient({ appId: "id", appSecret: "secret" });
+    const result = await client.downloadMedia("media-1");
+    expect(result).toBeNull();
+  });
+
+  it("extracts filename from content-disposition header", async () => {
+    vi.stubGlobal("fetch", async (url: string) => {
+      if (String(url).includes("apptoken")) {
+        return successApi({ appToken: "tok-123", expireAt: Math.floor(Date.now() / 1000) + 7200 });
+      }
+      return new Response(Buffer.from("xlsx-data"), {
+        status: 200,
+        headers: { "content-type": "application/octet-stream", "content-disposition": 'attachment; filename="report.xlsx"' },
+      });
+    });
+    const client = new LansengerClient({ appId: "id", appSecret: "secret" });
+    const result = await client.downloadMedia("media-1");
+    expect(result).not.toBeNull();
+    expect(result!.ext).toBe(".xlsx");
+    expect(result!.fname).toBe("report.xlsx");
+  });
+
+  it("fixes UTF-8 bytes misinterpreted as latin1 in content-disposition", async () => {
+    const originalName = "创建消息卡片步骤.docx";
+    // Simulate what fetch does: raw UTF-8 bytes interpreted as latin1
+    const garbledName = Buffer.from(originalName, "utf-8").toString("latin1");
+    vi.stubGlobal("fetch", async (url: string) => {
+      if (String(url).includes("apptoken")) {
+        return successApi({ appToken: "tok-123", expireAt: Math.floor(Date.now() / 1000) + 7200 });
+      }
+      return new Response(Buffer.from("docx-data"), {
+        status: 200,
+        headers: { "content-type": "application/octet-stream", "content-disposition": `attachment; filename="${garbledName}"` },
+      });
+    });
+    const client = new LansengerClient({ appId: "id", appSecret: "secret" });
+    const result = await client.downloadMedia("media-1");
+    expect(result).not.toBeNull();
+    expect(result!.fname).toBe(originalName);
+    expect(result!.ext).toBe(".docx");
+  });
+});
+
+// ---- saveMediaToTemp ----
+
+describe("LansengerClient.saveMediaToTemp", () => {
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it("saves to temp path with extension", async () => {
+    vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+    const client = makeClient();
+    const buf = Buffer.from("test");
+    const path = await client.saveMediaToTemp(buf, "file", ".txt");
+    expect(path).not.toBeNull();
+    expect(path).toContain("lansenger_file_");
+    expect(path).toContain(".txt");
+    expect(vi.mocked(fs.writeFile)).toHaveBeenCalled();
+  });
+
+  it("strips extension from origFname to avoid double suffix", async () => {
+    vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+    const client = makeClient();
+    const buf = Buffer.from("test");
+    const path = await client.saveMediaToTemp(buf, "file", ".docx", "report.docx");
+    expect(path).not.toBeNull();
+    // Should be: lansenger_file_uuid_report.docx, not lansenger_file_uuid_report.docx.docx
+    expect(path).not.toMatch(/\.docx\.docx$/);
+    expect(path).toMatch(/_report\.docx$/);
+  });
+
+  it("returns null on writeFile error", async () => {
+    vi.mocked(fs.writeFile).mockRejectedValue(new Error("ENOSPC"));
+    const client = makeClient();
+    const path = await client.saveMediaToTemp(Buffer.from("test"), "file", ".txt");
+    expect(path).toBeNull();
   });
 });

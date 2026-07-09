@@ -332,6 +332,15 @@ const GroupCheckMembershipSchema = {
   required: ["groupId"],
 };
 
+const DownloadMediaSchema = {
+  type: "object",
+  properties: {
+    mediaId: { type: "string", description: "Lansenger media ID to download (e.g., from [File: mediaId] or [Image: mediaId] tags in messages)." },
+    appId: { type: "string", description: "Lansenger App ID. Auto-detected from active session. Only needed when overriding the default account." },
+  },
+  required: ["mediaId"],
+};
+
 function registerLansengerTool(
   api: any,
   name: string,
@@ -628,6 +637,22 @@ export function registerLansengerTools(api: any) {
       const isInGroup = await client.checkMembership(params.groupId, params.staffId);
       if (isInGroup === null) return jsonResult({ error: `Failed to check membership for group ${params.groupId}.` });
       return jsonResult({ success: true, groupId: params.groupId, staffId: params.staffId ?? null, isInGroup });
+    },
+  );
+
+  registerLansengerTool(
+    api,
+    "lansenger_download_media",
+    "Download a file from Lansenger (蓝信) by media ID and save to a local temp path. Use this to re-download files referenced in messages (e.g., [File: mediaId] or [Image: mediaId] tags). Returns the local file path.",
+    DownloadMediaSchema,
+    async (client, _account, params, defaultTo) => {
+      const mediaId = params.mediaId;
+      if (!mediaId) return jsonResult({ error: "mediaId is required" });
+      const download = await client.downloadMedia(mediaId);
+      if (!download) return jsonResult({ error: `Failed to download media: ${mediaId}` });
+      const p = await client.saveMediaToTemp(download.bytes, "media", download.ext, download.fname);
+      if (!p) return jsonResult({ error: `Failed to save downloaded media to temp: ${mediaId}` });
+      return jsonResult({ success: true, mediaId, filePath: p, fileName: download.fname ?? null });
     },
   );
 }

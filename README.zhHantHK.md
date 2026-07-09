@@ -64,6 +64,7 @@
 | `lansenger_group_info` | 查詢羣組詳情（名稱、頭像、羣主等） |
 | `lansenger_group_members` | 查詢羣成員列表（姓名、角色、頭像） |
 | `lansenger_group_check_membership` | 檢查用戶或機械人是否在羣中 |
+| `lansenger_download_media` | 透過 mediaId 重新下載訊息中嘅檔案 |
 
 工具也可透過 CLI 使用：`lansenger message send-text`、`lansenger message send-file` 等。
 

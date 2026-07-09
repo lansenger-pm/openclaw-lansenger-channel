@@ -64,6 +64,7 @@
 | `lansenger_group_info` | 查询群组详情（名称、头像、群主等） |
 | `lansenger_group_members` | 查询群成员列表（姓名、角色、头像） |
 | `lansenger_group_check_membership` | 检查用户或机器人是否在群中 |
+| `lansenger_download_media` | 通过 mediaId 重新下载消息中的文件 |
 
 工具也可通过 CLI 使用：`lansenger message send-text`、`lansenger message send-file` 等。
 

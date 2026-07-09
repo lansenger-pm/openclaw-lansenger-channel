@@ -64,6 +64,7 @@ Les messages peuvent être envoyés via les **outils agent** (intégrés) ou les
 | `lansenger_group_info` | Détails d'un groupe (nom, avatar, propriétaire, etc.) |
 | `lansenger_group_members` | Lister les membres d'un groupe avec noms et rôles |
 | `lansenger_group_check_membership` | Vérifier si un utilisateur ou le bot est dans un groupe |
+| `lansenger_download_media` | Re-télécharger un fichier via mediaId depuis les étiquettes de message |
 
 Les outils sont aussi disponibles via CLI : `lansenger message send-text`, `lansenger message send-file`, etc.
 

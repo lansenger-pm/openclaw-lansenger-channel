@@ -71,12 +71,12 @@ function mockNoChatId() {
 }
 
 describe("registerLansengerTools", () => {
-  it("registers all 14 tools", () => {
+  it("registers all 15 tools", () => {
     mockRunning();
     const api = makeMockApi();
     registerLansengerTools(api);
     const names = Object.keys(api._tools);
-    expect(names.length).toBe(14);
+    expect(names.length).toBe(15);
     expect(names).toContain("lansenger_send_file");
     expect(names).toContain("lansenger_send_text");
     expect(names).toContain("lansenger_send_format_text");
@@ -91,6 +91,7 @@ describe("registerLansengerTools", () => {
     expect(names).toContain("lansenger_group_info");
     expect(names).toContain("lansenger_group_members");
     expect(names).toContain("lansenger_group_check_membership");
+    expect(names).toContain("lansenger_download_media");
     vi.restoreAllMocks();
   });
 });
@@ -689,5 +690,56 @@ describe("happy path: lansenger_group_check_membership", () => {
     const spy = vi.spyOn(mockClient, "checkMembership").mockResolvedValue(true);
     await api._tools["lansenger_group_check_membership"].execute("tc1", { _sessionKey: "agent:test:lansenger:dm:user1",  appId: "test-id", groupId: "g1" });
     expect(spy).toHaveBeenCalledWith("g1", undefined);
+  });
+});
+
+describe("lansenger_download_media", () => {
+  let api: any;
+  beforeEach(() => { api = makeMockApi(); mockRunning(); registerLansengerTools(api); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it("returns error when account not running", async () => {
+    mockNotRunning();
+    const api2 = makeMockApi();
+    registerLansengerTools(api2);
+    const tool = api2._tools["lansenger_download_media"];
+    expect(tool).toBeDefined();
+    const result = await tool.execute("tc1", { _sessionKey: "agent:test:lansenger:dm:user1", appId: "test-id", mediaId: "media-1" });
+    expect(parseResult(result).error).toContain("not configured or not running");
+  });
+
+  it("returns error when mediaId missing", async () => {
+    const result = await api._tools["lansenger_download_media"].execute("tc1", { _sessionKey: "agent:test:lansenger:dm:user1", appId: "test-id" });
+    expect(parseResult(result).error).toContain("mediaId is required");
+  });
+
+  it("returns error when download fails", async () => {
+    vi.spyOn(mockClient, "downloadMedia").mockResolvedValue(null);
+    const result = await api._tools["lansenger_download_media"].execute("tc1", { _sessionKey: "agent:test:lansenger:dm:user1", appId: "test-id", mediaId: "media-1" });
+    expect(parseResult(result).error).toContain("Failed to download media");
+  });
+
+  it("returns error when saveMediaToTemp fails", async () => {
+    vi.spyOn(mockClient, "downloadMedia").mockResolvedValue({ bytes: Buffer.from("data"), ext: ".txt", fname: "file.txt" });
+    vi.spyOn(mockClient, "saveMediaToTemp").mockResolvedValue(null);
+    const result = await api._tools["lansenger_download_media"].execute("tc1", { _sessionKey: "agent:test:lansenger:dm:user1", appId: "test-id", mediaId: "media-1" });
+    expect(parseResult(result).error).toContain("Failed to save downloaded media");
+  });
+});
+
+describe("happy path: lansenger_download_media", () => {
+  let api: any;
+  beforeEach(() => { api = makeMockApi(); mockRunning(); registerLansengerTools(api); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it("downloads media successfully and returns filePath", async () => {
+    vi.spyOn(mockClient, "downloadMedia").mockResolvedValue({ bytes: Buffer.from("data"), ext: ".pdf", fname: "report.pdf" });
+    vi.spyOn(mockClient, "saveMediaToTemp").mockResolvedValue("/tmp/lansenger_media_abc123_report.pdf");
+    const result = await api._tools["lansenger_download_media"].execute("tc1", { _sessionKey: "agent:test:lansenger:dm:user1", appId: "test-id", mediaId: "media-1" });
+    const parsed = parseResult(result);
+    expect(parsed.success).toBe(true);
+    expect(parsed.mediaId).toBe("media-1");
+    expect(parsed.filePath).toContain("/tmp/lansenger_media_");
+    expect(parsed.fileName).toBe("report.pdf");
   });
 });

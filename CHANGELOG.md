@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.17.3] - 2026-07-09
+
+### Added
+
+- **`lansenger_download_media` tool**: Agent can re-download files from Lansenger by mediaId. Returns local file path for reading. Handles /tmp file cleanup scenarios.
+- **4 new inbound msgType handlers**: `linkCard`, `appCard`, `appArticles`, `verifyCard` — all extract meaningful text (title, description, body content) for Agent context.
+- **mediaId in message labels**: `image`/`video`/`file`/`voice` labels now include the mediaId (e.g., `[File: 13107200-xxx]`) so the Agent can re-download files via `lansenger_download_media`. Works for both direct messages and quoted (reference) messages.
+- **Caption extraction for media messages**: `image`/`video`/`file`/`voice` messages with a `content` field (mixed text + media) now include the caption text in the Agent-visible label.
+- **Original filename preservation**: `downloadMedia` now extracts the original filename from the `Content-Disposition` header, so saved temp files use descriptive names (e.g., `lansenger_file_uuid_report.pdf`).
+
+### Changed
+
+- **Reference message media download**: Quoted file/image/video/voice messages now download media and expose paths to the Agent, same as direct messages.
+
 ## [3.17.2] - 2026-07-08
 
 ### Fixed

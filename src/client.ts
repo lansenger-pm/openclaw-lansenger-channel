@@ -789,7 +789,7 @@ export class LansengerClient {
   // MEDIA DOWNLOAD
   // ══════════════════════════════════════════════
 
-  async downloadMedia(mediaId: string): Promise<{ bytes: Buffer; ext?: string } | null> {
+  async downloadMedia(mediaId: string): Promise<{ bytes: Buffer; ext?: string; fname?: string } | null> {
     const token = await this.getAppToken();
     if (!token) return null;
     try {
@@ -798,6 +798,7 @@ export class LansengerClient {
       if (!resp.ok) return null;
       const bytes = Buffer.from(await resp.arrayBuffer());
       let ext: string | undefined;
+      let fname: string | undefined;
       const contentType = resp.headers.get("content-type") ?? "";
       if (contentType.includes("png")) ext = ".png";
       else if (contentType.includes("jpeg") || contentType.includes("jpg")) ext = ".jpg";
@@ -809,21 +810,27 @@ export class LansengerClient {
       const disposition = resp.headers.get("content-disposition") ?? "";
       const fnameMatch = disposition.match(/filename[^;=\n]*=((['"])(.*?)['"]|([^;\n]*))/);
       if (fnameMatch) {
-        const fname = (fnameMatch[3] ?? fnameMatch[4] ?? "").trim();
+        fname = (fnameMatch[3] ?? fnameMatch[4] ?? "").trim();
         if (fname) {
+          // Fix UTF-8 bytes misinterpreted as latin1 by fetch header parser
+          const reEncoded = Buffer.from(fname, "latin1").toString("utf-8");
+          if (reEncoded !== fname) fname = reEncoded;
           const dotExt = path.extname(fname).toLowerCase();
           if (dotExt) ext = dotExt;
         }
       }
-      return { bytes, ext };
+      return { bytes, ext, fname: fname || undefined };
     } catch {
       return null;
     }
   }
 
-  async saveMediaToTemp(mediaBytes: Buffer, mediaKind: string = "file", suggestedExt?: string): Promise<string | null> {
+  async saveMediaToTemp(mediaBytes: Buffer, mediaKind: string = "file", suggestedExt?: string, origFname?: string): Promise<string | null> {
     let ext = suggestedExt ?? detectExtFromBytes(mediaBytes, mediaKind);
-    const tmpPath = path.join(os.tmpdir(), `lansenger_${mediaKind}_${crypto.randomUUID()}${ext}`);
+    const uuid = crypto.randomUUID().slice(0, 8);
+    // Strip extension from origFname to avoid double suffix (fname already has ext, and we append it below)
+    const namePart = origFname ? `_${path.parse(origFname).name}` : "";
+    const tmpPath = path.join(os.tmpdir(), `lansenger_${mediaKind}_${uuid}${namePart}${ext}`);
     try {
       await fs.writeFile(tmpPath, mediaBytes);
       return tmpPath;
@@ -843,6 +850,7 @@ export class LansengerClient {
     } catch {
       return [];
     }
+    this.log.info(`processRawMessage: raw body — ${raw}`);
 
     const results: InboundEvent[] = [];
 
@@ -1179,12 +1187,16 @@ export class LansengerClient {
 
     if (msgType === "image") {
       const ids: string[] = payload.image?.mediaIds ?? [];
-      const label = ids.length > 1 ? `[Image: ${ids.length} files]` : "[Image]";
+      const caption = payload.image?.content?.trim() ?? "";
+      const idPart = ids.length > 0 ? `: ${ids.length === 1 ? ids[0]! : `${ids.length} files: ${ids.join(", ")}`}` : "";
+      const label = `[Image${idPart}]${caption ? ` ${caption}` : ""}`;
       const paths = await this.downloadAllMedia(ids, "image");
-      return { text: paths.length > 0 ? label : "[Image]", mediaPaths: paths.length > 0 ? paths : undefined };
+      return { text: label, mediaPaths: paths.length > 0 ? paths : undefined };
     }
     if (msgType === "video") {
       const ids: string[] = payload.video?.mediaIds ?? [];
+      const caption = payload.video?.content?.trim() ?? "";
+      const idPart = ids.length > 0 ? `: ${ids.length === 1 ? ids[0]! : ids.join(", ")}` : "";
       const videoPaths: string[] = [];
       if (ids.length >= 1) {
         const vPaths = await this.downloadAllMedia(ids.slice(0, 1), "video");
@@ -1194,19 +1206,24 @@ export class LansengerClient {
         const cPaths = await this.downloadAllMedia(ids.slice(1), "image");
         videoPaths.push(...cPaths);
       }
-      const label = ids.length > 1 ? `[Video with cover]` : "[Video]";
-      return { text: videoPaths.length > 0 ? label : "[Video]", mediaPaths: videoPaths.length > 0 ? videoPaths : undefined };
+      const label = `[Video${idPart}]${caption ? ` ${caption}` : ""}`;
+      return { text: label, mediaPaths: videoPaths.length > 0 ? videoPaths : undefined };
     }
     if (msgType === "file") {
       const ids: string[] = payload.file?.mediaIds ?? [];
-      const label = ids.length > 1 ? `[File: ${ids.length} files]` : "[File]";
+      const caption = payload.file?.content?.trim() ?? "";
+      const idPart = ids.length > 0 ? `: ${ids.length === 1 ? ids[0]! : `${ids.length} files: ${ids.join(", ")}`}` : "";
+      const label = `[File${idPart}]${caption ? ` ${caption}` : ""}`;
       const paths = await this.downloadAllMedia(ids, "file");
-      return { text: paths.length > 0 ? label : "[File]", mediaPaths: paths.length > 0 ? paths : undefined };
+      return { text: label, mediaPaths: paths.length > 0 ? paths : undefined };
     }
     if (msgType === "voice") {
       const ids: string[] = payload.voice?.mediaIds ?? [];
+      const caption = payload.voice?.content?.trim() ?? "";
+      const idPart = ids.length > 0 ? `: ${ids.length === 1 ? ids[0]! : `${ids.length} files: ${ids.join(", ")}`}` : "";
       const paths = await this.downloadAllMedia(ids, "voice");
-      return { text: paths.length > 0 ? "[Voice]" : "[Voice]", mediaPaths: paths.length > 0 ? paths : undefined };
+      const label = `[Voice${idPart}]${caption ? ` ${caption}` : ""}`;
+      return { text: label, mediaPaths: paths.length > 0 ? paths : undefined };
     }
     if (msgType === "formatText") return { text: payload.formatText?.text?.trim() ?? null };
     if (msgType === "format") return { text: payload.format?.text?.trim() ?? payload.format?.content?.trim() ?? null };
@@ -1233,6 +1250,26 @@ export class LansengerClient {
       const sa = payload.systemAction ?? {};
       return { text: `[System Action] ${sa.content ?? sa.extendContent?.selfContent ?? sa.extendContent?.otherContent ?? ""}` };
     }
+    if (msgType === "linkCard") {
+      const lc = payload.linkCard ?? {};
+      const text = lc.title ?? lc.description ?? lc.linkUrl ?? "";
+      return { text: text ? `[Link Card] ${text}` : "[Link Card]" };
+    }
+    if (msgType === "appCard") {
+      const ac = payload.appCard ?? {};
+      const text = ac.title ?? ac.body?.text ?? ac.appName ?? "";
+      return { text: text ? `[App Card] ${text}` : "[App Card]" };
+    }
+    if (msgType === "appArticles") {
+      const articles = payload.appArticles?.articles ?? [];
+      const titles = articles.slice(0, 3).map((a: any) => a.title ?? "").filter(Boolean);
+      return { text: titles.length > 0 ? `[Articles] ${titles.join("; ")}` : "[Articles]" };
+    }
+    if (msgType === "verifyCard") {
+      const vc = payload.verifyCard ?? {};
+      const text = vc.title ?? vc.body?.content?.text ?? vc.appName ?? "";
+      return { text: text ? `[Verify Card] ${text}` : "[Verify Card]" };
+    }
     return { text: null };
   }
 
@@ -1251,19 +1288,21 @@ export class LansengerClient {
     };
   }
 
-  async extractReferenceText(ref: ReferenceMsg): Promise<string> {
-    if (!ref.msgData) return "";
+  async extractReferenceText(ref: ReferenceMsg): Promise<{ text: string; mediaPaths: string[] }> {
+    if (!ref.msgData) return { text: "", mediaPaths: [] };
     const msgType = ref.msgType ?? "text";
     const senderLabel = ref.senderName ?? ref.from ?? "unknown";
     const typeLabel = `[Quoted ${msgType}]`;
     const extracted = await this.extractText({ msgType, msgData: ref.msgData });
     const content = extracted.text ?? "";
-    let result = content ? `${typeLabel} from ${senderLabel}: ${content}` : `${typeLabel} from ${senderLabel}`;
+    let text = content ? `${typeLabel} from ${senderLabel}: ${content}` : `${typeLabel} from ${senderLabel}`;
+    const mediaPaths: string[] = extracted.mediaPaths ? [...extracted.mediaPaths] : [];
     if (ref.referenceMsg) {
       const nested = await this.extractReferenceText(ref.referenceMsg);
-      if (nested) result = `${result}\n${nested}`;
+      if (nested.text) text = `${text}\n${nested.text}`;
+      if (nested.mediaPaths.length > 0) mediaPaths.push(...nested.mediaPaths);
     }
-    return result;
+    return { text, mediaPaths };
   }
 
   // ══════════════════════════════════════════════
@@ -1276,7 +1315,7 @@ export class LansengerClient {
       const download = await this.downloadMedia(id);
       if (download) {
         const ext = download.ext ?? detectExtFromBytes(download.bytes, mediaKind);
-        const p = await this.saveMediaToTemp(download.bytes, mediaKind, ext);
+        const p = await this.saveMediaToTemp(download.bytes, mediaKind, ext, download.fname);
         if (p) paths.push(p);
       }
     }

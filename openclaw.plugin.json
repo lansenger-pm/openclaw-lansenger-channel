@@ -31,7 +31,8 @@
       "lansenger_query_groups",
       "lansenger_group_info",
       "lansenger_group_members",
-      "lansenger_group_check_membership"
+      "lansenger_group_check_membership",
+      "lansenger_download_media"
     ]
   },
   "toolMetadata": {
@@ -75,6 +76,9 @@
       "configSignals": [{ "rootPath": "channels.lansenger", "requiredAny": ["appId", "accounts"] }]
     },
     "lansenger_group_check_membership": {
+      "configSignals": [{ "rootPath": "channels.lansenger", "requiredAny": ["appId", "accounts"] }]
+    },
+    "lansenger_download_media": {
       "configSignals": [{ "rootPath": "channels.lansenger", "requiredAny": ["appId", "accounts"] }]
     }
   },

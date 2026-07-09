@@ -46,6 +46,7 @@ metadata: {"openclaw":{"requires":{"config":["channels.lansenger"]},"primaryEnv"
 12. 查看群详情 → `lansenger_group_info`
 13. 查看群成员 → `lansenger_group_members`
 14. 检查是否在群中 → `lansenger_group_check_membership`
+15. 重新下载文件 → `lansenger_download_media`（用 mediaId 重新下载消息中的文件，/tmp 清理后可恢复）
 
 ## 消息类型能力矩阵
 
@@ -232,6 +233,17 @@ metadata: {"openclaw":{"requires":{"config":["channels.lansenger"]},"primaryEnv"
 | appId          | string   | ❌    | 自动从会话注入。仅在覆盖默认账号时传入 |
 | staffId | string | ❌    | 员工 ID。省略则检查机器人自身是否在群中 |
 
+### lansenger_download_media
+
+通过 mediaId 重新下载蓝信文件到本地临时目录。用于恢复 /tmp 中被清理的文件，或重新下载入站时下载失败的文件。mediaId 从入站消息标签中获取（如 `[File: 13107200-xxx]`、`[Image: 13107200-xxx]`）。
+
+| 参数    | 类型   | 必填 | 说明 |
+|---------|--------|------|------|
+| mediaId | string | ✅    | 蓝信 mediaId（从入站消息标签获取） |
+| appId   | string | ❌    | 自动从会话注入。仅在覆盖默认账号时传入 |
+
+返回：`{ success: true, mediaId, filePath, fileName }` — `filePath` 为本地路径，可直接用 read 工具读取。 |
+
 ## 审批流程模式
 
 ### exec 命令审批（自动触发）
@@ -266,13 +278,20 @@ metadata: {"openclaw":{"requires":{"config":["channels.lansenger"]},"primaryEnv"
 |------------|---------------|
 | text       | 纯文本内容 |
 | formatText | Markdown 文本内容 |
-| image      | 本地文件路径（用 read 工具查看） |
-| video      | 本地文件路径（视频 + 封面图） |
-| file       | 本地文件路径 |
-| voice      | 本地文件路径（.amr） |
+| image      | `[Image: mediaId]` 描述文字 + 本地文件路径（用 read 工具查看） |
+| video      | `[Video: mediaId]` 描述文字 + 本地文件路径（视频 + 封面图） |
+| file       | `[File: mediaId]` 描述文字 + 本地文件路径 |
+| voice      | `[Voice: mediaId]` 描述文字 + 本地文件路径 |
 | position   | 位置名称、地址、经纬度 |
 | card       | 联系人卡片（含 staffId） |
-| sticker    | 贴纸/表情消息 |
+| sticker    | `[Sticker: stickerId]` 贴纸/表情消息 |
+| approveCard | `[Approval Card]` 内容 |
+| linkCard   | `[Link Card]` 标题/描述/链接 |
+| appCard    | `[App Card]` 标题 |
+| appArticles | `[Articles]` 标题列表 |
+| verifyCard | `[Verify Card]` 标题/内容 |
+
+> 文件路径保存在 `/tmp` 中，重启后可能被清理。如需重新下载，使用 `lansenger_download_media` 工具并传入消息标签中的 mediaId。
 
 ## 文件发送：MEDIA: 标签 vs message 工具
 

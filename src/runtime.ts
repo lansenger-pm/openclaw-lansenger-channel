@@ -371,6 +371,7 @@ export function startLansengerGateway(api: OpenClawPluginApi): void {
         chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk as Buffer);
       }
       const body = Buffer.concat(chunks).toString("utf-8");
+      log.info(`inbound: webhook raw body — ${body}`);
 
       const account = resolveAccount(api.config, accountId);
       const key = account.appId || account.accountId || "__default__";
@@ -1286,9 +1287,12 @@ async function handleInbound(
     try {
       const refEntry = runningAccounts.get(runningKey);
       const refClient = refEntry?.client ?? makeClient(account, sdkLogger());
-      const refText = await refClient.extractReferenceText(event.referenceMsg);
-      if (refText) {
-        agentText = `${agentText}\n\n${refText}`;
+      const refResult = await refClient.extractReferenceText(event.referenceMsg);
+      if (refResult.text) {
+        agentText = `${agentText}\n\n${refResult.text}`;
+      }
+      if (refResult.mediaPaths.length > 0) {
+        agentText = `${agentText}\n\nQuoted files saved locally — use the read tool to view:\n${refResult.mediaPaths.map((p, i) => `${i + 1}. ${p}`).join("\n")}`;
       }
     } catch (e: unknown) {
       log.error(`inbound: reference message extraction failed — ${e instanceof Error ? e.message : String(e)}`);

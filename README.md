@@ -62,6 +62,7 @@ Messages can be sent via **agent tools** (built-in) or **CLI commands** (optiona
 | `lansenger_group_info` | Get detailed group info (name, avatar, owner, etc.) |
 | `lansenger_group_members` | List group members with names and roles |
 | `lansenger_group_check_membership` | Check if a user or bot is in a group |
+| `lansenger_download_media` | Re-download a file by mediaId from message labels |
 
 Tools are also available via CLI: `lansenger message send-text`, `lansenger message send-file`, etc.
 
