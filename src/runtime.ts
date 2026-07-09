@@ -371,6 +371,7 @@ export function startLansengerGateway(api: OpenClawPluginApi): void {
         chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk as Buffer);
       }
       const body = Buffer.concat(chunks).toString("utf-8");
+      log.debug(`inbound: webhook raw body — ${body}`);
 
       const account = resolveAccount(api.config, accountId);
       const key = account.appId || account.accountId || "__default__";
