@@ -1437,6 +1437,8 @@ async function handleInbound(
               IsGroup: event.isGroup,
               IsAtMe: event.isAtMe,
               IsAtAll: event.isAtAll,
+              ...(event.mentionedStaffs?.length ? { MentionedStaffs: JSON.stringify(event.mentionedStaffs) } : {}),
+              ...(event.mentionedBots?.length ? { MentionedBots: JSON.stringify(event.mentionedBots) } : {}),
               Channel: "lansenger",
               Provider: "lansenger",
               Surface: "lansenger",

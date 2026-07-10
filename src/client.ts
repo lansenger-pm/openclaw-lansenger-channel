@@ -946,6 +946,7 @@ export class LansengerClient {
         isAtMe: eventData.reminder?.isAtMe ?? false,
         isAtAll: eventData.reminder?.isAtAll ?? false,
         mentionedBots: eventData.reminder?.bots as Array<{ botId: string; botName: string }> | undefined,
+        mentionedStaffs: eventData.reminder?.staffs as Array<{ staffId?: string; staffName?: string }> | undefined,
         fromType: eventData.fromType ?? undefined,
         groupName: eventData.groupName ?? undefined,
         botCreator: eventData.botCreator ?? undefined,
@@ -1237,9 +1238,17 @@ export class LansengerClient {
     if (msgType === "card") return { text: `[Contact Card] ${payload.card?.staffId ?? ""}` };
     if (msgType === "sticker") return { text: `[Sticker] ${payload.sticker?.stickerId ?? ""}` };
     if (msgType === "approveCard") {
-      const body = payload.approveCard?.body ?? {};
-      const content = body.content?.text ?? body.title ?? "";
-      return { text: content ? `[Approval Card] ${content}` : "[Approval Card]" };
+      const ac = payload.approveCard ?? {};
+      // Nested body format (actual WS events)
+      if (ac.body) {
+        const content = ac.body.content?.text ?? ac.body.title ?? "";
+        return { text: content ? `[Approval Card] ${content}` : "[Approval Card]" };
+      }
+      // Flat format: { title, formatType, text }
+      const title = ac.title?.trim() ?? "";
+      const text = ac.text?.trim() ?? "";
+      const parts = [title, text].filter(Boolean);
+      return { text: parts.length > 0 ? `[Approval Card] ${parts.join(" — ")}` : "[Approval Card]" };
     }
     if (msgType === "i18nAppCard") {
       const i18nBody = payload.i18nAppCard?.i18nBodyTitle ?? {};
@@ -1270,6 +1279,30 @@ export class LansengerClient {
       const text = vc.title ?? vc.body?.content?.text ?? vc.appName ?? "";
       return { text: text ? `[Verify Card] ${text}` : "[Verify Card]" };
     }
+    if (msgType === "box") {
+      const box = payload.box ?? {};
+      const items: Array<Record<string, any>> = box.messageItems ?? [];
+      const content = box.content?.trim() ?? "";
+      const isQuote = box.msgBoxType === 2;
+      const label = isQuote ? "Quoted Chat History" : "Chat History";
+      if (items.length === 0) {
+        return { text: content ? `[${label}] ${content}` : `[${label}]` };
+      }
+      const parts: string[] = [content ? `[${label}] ${content}` : `[${label}]`];
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i]!;
+        const from = item.from ?? "unknown";
+        const timeStr = this.formatTimestamp(item.sendTime);
+        const sub = await this.extractText({ msgType: item.msgType, msgData: item.msgData });
+        const meta = `[${from}${timeStr ? ` @ ${timeStr}` : ""}]`;
+        parts.push(`${i + 1}. ${meta} ${sub.text ?? `[${item.msgType ?? "unknown"}]`}`);
+      }
+      return { text: parts.join("\n") };
+    }
+    if (msgType === "forward") {
+      const title = payload.forward?.title?.trim() ?? "";
+      return { text: title ? `[Forward] ${title}` : "[Forward]" };
+    }
     return { text: null };
   }
 
@@ -1277,11 +1310,25 @@ export class LansengerClient {
   // REFERENCE PARSING (private)
   // ══════════════════════════════════════════════
 
+  /** Convert Lansenger microsecond timestamp to human-readable string (e.g. "2026-07-10 17:29") */
+  private formatTimestamp(ts: string | undefined): string {
+    if (!ts) return "";
+    const ms = Number(ts);
+    if (!Number.isFinite(ms)) return "";
+    // Lansenger timestamps are microseconds; fall back to milliseconds if < 1e12
+    const epochMs = ms > 1e12 ? Math.floor(ms / 1000) : ms;
+    const d = new Date(epochMs);
+    if (isNaN(d.getTime())) return "";
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
   private parseReferenceMsg(rawRef: Record<string, any>): ReferenceMsg {
     return {
       from: rawRef.from,
       senderName: rawRef.senderName,
       fromType: rawRef.fromType,
+      sendTime: rawRef.sendTime,
       msgType: rawRef.msgType,
       msgData: rawRef.msgData,
       referenceMsg: rawRef.referenceMsg ? this.parseReferenceMsg(rawRef.referenceMsg) : undefined,
@@ -1292,10 +1339,13 @@ export class LansengerClient {
     if (!ref.msgData) return { text: "", mediaPaths: [] };
     const msgType = ref.msgType ?? "text";
     const senderLabel = ref.senderName ?? ref.from ?? "unknown";
-    const typeLabel = `[Quoted ${msgType}]`;
+    const timeLabel = ref.sendTime
+      ? ` @ ${this.formatTimestamp(ref.sendTime)}`
+      : (msgType && ref.msgData?.[msgType]?.sendTime ? ` @ ${this.formatTimestamp(ref.msgData[msgType].sendTime)}` : "");
+    const typeLabel = msgType === "box" ? "[Quoted Chat History]" : `[Quoted ${msgType}]`;
     const extracted = await this.extractText({ msgType, msgData: ref.msgData });
     const content = extracted.text ?? "";
-    let text = content ? `${typeLabel} from ${senderLabel}: ${content}` : `${typeLabel} from ${senderLabel}`;
+    let text = content ? `${typeLabel} from ${senderLabel}${timeLabel}: ${content}` : `${typeLabel} from ${senderLabel}${timeLabel}`;
     const mediaPaths: string[] = extracted.mediaPaths ? [...extracted.mediaPaths] : [];
     if (ref.referenceMsg) {
       const nested = await this.extractReferenceText(ref.referenceMsg);
@@ -1405,6 +1455,7 @@ export type ReferenceMsg = {
   from?: string;
   senderName?: string;
   fromType?: number;
+  sendTime?: string;
   msgType?: string;
   msgData?: Record<string, any>;
   referenceMsg?: ReferenceMsg;

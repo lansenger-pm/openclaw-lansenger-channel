@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.17.4] - 2026-07-10
+
+### Added
+
+- **`box` (chat history forward) message type**: Inbound box messages are now parsed — each sub-message includes sender ID and timestamp. Supports `msgBoxType`: 1=chat history, 2=quoted chat history.
+- **`forward` message type**: Extracts title from forwarded chat history references.
+- **`approveCard` flat format**: Inbound approveCard messages now support both nested `body` format and flat `{ title, formatType, text }` format. Title and text are both displayed.
+- **`mentionedStaffs` in InboundEvent**: `eventData.reminder.staffs` is now mapped to `mentionedStaffs` (was declared in type but not assigned).
+- **MentionedStaffs/MentionedBots in ctxPayload**: Agent can now see who was @mentioned (staff ID + name, bot ID + name) without querying group members.
+- **Timestamps in quoted messages**: All quoted/reference messages now show human-readable send time (e.g., `2026-07-10 18:29`), extracted from `msgData[msgType].sendTime`.
+- **`formatTimestamp` helper**: Converts Lansenger microsecond timestamps to readable `YYYY-MM-DD HH:mm` format.
+
+### Changed
+
+- **Box type label in references**: Quoted box messages display as `[Quoted Chat History]` instead of `[Quoted box]`.
+
 ## [3.17.3] - 2026-07-09
 
 ### Added
