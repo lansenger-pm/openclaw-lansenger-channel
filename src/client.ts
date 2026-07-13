@@ -1299,10 +1299,6 @@ export class LansengerClient {
       }
       return { text: parts.join("\n") };
     }
-    if (msgType === "forward") {
-      const title = payload.forward?.title?.trim() ?? "";
-      return { text: title ? `[Forward] ${title}` : "[Forward]" };
-    }
     return { text: null };
   }
 
