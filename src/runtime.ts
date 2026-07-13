@@ -1189,63 +1189,16 @@ function checkCommandAuth(
   return { allowTextCommands, shouldComputeAuth, hasCommand, commandAuthorized };
 }
 
-async function handleInbound(
+// ══════════════════════════════════════════════
+// EXTRACTED HELPERS (from handleInbound)
+// ══════════════════════════════════════════════
+
+function resolveAgentRouting(
   api: OpenClawPluginApi,
   event: InboundEvent,
   account: ResolvedAccount,
-  runningKey: string,
-): Promise<void> {
-  const chatType = event.isGroup ? "group" : "dm";
-  log.debug(
-    `inbound: raw event — chatType=${chatType} chatId=${event.chatId} ` +
-    `senderId=${event.senderId} msgType=${event.msgType ?? "text"} eventType=${event.eventType ?? "n/a"} ` +
-    `isAtMe=${event.isAtMe ?? false} isAtAll=${event.isAtAll ?? false} ` +
-    `mediaCount=${event.mediaPaths?.length ?? 0} ` +
-    `text=${(event.text ?? "").slice(0, 80)}`
-  );
-
-  // Handle approveCard button click callbacks
-  if (event.approveCardCallback) {
-    await handleApproveCardCallback(api, event, account, runningKey);
-    return;
-  }
-  const turnTextDelivered = new Set<string>();
-  const turnMediaDelivered = new Set<string>();
-
-  // ── DM POLICY ──
-  let reminder: ReminderParams | undefined;
-  let refMsgId: string | undefined;
-  if (chatType === "dm") {
-    const dmResult = await handleDmPolicy(api, event, account, runningKey);
-    if (!dmResult.allowed) return;
-    reminder = dmResult.reminder;
-    refMsgId = dmResult.refMsgId;
-  }
-
-  // ── SYNC COMMANDS ON FIRST OWNER DM ──
-  if (!ownerSyncDone.has(runningKey)) {
-    ownerSyncDone.add(runningKey);
-    const entry = runningAccounts.get(runningKey);
-    if (entry) {
-      log.info(`syncCommands: triggered by first owner DM (key=${runningKey})`);
-      cancelSyncRetry(runningKey);
-      syncLansengerNativeCommands(entry.client, api, runningKey, account).catch((e) =>
-        log.error(`syncCommands: owner-triggered sync error — ${e instanceof Error ? e.message : String(e)} (key=${runningKey})`),
-      );
-    }
-  }
-
-  // ── GROUP POLICY ──
-  if (event.isGroup) {
-    const grpResult = await handleGroupPolicy(api, event, account, runningKey);
-    if (!grpResult.allowed) return;
-    reminder = grpResult.reminder;
-    refMsgId = grpResult.refMsgId;
-  }
-
-  // ── AGENT ROUTING ──
-  let agentId: string;
-  let sessionKey: string;
+  chatType: "dm" | "group",
+): { agentId: string; sessionKey: string } {
   try {
     const route = api.runtime.channel.routing.resolveAgentRoute({
       cfg: api.config,
@@ -1253,32 +1206,28 @@ async function handleInbound(
       accountId: account.accountId,
       peer: { kind: chatType as "direct" | "group" | "channel", id: event.chatId },
     });
-    agentId = route.agentId;
     // Insert accountId into session key so that different bot accounts
     // bound to the same agent and chat don't share the same session.
     // Format: agent:<agentId>:lansenger:<accountId>:<chatType>:<chatId>
-    sessionKey = account.accountId
+    const sessionKey = account.accountId
       ? route.sessionKey.replace(/^([^:]+:[^:]+:lansenger):/, `$1:${account.accountId}:`)
       : route.sessionKey;
+    return { agentId: route.agentId, sessionKey };
   } catch (e: unknown) {
     log.error(`inbound: route resolution failed — ${e instanceof Error ? e.message : String(e)}, using defaults`);
-    agentId = "main";
     const accountIdPart = account.accountId ? `:${account.accountId.slice(0, 20)}` : "";
-    sessionKey = `agent:main:lansenger${accountIdPart}:${chatType}:${event.chatId}`;
+    return {
+      agentId: "main",
+      sessionKey: `agent:main:lansenger${accountIdPart}:${chatType}:${event.chatId}`,
+    };
   }
-  const replyTo = event.chatId;
-  lastInboundChatIds.set(runningKey, event.chatId);
-  lastInboundTimes.set(runningKey, Date.now());
-  if (account.accountId) {
-    setSessionAccountId(sessionKey, account.accountId);
-  }
+}
 
-  const sessionDeliveredSet = sessionDeliveryTracker.get(sessionKey) ?? new Set<string>();
-  sessionDeliveryTracker.set(sessionKey, sessionDeliveredSet);
-
-  log.info(`inbound: ${chatType} from=${event.senderId} bot=${account.appId.slice(0, 20)}... agent=${agentId} session=${sessionKey.slice(0, 32)}`);
-
-  // ── TEXT ASSEMBLY ──
+async function assembleMessageText(
+  event: InboundEvent,
+  account: ResolvedAccount,
+  runningKey: string,
+): Promise<string> {
   let agentText = event.text;
   if (event.mediaPaths?.length) {
     agentText = `${event.text}\n\nAttached files saved locally — use the read tool to view:\n${event.mediaPaths.map((p, i) => `${i + 1}. ${p}`).join("\n")}`;
@@ -1298,19 +1247,25 @@ async function handleInbound(
       log.error(`inbound: reference message extraction failed — ${e instanceof Error ? e.message : String(e)}`);
     }
   }
+  return agentText;
+}
 
-  // ── COMMAND NORMALIZATION ──
-  const rawText = event.text;
+function resolveBotUsername(event: InboundEvent): string | undefined {
+  const ourBotId = event.rawMessage?.botId as string | undefined;
+  const ourMention = ourBotId ? event.mentionedBots?.find(b => b.botId === ourBotId) : undefined;
+  return ourMention?.botName;
+}
 
+function normalizeAndCheckCommand(
+  api: OpenClawPluginApi,
+  event: InboundEvent,
+  account: ResolvedAccount,
+  runningKey: string,
+): { textForCommands: string; commandAuthorized: boolean | undefined; hasCommand: boolean; allowTextCommands: boolean; shouldComputeAuth: boolean; botUsername: string | undefined } {
   // Resolve botUsername from event for command normalization.
   // The SDK's normalizeCommandBody() strips @botName from slash commands
   // (e.g. "/reset@OpenClawBot" → "/reset") when botUsername matches.
-  let botUsername: string | undefined;
-  {
-    const ourBotId = event.rawMessage?.botId as string | undefined;
-    const ourMention = ourBotId ? event.mentionedBots?.find(b => b.botId === ourBotId) : undefined;
-    botUsername = ourMention?.botName;
-  }
+  const botUsername = resolveBotUsername(event);
 
   // Normalize command text via the SDK — handles @botName suffix on slash commands,
   // colon variants, and text alias resolution (same pattern used by Telegram channel plugin).
@@ -1319,54 +1274,104 @@ async function handleInbound(
     log.debug(`inbound: normalized command body — "${event.text.slice(0, 60)}" → "${textForCommands.slice(0, 60)}"`);
   }
 
-  // ── COMMAND AUTH ──
   const auth = checkCommandAuth(api, event, account, textForCommands);
   const { allowTextCommands, shouldComputeAuth, hasCommand, commandAuthorized } = auth;
 
-  // ── COMMAND BLOCK CHECK ──
+  // Command block check
   if (allowTextCommands && hasCommand && commandAuthorized !== true) {
     log.info(`inbound: command blocked — sender=${event.senderId} not authorized`);
-    // Reply with an unauthorized message instead of silently dropping
     const replyClient = runningAccounts.get(runningKey)?.client ?? makeClient(account, sdkLogger());
     const lang = replyClient.getUserLang(event.senderId);
     const denyText = lang === "en"
       ? "This command requires authorization."
       : "此命令需要授权。";
     replyClient.sendFormatText(event.chatId, denyText).catch(() => {});
-    return;
   }
 
-  // ── ACK MESSAGE ──
-  let ackMessageId: string | undefined = undefined;
-  if (account.ackMessage) {
-    try {
-      const entry = runningAccounts.get(runningKey);
-      const ackClient = entry?.client ?? makeClient(account, sdkLogger());
-      const lang = ackClient.getUserLang(event.senderId);
-      const ackText = lang === "en" ? account.ackMessageTextEn : account.ackMessageTextZh;
-      const ackResult = await ackClient.sendFormatText(event.chatId, ackText);
-      if (ackResult.messageId) {
-        ackMessageId = ackResult.messageId;
-        log.debug(`inbound: ack message sent: messageId=${ackMessageId} lang=${lang} text="${ackText}"`);
-      }
-    } catch (e: unknown) {
-      log.error(`inbound: ack message send failed — ${e instanceof Error ? e.message : String(e)}`);
+  return { textForCommands, commandAuthorized, hasCommand, allowTextCommands, shouldComputeAuth, botUsername };
+}
+
+async function sendAckMessage(
+  event: InboundEvent,
+  account: ResolvedAccount,
+  runningKey: string,
+): Promise<string | undefined> {
+  if (!account.ackMessage) return undefined;
+  try {
+    const entry = runningAccounts.get(runningKey);
+    const ackClient = entry?.client ?? makeClient(account, sdkLogger());
+    const lang = ackClient.getUserLang(event.senderId);
+    const ackText = lang === "en" ? account.ackMessageTextEn : account.ackMessageTextZh;
+    const ackResult = await ackClient.sendFormatText(event.chatId, ackText);
+    if (ackResult.messageId) {
+      log.debug(`inbound: ack message sent: messageId=${ackResult.messageId} lang=${lang} text="${ackText}"`);
+      return ackResult.messageId;
     }
+  } catch (e: unknown) {
+    log.error(`inbound: ack message send failed — ${e instanceof Error ? e.message : String(e)}`);
   }
+  return undefined;
+}
 
-  // ── GROUP METADATA ──
-  let groupMeta: GroupSessionMeta | null = null;
-  if (event.isGroup) {
-    try {
-      const metaClient = runningAccounts.get(runningKey)?.client ?? makeClient(account, sdkLogger());
-      groupMeta = await metaClient.getGroupSessionMeta(event.chatId);
-      log.info(`inbound: groupMeta fetched — chatId=${event.chatId} groupName=${groupMeta?.groupInfo?.name ?? "n/a"} memberCount=${groupMeta?.memberCount ?? 0} hasMembers=${groupMeta?.members !== null}`);
-    } catch (e: unknown) {
-      log.error(`inbound: getGroupSessionMeta failed — ${e instanceof Error ? e.message : String(e)}`);
-    }
+async function fetchGroupMetadata(
+  event: InboundEvent,
+  account: ResolvedAccount,
+  runningKey: string,
+): Promise<GroupSessionMeta | null> {
+  if (!event.isGroup) return null;
+  try {
+    const metaClient = runningAccounts.get(runningKey)?.client ?? makeClient(account, sdkLogger());
+    const groupMeta = await metaClient.getGroupSessionMeta(event.chatId);
+    log.info(`inbound: groupMeta fetched — chatId=${event.chatId} groupName=${groupMeta?.groupInfo?.name ?? "n/a"} memberCount=${groupMeta?.memberCount ?? 0} hasMembers=${groupMeta?.members !== null}`);
+    return groupMeta;
+  } catch (e: unknown) {
+    log.error(`inbound: getGroupSessionMeta failed — ${e instanceof Error ? e.message : String(e)}`);
+    return null;
   }
+}
 
-  // ── INBOUND CORE ──
+async function revokeAckIfNeeded(
+  ackMessageId: string | undefined,
+  account: ResolvedAccount,
+  event: InboundEvent,
+  runningKey: string,
+): Promise<void> {
+  if (!ackMessageId || !account.revokeAckMessage) return;
+  try {
+    const entry = runningAccounts.get(runningKey);
+    const revokeClient = entry?.client ?? makeClient(account, sdkLogger());
+    const revokeChatType = event.isGroup ? "group" : "bot";
+    const revokeResult = await revokeClient.revokeMessage([ackMessageId], revokeChatType);
+    log.info(`inbound: ack message revoked: messageId=${ackMessageId} success=${revokeResult.success}`);
+  } catch (e: unknown) {
+    log.error(`inbound: ack message revoke failed — ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+
+async function deliverInboundCore(
+  api: OpenClawPluginApi,
+  event: InboundEvent,
+  account: ResolvedAccount,
+  runningKey: string,
+  chatType: "dm" | "group",
+  agentId: string,
+  sessionKey: string,
+  agentText: string,
+  textForCommands: string,
+  commandAuthorized: boolean | undefined,
+  allowTextCommands: boolean,
+  shouldComputeAuth: boolean,
+  hasCommand: boolean,
+  botUsername: string | undefined,
+  groupMeta: GroupSessionMeta | null,
+  reminder: ReminderParams | undefined,
+  refMsgId: string | undefined,
+  turnTextDelivered: Set<string>,
+  turnMediaDelivered: Set<string>,
+  sessionDeliveredSet: Set<string>,
+  ackMessageId: string | undefined,
+): Promise<void> {
+  const replyTo = event.chatId;
   try {
     log.debug(
       `inbound: pre-run ctxPayload — ` +
@@ -1533,28 +1538,109 @@ async function handleInbound(
       }
     }
     log.info(`inbound.run completed: sessionKey=${sessionKey.slice(0, 32)}`);
-    if (ackMessageId && account.revokeAckMessage) {
-      try {
-        const entry = runningAccounts.get(runningKey);
-        const revokeClient = entry?.client ?? makeClient(account, sdkLogger());
-        const revokeChatType = event.isGroup ? "group" : "bot";
-        const revokeResult = await revokeClient.revokeMessage([ackMessageId], revokeChatType);
-        log.info(`inbound: ack message revoked: messageId=${ackMessageId} success=${revokeResult.success}`);
-      } catch (e: unknown) {
-        log.error(`inbound: ack message revoke failed — ${e instanceof Error ? e.message : String(e)}`);
-      }
-    }
+    await revokeAckIfNeeded(ackMessageId, account, event, runningKey);
   } catch (e: unknown) {
     log.error(`inbound.run failed: ${e instanceof Error ? e.message : String(e)}`);
-    if (ackMessageId && account.revokeAckMessage) {
-      try {
-        const entry = runningAccounts.get(runningKey);
-        const revokeClient = entry?.client ?? makeClient(account, sdkLogger());
-        const revokeChatType = event.isGroup ? "group" : "bot";
-        await revokeClient.revokeMessage([ackMessageId], revokeChatType);
-      } catch {}
+    await revokeAckIfNeeded(ackMessageId, account, event, runningKey);
+  }
+}
+
+// ══════════════════════════════════════════════
+// MAIN INBOUND HANDLER
+// ══════════════════════════════════════════════
+
+async function handleInbound(
+  api: OpenClawPluginApi,
+  event: InboundEvent,
+  account: ResolvedAccount,
+  runningKey: string,
+): Promise<void> {
+  const chatType = event.isGroup ? "group" : "dm";
+  log.debug(
+    `inbound: raw event — chatType=${chatType} chatId=${event.chatId} ` +
+    `senderId=${event.senderId} msgType=${event.msgType ?? "text"} eventType=${event.eventType ?? "n/a"} ` +
+    `isAtMe=${event.isAtMe ?? false} isAtAll=${event.isAtAll ?? false} ` +
+    `mediaCount=${event.mediaPaths?.length ?? 0} ` +
+    `text=${(event.text ?? "").slice(0, 80)}`
+  );
+
+  // Handle approveCard button click callbacks
+  if (event.approveCardCallback) {
+    await handleApproveCardCallback(api, event, account, runningKey);
+    return;
+  }
+  const turnTextDelivered = new Set<string>();
+  const turnMediaDelivered = new Set<string>();
+
+  // ── DM POLICY ──
+  let reminder: ReminderParams | undefined;
+  let refMsgId: string | undefined;
+  if (chatType === "dm") {
+    const dmResult = await handleDmPolicy(api, event, account, runningKey);
+    if (!dmResult.allowed) return;
+    reminder = dmResult.reminder;
+    refMsgId = dmResult.refMsgId;
+  }
+
+  // ── SYNC COMMANDS ON FIRST OWNER DM ──
+  if (!ownerSyncDone.has(runningKey)) {
+    ownerSyncDone.add(runningKey);
+    const entry = runningAccounts.get(runningKey);
+    if (entry) {
+      log.info(`syncCommands: triggered by first owner DM (key=${runningKey})`);
+      cancelSyncRetry(runningKey);
+      syncLansengerNativeCommands(entry.client, api, runningKey, account).catch((e) =>
+        log.error(`syncCommands: owner-triggered sync error — ${e instanceof Error ? e.message : String(e)} (key=${runningKey})`),
+      );
     }
   }
+
+  // ── GROUP POLICY ──
+  if (event.isGroup) {
+    const grpResult = await handleGroupPolicy(api, event, account, runningKey);
+    if (!grpResult.allowed) return;
+    reminder = grpResult.reminder;
+    refMsgId = grpResult.refMsgId;
+  }
+
+  // ── AGENT ROUTING ──
+  const { agentId, sessionKey } = resolveAgentRouting(api, event, account, chatType);
+
+  lastInboundChatIds.set(runningKey, event.chatId);
+  lastInboundTimes.set(runningKey, Date.now());
+  if (account.accountId) {
+    setSessionAccountId(sessionKey, account.accountId);
+  }
+
+  const sessionDeliveredSet = sessionDeliveryTracker.get(sessionKey) ?? new Set<string>();
+  sessionDeliveryTracker.set(sessionKey, sessionDeliveredSet);
+
+  log.info(`inbound: ${chatType} from=${event.senderId} bot=${account.appId.slice(0, 20)}... agent=${agentId} session=${sessionKey.slice(0, 32)}`);
+
+  // ── TEXT ASSEMBLY ──
+  const agentText = await assembleMessageText(event, account, runningKey);
+
+  // ── COMMAND NORMALIZATION & AUTH ──
+  const cmdResult = normalizeAndCheckCommand(api, event, account, runningKey);
+  if (cmdResult.allowTextCommands && cmdResult.hasCommand && cmdResult.commandAuthorized !== true) {
+    return;
+  }
+
+  // ── ACK MESSAGE ──
+  const ackMessageId = await sendAckMessage(event, account, runningKey);
+
+  // ── GROUP METADATA ──
+  const groupMeta = await fetchGroupMetadata(event, account, runningKey);
+
+  // ── INBOUND CORE ──
+  await deliverInboundCore(
+    api, event, account, runningKey, chatType,
+    agentId, sessionKey, agentText,
+    cmdResult.textForCommands, cmdResult.commandAuthorized,
+    cmdResult.allowTextCommands, cmdResult.shouldComputeAuth, cmdResult.hasCommand,
+    cmdResult.botUsername, groupMeta, reminder, refMsgId,
+    turnTextDelivered, turnMediaDelivered, sessionDeliveredSet, ackMessageId,
+  );
 }
 
 async function deliverReply(client: LansengerClient, to: string, text: string, opts?: { reminder?: ReminderParams; refMsgId?: string }): Promise<ApiResult> {
