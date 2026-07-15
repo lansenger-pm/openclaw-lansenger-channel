@@ -160,7 +160,6 @@ async function _startAccountImpl(api: OpenClawPluginApi, account: ResolvedAccoun
         await handleInbound(api, merged, account, key);
       },
     });
-    debounceMs;
     debouncer = { debounceMs: resolvedMs, enqueue: created.enqueue, flushKey: created.flushKey };
     log.info(`debounce enabled: debounceMs=${resolvedMs} key=${key}`);
   }

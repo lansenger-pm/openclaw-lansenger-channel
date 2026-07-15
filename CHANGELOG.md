@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.17.8] - 2026-07-15
+
+### Fixed
+
+- **debounceMs orphan still present** (#12): Previous fix missed the `debounceMs;` orphan line at `src/runtime.ts:163` — now truly removed.
+- **WS this.ws reassignment race** (#24): Moved `this.ws = ws` into `ws.onopen` callback (only set after successful connection), and added `if (this.ws === ws) this.ws = null` in `ws.onclose` to clear stale reference.
+
 ## [3.17.7] - 2026-07-15
 
 ### Fixed

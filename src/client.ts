@@ -1046,9 +1046,9 @@ export class LansengerClient {
       try {
         const ws = new WebSocket(currentUrl);
         ws.binaryType = "nodebuffer";
-        this.ws = ws;
 
         ws.onopen = () => {
+          this.ws = ws;
           this.backoffIdx = 0;
           this.log.info(`WS connected (url=${currentUrl.slice(0, 60)}...)`);
           this.startHeartbeat(ws);
@@ -1083,6 +1083,7 @@ export class LansengerClient {
         const resolveOnce = () => { if (!closed) { closed = true; resolveClose?.(); } };
 
         ws.onclose = (ev) => {
+          if (this.ws === ws) this.ws = null;
           this.log.info(`WS closed (code=${ev.code} reason=${ev.reason || "none"} wasClean=${ev.wasClean})`);
           this.stopHeartbeat();
           this.clearPongTimeout();
