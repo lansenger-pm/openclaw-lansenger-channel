@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.17.10] - 2026-07-15
+
+### Fixed
+
+- **session approval decision still mapped as allow-once** (#14): `decisionMap.session` was `"allow-once"` instead of `"allow-session"`. The decisionMap value is what actually gets passed to the SDK — previous fix only changed display strings. Now correctly maps to `"allow-session"` with type assertion.
+- **debounceMs orphan confirmed removed** (#12): Re-verified in published package.
+
 ## [3.17.9] - 2026-07-15
 
 ### Fixed

@@ -838,13 +838,13 @@ async function handleApproveCardCallback(
   const client = entry?.client ?? makeClient(account, sdkLogger());
 
   // Map choice to approval decision
-  const decisionMap: Record<string, "allow-once" | "allow-always" | "deny"> = {
+  const decisionMap: Record<string, "allow-once" | "allow-session" | "allow-always" | "deny"> = {
     once: "allow-once",
-    session: "allow-once",
+    session: "allow-session",
     always: "allow-always",
     deny: "deny",
   };
-  const decision = decisionMap[choice]!;
+  const decision = decisionMap[choice]! as typeof decisionMap[string];
   const strategyKind = choice as "allow-once" | "allow-session" | "allow-always" | "deny";
   const displayStrategyKind = choice === "session" ? "allow-session" : (choice === "always" ? "allow-always" : (choice === "once" ? "allow-once" : "deny"));
 
@@ -861,7 +861,7 @@ async function handleApproveCardCallback(
     await resolveApprovalOverGateway({
       cfg: api.config,
       approvalId: requestId,
-      decision,
+      decision: decision as any,
       senderId: staffId,
     });
     log.info(`approveCard callback: approval resolved — requestId=${requestId} decision=${decision}`);
