@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.18.1] - 2026-07-15
+
+No code changes — CHANGELOG for v3.18.0 was missing from the published tarball.
+
 ## [3.18.0] - 2026-07-15
 
 ### Breaking
