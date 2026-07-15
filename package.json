@@ -1,6 +1,6 @@
 {
   "name": "@lansenger-pm/openclaw-lansenger-channel",
-  "version": "3.17.5",
+  "version": "3.17.6",
   "type": "module",
   "main": "dist/index.js",
   "exports": {
@@ -8,6 +8,7 @@
   },
   "files": [
     "dist/index.*",
+    "dist/secret-contract-api.*",
     "dist/setup-entry.*",
     "dist/src/channel.js",
     "dist/src/channel.d.ts",

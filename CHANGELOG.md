@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.17.6] - 2026-07-15
+
+### Fixed
+
+- **`openclaw secrets configure/audit` not discovering lansenger appSecret**: OpenClaw CLI discovers secret contract APIs by loading a standalone `dist/secret-contract-api.js` file, not from the runtime plugin object. Added this file so `appSecret` now appears in `openclaw secrets configure` and `openclaw secrets audit` correctly detects plaintext appSecret values.
+
 ## [3.17.5] - 2026-07-15
 
 ### Fixed
