@@ -271,10 +271,6 @@ function makeClient(account: ResolvedAccount, logger?: ClientLogger): LansengerC
     dangerouslyAllowPrivateNetwork: account.dangerouslyAllowPrivateNetwork,
     logger,
   });
-  // Set ownerId so isGroupChat() can correctly identify group vs DM endpoints.
-  // Without this, fresh clients default to chatId.startsWith("group:") which
-  // never matches Lansenger IDs. The running client sets this from WS data.
-  client.ownerId = account.appId;
   return client;
 }
 
@@ -611,6 +607,7 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
       notify: async ({ cfg, id, message, accountId }) => {
         const account = resolveAccount(cfg, accountId ?? undefined);
         const client = makeClient(account);
+        client.setChatType(id, false);
         await client.sendFormatText(id, message);
       },
     },

@@ -903,6 +903,7 @@ async function handleDmPolicy(
         });
         const entry = runningAccounts.get(runningKey);
         const client = entry?.client ?? makeClient(account, sdkLogger());
+        client.setChatType(event.senderId, false);
         await client.sendFormatText(event.senderId, reply);
         log.info(`inbound: pairing code sent to sender=${event.senderId}`);
       } catch (e: unknown) {

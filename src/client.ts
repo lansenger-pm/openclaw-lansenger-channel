@@ -128,6 +128,7 @@ export class LansengerClient {
   private log: ClientLogger;
   ownerId = "";
   private userLangMap = new Map<string, "zh" | "en">();
+  private chatTypeCache = new Map<string, boolean>(); // chatId → isGroup
   private dangerouslyAllowPrivateNetwork: boolean = false;
   private groupInfoCache = new Map<string, { data: GroupInfoData; expiry: number }>();
   private groupMembersCache = new Map<string, { data: GroupMembersData; expiry: number }>();
@@ -780,7 +781,14 @@ export class LansengerClient {
     return this.userLangMap.get(userId) ?? "zh";
   }
 
+  /** Mark a chatId as group or DM for outbound routing. */
+  setChatType(chatId: string, isGroup: boolean): void {
+    this.chatTypeCache.set(chatId, isGroup);
+  }
+
   isGroupChat(chatId: string): boolean {
+    const cached = this.chatTypeCache.get(chatId);
+    if (cached !== undefined) return cached;
     if (this.ownerId) return chatId !== this.ownerId;
     return chatId.startsWith("group:");
   }
@@ -923,7 +931,8 @@ export class LansengerClient {
       const isGroup = chatType === "group" || eventType === "bot_group_message";
       const senderId = eventData.from ?? "";
       const chatId = eventData.groupId ?? eventData.conversationId ?? senderId;
-      
+      this.chatTypeCache.set(chatId, isGroup);
+
       if (extracted.text) this.cacheUserLang(senderId, extracted.text);
 
       const referenceMsg: ReferenceMsg | undefined = eventData.referenceMsg

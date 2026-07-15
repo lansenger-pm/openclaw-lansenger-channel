@@ -215,10 +215,32 @@ describe("LansengerClient.isGroupChat", () => {
     expect(client.isGroupChat("owner-1")).toBe(false);
   });
 
-  it("falls back to group: prefix when ownerId is empty", () => {
+  it("falls back to group: prefix when ownerId is empty and no cache", () => {
     const client = makeClient();
     expect(client.isGroupChat("group:some-id")).toBe(true);
     expect(client.isGroupChat("some-user")).toBe(false);
+  });
+
+  it("uses chatTypeCache over ownerId", () => {
+    const client = makeClient();
+    client.ownerId = "owner-1";
+    client.setChatType("owner-1", true); // override: treat as group
+    expect(client.isGroupChat("owner-1")).toBe(true);
+    client.setChatType("some-group", false); // override: treat as DM
+    expect(client.isGroupChat("some-group")).toBe(false);
+  });
+
+  it("setChatType enables correct routing for pairing flow", () => {
+    const client = makeClient();
+    // Before any inbound message, no ownerId, no cache — falls back to prefix
+    expect(client.isGroupChat("user-123")).toBe(false); // doesn't start with "group:"
+    // But a Lansenger user ID like "13107200-xxx" also doesn't start with "group:",
+    // so without cache it would be treated as DM — which is correct for pairing.
+    // The real fix is that setChatType explicitly marks it:
+    client.setChatType("user-123", false);
+    expect(client.isGroupChat("user-123")).toBe(false);
+    client.setChatType("13107200-groupid", true);
+    expect(client.isGroupChat("13107200-groupid")).toBe(true);
   });
 });
 

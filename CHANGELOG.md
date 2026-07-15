@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.17.5] - 2026-07-15
+
+### Fixed
+
+- **Pairing code delivery failure**: Outbound messages to private chats were incorrectly routed to the group API, causing pairing codes to fail. The root cause was `isGroupChat()` relying on `ownerId` (which was initialized to `appId`, a credential ID, not a user ID) — this made every chatId appear as a group. Fixed by introducing a `chatTypeCache` populated from inbound message `chatType`, and explicitly marking chat type before sending pairing codes.
+
 ## [3.17.4] - 2026-07-10
 
 ### Added
