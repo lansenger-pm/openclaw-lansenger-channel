@@ -1306,7 +1306,7 @@ function normalizeAndCheckCommand(
   const { allowTextCommands, shouldComputeAuth, hasCommand, commandAuthorized } = auth;
 
   // Command block check
-  if (allowTextCommands && hasCommand && commandAuthorized !== true) {
+  if (allowTextCommands && hasCommand && commandAuthorized === false) {
     log.info(`inbound: command blocked — sender=${event.senderId} not authorized`);
     const replyClient = runningAccounts.get(runningKey)?.client ?? makeClient(account, sdkLogger());
     const lang = replyClient.getUserLang(event.senderId);
@@ -1651,7 +1651,7 @@ async function handleInbound(
 
   // ── COMMAND NORMALIZATION & AUTH ──
   const cmdResult = normalizeAndCheckCommand(api, event, account, runningKey);
-  if (cmdResult.allowTextCommands && cmdResult.hasCommand && cmdResult.commandAuthorized !== true) {
+  if (cmdResult.allowTextCommands && cmdResult.hasCommand && cmdResult.commandAuthorized === false) {
     return;
   }
 

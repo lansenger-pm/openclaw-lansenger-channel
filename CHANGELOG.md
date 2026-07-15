@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.17.9] - 2026-07-15
+
+### Fixed
+
+- **commandAuthorized !== true still present in two locations** (#13): Previous fix only changed one of two `!== true` checks. Both locations (L1309 in `normalizeAndCheckCommand` and L1654 in `gatewayStartAccount`) now use `=== false` — only explicitly denied commands are blocked, `undefined` (auth undetermined) passes through.
+
 ## [3.17.8] - 2026-07-15
 
 ### Fixed
