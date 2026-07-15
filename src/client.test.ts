@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { LansengerClient, mediaTypeFromPath, uploadMediaTypeFromPath, buildI18n, DEFAULT_API_GATEWAY_URL } from "./client.js";
+import { LansengerClient, mediaTypeFromPath, uploadMediaTypeFromPath, buildI18n } from "./client.js";
 import type { ReferenceMsg } from "./client.js";
 import * as fs from "node:fs/promises";
 
@@ -559,8 +559,10 @@ describe("LansengerClient processRawMessage", () => {
 });
 
 describe("constants", () => {
-  it("DEFAULT_API_GATEWAY_URL is correct", () => {
-    expect(DEFAULT_API_GATEWAY_URL).toBe("https://open.e.lanxin.cn/open/apigw");
+  it("apiGatewayUrl defaults to undefined when not provided", () => {
+    const client = new LansengerClient({ appId: "id", appSecret: "secret" });
+    // apiGatewayUrl is private, but getAppToken should fail gracefully when undefined
+    expect((client as any).apiGatewayUrl).toBeUndefined();
   });
 
   });

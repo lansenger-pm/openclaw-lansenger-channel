@@ -86,7 +86,7 @@ openclaw gateway restart
 
 > **Optional**: Install `lansenger-cli` for an alternative CLI-based messaging path: `pipx install lansenger-cli`.
 
-> **Custom gateway**: For enterprise deployments (e.g. 奇安信), set `apiGatewayUrl` in `openclaw.json` or environment after configuration — see [Optional Configuration](#optional-configuration).
+> **API Gateway URL is required**: You must provide your enterprise gateway URL (e.g. `https://your-api-gateway.example.com`) via `openclaw.json` config or environment variable — see [Configuration](#configuration).
 
 ### Development install (linked)
 
@@ -115,9 +115,9 @@ Add these to `~/.openclaw/.env` or your environment:
 |----------|-------------|---------|
 | `LANSENGER_APP_ID` | Personal bot App ID | `your-appid` |
 | `LANSENGER_APP_SECRET` | Personal bot App Secret | `ABCDEF123456...` |
-| `LANSENGER_API_GATEWAY_URL` | Lansenger API Gateway URL override | `https://open.e.lanxin.cn/open/apigw` |
+| `LANSENGER_API_GATEWAY_URL` | Lansenger API Gateway URL (required) | — |
 
-Credentials can also be provided via `openclaw.json` config (see Optional Configuration below). Config values take precedence; env vars are used as fallback when config is unset.
+Configuration can also be provided via `openclaw.json` (see below). Config values take precedence; env vars are used as fallback when config is unset. `apiGatewayUrl` is required and has no default.
 
 > ⚠️ **Security: Migrate appSecret to SecretRef storage**
 >
@@ -135,7 +135,7 @@ Credentials can also be provided via `openclaw.json` config (see Optional Config
 
 > ⚠️ **Mobile client does NOT support viewing credentials.** Use the desktop client only.
 
-### Optional Configuration
+### Configuration
 
 ```json
 {
@@ -143,7 +143,7 @@ Credentials can also be provided via `openclaw.json` config (see Optional Config
     "lansenger": {
       "appId": "your-appid",
       "appSecret": "your-secret",
-      "apiGatewayUrl": "https://open.e.lanxin.cn/open/apigw",
+      "apiGatewayUrl": "https://your-api-gateway.example.com",
       "homeChannel": "xxx-xxx",
       "enabled": true,
       "allowFrom": ["your-appid"],
@@ -152,7 +152,7 @@ Credentials can also be provided via `openclaw.json` config (see Optional Config
         "your-appid": {
           "appId": "your-appid",
           "appSecret": "...",
-          "apiGatewayUrl": "https://open.e.lanxin.cn/open/apigw"
+          "apiGatewayUrl": "https://your-api-gateway.example.com"
         }
       }
     }
@@ -164,7 +164,7 @@ Credentials can also be provided via `openclaw.json` config (see Optional Config
 |-------|-------------|---------|
 | `appId` | Personal bot App ID | — |
 | `appSecret` | Personal bot App Secret | — |
-| `apiGatewayUrl` | API Gateway URL | `https://open.e.lanxin.cn/open/apigw` |
+| `apiGatewayUrl` | API Gateway URL (required) | — |
 | `homeChannel` | Default chat ID for cron/notification delivery | — |
 | `enabled` | Enable/disable the channel (runtime default: false without credentials) | `true` |
 | `allowFrom` | User IDs allowed to DM the bot | `[]` |
@@ -217,7 +217,7 @@ For multiple bots, add additional accounts using `openclaw config set`:
 # Add a second bot (replace appid/appsecret/gateway with your values)
 openclaw config set channels.lansenger.accounts.your-appid-2.appId "your-appid-2"
 openclaw config set channels.lansenger.accounts.your-appid-2.appSecret "your-appsecret"
-openclaw config set channels.lansenger.accounts.your-appid-2.apiGatewayUrl "https://apigw.lx.qianxin.com"
+openclaw config set channels.lansenger.accounts.your-appid-2.apiGatewayUrl "https://your-api-gateway.example.com"
 
 # Restart to apply
 openclaw gateway restart
@@ -236,12 +236,12 @@ The resulting config structure:
         "your-appid-2": {
           "appId": "your-appid-2",
           "appSecret": "...",
-          "apiGatewayUrl": "https://apigw.lx.qianxin.com"
+          "apiGatewayUrl": "https://your-api-gateway.example.com"
         },
         "your-appid-1": {
           "appId": "your-appid-1",
           "appSecret": "...",
-          "apiGatewayUrl": "https://apigw.lx.qianxin.com"
+          "apiGatewayUrl": "https://your-api-gateway.example.com"
         }
       }
     }
@@ -378,7 +378,7 @@ Or rely on the auto-detected bot owner (`homeChannel`), which is set automatical
 - **appArticles** — uses `summary` field (not `description`).
 - **linkCard** — `description`, `iconLink`, `fromName`, `fromIconLink` are required (empty strings as defaults).
 - **msgTarget auto-routing** — all send methods route automatically; no separate group/private API calls.
-- **Gateway URL per-environment** — e.g. `https://apigw.lx.qianxin.com` for 奇安信, `https://open.e.lanxin.cn/open/apigw` for standard Lansenger.
+- **Gateway URL is required** — you must provide your enterprise gateway URL (e.g. `https://your-api-gateway.example.com`). There is no default.
 - **reminder** — optional in formatText; recommended in group chat. Include "@姓名" in text when mentioning.
 - **Media** — `<media>` tags work for workspace files; for external paths use `lansenger_send_file`.
 - **openclaw skill/message lansenger** — these CLI commands do NOT exist; use agent tools instead.

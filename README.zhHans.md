@@ -88,7 +88,7 @@ openclaw gateway restart
 
 > **可选**：安装 `lansenger-cli` 作为 CLI 替代方案：`pipx install lansenger-cli`。
 
-> **自定义网关**：企业私有化部署（如奇安信）需在配置后通过 `openclaw.json` 或环境变量设置 `apiGatewayUrl` — 见[可选配置](#可选配置)。
+> **API 网关地址必填**：必须通过 `openclaw.json` 配置或环境变量提供企业网关地址（如 `https://your-api-gateway.example.com`）— 见[配置说明](#配置说明)。
 
 ### 开发安装（本地链接）
 
@@ -123,9 +123,9 @@ openclaw pairing approve lansenger <配对码>
 |------|------|------|
 | `LANSENGER_APP_ID` | 个人机器人 App ID | `your-appid` |
 | `LANSENGER_APP_SECRET` | 个人机器人 App Secret | `ABCDEF123456...` |
-| `LANSENGER_API_GATEWAY_URL` | 蓝信 API 网关 URL 覆盖 | `https://open.e.lanxin.cn/open/apigw` |
+| `LANSENGER_API_GATEWAY_URL` | 蓝信 API 网关 URL（必填） | — |
 
-凭证也可通过 `openclaw.json` 配置提供（见下方可选配置）。配置值优先；环境变量仅在配置未设置时作为回退。
+配置也可通过 `openclaw.json` 提供（见下方配置说明）。配置值优先；环境变量仅在配置未设置时作为回退。`apiGatewayUrl` 为必填项，无默认值。
 
 > ⚠️ **安全：将 appSecret 迁移至 SecretRef 存储**
 >
@@ -143,7 +143,7 @@ openclaw pairing approve lansenger <配对码>
 
 > ⚠️ **移动端不支持查看凭证。** 请仅使用桌面端。
 
-### 可选配置
+### 配置说明
 
 ```json
 {
@@ -151,7 +151,7 @@ openclaw pairing approve lansenger <配对码>
     "lansenger": {
       "appId": "your-appid",
       "appSecret": "your-secret",
-      "apiGatewayUrl": "https://open.e.lanxin.cn/open/apigw",
+      "apiGatewayUrl": "https://your-api-gateway.example.com",
       "homeChannel": "xxx-xxx",
       "enabled": true,
       "allowFrom": ["your-appid"],
@@ -160,7 +160,7 @@ openclaw pairing approve lansenger <配对码>
         "your-appid": {
           "appId": "your-appid",
           "appSecret": "...",
-          "apiGatewayUrl": "https://open.e.lanxin.cn/open/apigw"
+          "apiGatewayUrl": "https://your-api-gateway.example.com"
         }
       }
     }
@@ -172,7 +172,7 @@ openclaw pairing approve lansenger <配对码>
 |------|------|--------|
 | `appId` | 个人机器人 App ID | — |
 | `appSecret` | 个人机器人 App Secret | — |
-| `apiGatewayUrl` | API 网关 URL | `https://open.e.lanxin.cn/open/apigw` |
+| `apiGatewayUrl` | API 网关 URL（必填） | — |
 | `homeChannel` | 定时任务/通知送达的默认聊天 ID | — |
 | `enabled` | 启用/禁用频道（运行时默认：无凭证时为 false） | `true` |
 | `allowFrom` | 允许私聊的用户 ID | `[]` |
@@ -225,7 +225,7 @@ openclaw pairing approve lansenger <配对码>
 # 添加第二个机器人（替换 appid/appsecret/gateway 为你的值）
 openclaw config set channels.lansenger.accounts.your-appid-2.appId "your-appid-2"
 openclaw config set channels.lansenger.accounts.your-appid-2.appSecret "your-appsecret"
-openclaw config set channels.lansenger.accounts.your-appid-2.apiGatewayUrl "https://apigw.lx.qianxin.com"
+openclaw config set channels.lansenger.accounts.your-appid-2.apiGatewayUrl "https://your-api-gateway.example.com"
 
 # 重启生效
 openclaw gateway restart
@@ -244,12 +244,12 @@ openclaw gateway restart
         "your-appid-2": {
           "appId": "your-appid-2",
           "appSecret": "...",
-          "apiGatewayUrl": "https://apigw.lx.qianxin.com"
+          "apiGatewayUrl": "https://your-api-gateway.example.com"
         },
         "your-appid-1": {
           "appId": "your-appid-1",
           "appSecret": "...",
-          "apiGatewayUrl": "https://apigw.lx.qianxin.com"
+          "apiGatewayUrl": "https://your-api-gateway.example.com"
         }
       }
     }
@@ -386,7 +386,7 @@ openclaw config set commands.ownerAllowFrom '["lansenger:用户ID-1", "lansenger
 - **appArticles** — 使用 `summary` 字段（不是 `description`）。
 - **linkCard** — `description`、`iconLink`、`fromName`、`fromIconLink` 为必填字段（可用空字符串作为默认值）。
 - **msgTarget 自动路由** — 所有发送方法自动路由，无需单独调用群聊/私聊 API。
-- **网关 URL 因环境不同** — 如 `https://apigw.lx.qianxin.com` 用于奇安信部署，`https://open.e.lanxin.cn/open/apigw` 用于标准蓝信。
+- **网关 URL 为必填项** — 您必须提供企业网关地址（如 `https://your-api-gateway.example.com`），无默认值。
 - **reminder** — formatText 中可选字段；群聊中建议使用。提及用户时在文本中包含"@姓名"。
 - **媒体标签** — `<media>` 标签适用于工作区文件；外部路径请使用 `lansenger_send_file`。
 - **openclaw skill/message lansenger** — 这些 CLI 命令不存在；请使用代理工具。

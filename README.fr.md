@@ -88,7 +88,7 @@ openclaw gateway restart
 
 > **Optionnel** : Installer `lansenger-cli` pour une alternative CLI : `pipx install lansenger-cli`.
 
-> **Passerelle personnalisée** : pour les déploiements entreprise (ex. 奇安信), configurez `apiGatewayUrl` dans `openclaw.json` ou via les variables d'environnement après la configuration — voir [Configuration optionnelle](#configuration-optionnelle).
+> **L'URL de la passerelle API est obligatoire** : vous devez fournir l'URL de votre passerelle d'entreprise (par ex. `https://your-api-gateway.example.com`) via la configuration `openclaw.json` ou une variable d'environnement — voir [Configuration](#configuration).
 
 ### Installation de développement (lien local)
 
@@ -123,9 +123,9 @@ Ajoutez ces variables à `~/.openclaw/.env` ou à votre environnement :
 |----------|-------------|---------|
 | `LANSENGER_APP_ID` | App ID du robot personnel | `your-appid` |
 | `LANSENGER_APP_SECRET` | App Secret du robot personnel | `ABCDEF123456...` |
-| `LANSENGER_API_GATEWAY_URL` | URL de la passerelle API Lansenger (remplacement) | `https://open.e.lanxin.cn/open/apigw` |
+| `LANSENGER_API_GATEWAY_URL` | URL de la passerelle API Lansenger (obligatoire) | — |
 
-Les identifiants peuvent aussi être fournis via la configuration `openclaw.json` (voir Configuration optionnelle ci-dessous). Les valeurs de configuration sont prioritaires ; les variables d'environnement sont utilisées comme repli lorsque la configuration n'est pas définie.
+La configuration peut aussi être fournie via `openclaw.json` (voir ci-dessous). Les valeurs de configuration sont prioritaires ; les variables d'environnement sont utilisées comme repli lorsque la configuration n'est pas définie. `apiGatewayUrl` est obligatoire et n'a pas de valeur par défaut.
 
 > ⚠️ **Sécurité : Migrez appSecret vers le stockage SecretRef**
 >
@@ -143,7 +143,7 @@ Les identifiants peuvent aussi être fournis via la configuration `openclaw.json
 
 > ⚠️ **Le client mobile ne permet pas de voir les identifiants.** Utilisez uniquement le client desktop.
 
-### Configuration optionnelle
+### Configuration
 
 ```json
 {
@@ -151,7 +151,7 @@ Les identifiants peuvent aussi être fournis via la configuration `openclaw.json
     "lansenger": {
       "appId": "your-appid",
       "appSecret": "your-secret",
-      "apiGatewayUrl": "https://open.e.lanxin.cn/open/apigw",
+      "apiGatewayUrl": "https://your-api-gateway.example.com",
       "homeChannel": "xxx-xxx",
       "enabled": true,
       "allowFrom": ["your-appid"],
@@ -160,7 +160,7 @@ Les identifiants peuvent aussi être fournis via la configuration `openclaw.json
         "your-appid": {
           "appId": "your-appid",
           "appSecret": "...",
-          "apiGatewayUrl": "https://open.e.lanxin.cn/open/apigw"
+          "apiGatewayUrl": "https://your-api-gateway.example.com"
         }
       }
     }
@@ -172,7 +172,7 @@ Les identifiants peuvent aussi être fournis via la configuration `openclaw.json
 |-------|-------------|-------------------|
 | `appId` | App ID du robot personnel | — |
 | `appSecret` | App Secret du robot personnel | — |
-| `apiGatewayUrl` | URL de la passerelle API | `https://open.e.lanxin.cn/open/apigw` |
+| `apiGatewayUrl` | URL de la passerelle API (obligatoire) | — |
 | `homeChannel` | Chat ID par défaut pour la livraison cron/notification | — |
 | `enabled` | Activer/désactiver le canal (défaut runtime : false sans identifiants) | `true` |
 | `allowFrom` | IDs d'utilisateurs autorisés en DM | `[]` |
@@ -225,7 +225,7 @@ Pour ajouter plusieurs robots, utilisez `openclaw config set` avec la structure 
 # Ajouter un deuxième robot (remplacez appid/appsecret/gateway par vos valeurs)
 openclaw config set channels.lansenger.accounts.your-appid-2.appId "your-appid-2"
 openclaw config set channels.lansenger.accounts.your-appid-2.appSecret "your-appsecret"
-openclaw config set channels.lansenger.accounts.your-appid-2.apiGatewayUrl "https://apigw.lx.qianxin.com"
+openclaw config set channels.lansenger.accounts.your-appid-2.apiGatewayUrl "https://your-api-gateway.example.com"
 
 # Redémarrer pour appliquer
 openclaw gateway restart
@@ -244,12 +244,12 @@ Structure de configuration résultante :
         "your-appid-2": {
           "appId": "your-appid-2",
           "appSecret": "...",
-          "apiGatewayUrl": "https://apigw.lx.qianxin.com"
+          "apiGatewayUrl": "https://your-api-gateway.example.com"
         },
         "your-appid-1": {
           "appId": "your-appid-1",
           "appSecret": "...",
-          "apiGatewayUrl": "https://apigw.lx.qianxin.com"
+          "apiGatewayUrl": "https://your-api-gateway.example.com"
         }
       }
     }
@@ -386,7 +386,7 @@ Ou utiliser le propriétaire détecté automatiquement (`homeChannel`), défini 
 - **appArticles** — utilise le champ `summary` (pas `description`).
 - **linkCard** — `description`, `iconLink`, `fromName`, `fromIconLink` sont requis (chaînes vides comme valeurs par défaut).
 - **Auto-routage msgTarget** — toutes les méthodes d'envoi routent automatiquement ; pas d'appels API groupe/privé séparés.
-- **URL passerelle par environnement** — e.g. `https://apigw.lx.qianxin.com` pour 奇安信, `https://open.e.lanxin.cn/open/apigw` pour Lansenger standard.
+- **L'URL de la passerelle est obligatoire** — vous devez fournir l'URL de votre passerelle d'entreprise (par ex. `https://your-api-gateway.example.com`). Il n'y a pas de valeur par défaut.
 - **reminder** — champ optionnel dans formatText ; recommandé dans les chats de groupe. Inclure « @姓名 » dans le texte pour les mentions.
 - **Média** — les balises `<media>` fonctionnent pour les fichiers du workspace ; pour les chemins externes, utilisez `lansenger_send_file`.
 - **openclaw skill/message lansenger** — ces commandes CLI n'existent PAS ; utilisez les outils de l'agent.

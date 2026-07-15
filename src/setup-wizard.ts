@@ -43,7 +43,7 @@ const HELP_LINES = [
   lt("introClickInfo"),
   lt("introPersonalOnly"),
   lt("introNoMobile"),
-  t("wizard.channels.docs", { link: formatDocsLink("https://open.e.lanxin.cn/docs", "lansenger") }),
+  t("wizard.channels.docs", { link: formatDocsLink("https://developer.lanxin.cn", "lansenger") }),
   "",
   lt("introToolsIncluded"),
   lt("introCliAlt"),
@@ -143,11 +143,11 @@ export const lansengerSetupWizard: any = {
     {
       inputKey: "baseUrl",
       message: lt("baseUrlMessage"),
-      placeholder: "https://open.e.lanxin.cn/open/apigw",
-      required: false,
+      placeholder: "https://your-api-gateway.example.com",
+      required: true,
       initialValue: ({ cfg, accountId }: any) => {
         const account = resolveAccountFromCfg(cfg, accountId);
-        return account?.apiGatewayUrl || "https://open.e.lanxin.cn/open/apigw";
+        return account?.apiGatewayUrl || "";
       },
       applySet: ({ cfg, accountId, value }: any) => patchChannelConfigForAccount({
         cfg, channel: CHANNEL, accountId,

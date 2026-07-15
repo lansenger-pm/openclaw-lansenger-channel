@@ -38,7 +38,7 @@ metadata: {"openclaw":{"requires":{"cli":["openclaw"]},"primaryEnv":"LANSENGER_A
 |--------|------|--------|------|
 | `appId` | ✅ | — | 机器人 App ID，格式：`orgId-applicationId`（如 `xxx-xxxxxxx`）。获取路径：蓝信桌面端 → 通讯录 → 智能机器人 → 个人机器人 → ℹ️ |
 | `appSecret` | ✅ | — | 机器人 App Secret，与 App ID 在同一页面获取。**敏感信息，绝对不要完整回显，始终脱敏处理。** |
-| `apiGatewayUrl` | ❌ | `https://open.e.lanxin.cn/open/apigw` | API 网关地址。公有云用户无需修改，企业私有部署用户需设置自定义地址。 |
+| `apiGatewayUrl` | ✅ | — | API 网关地址（必填）。需提供企业网关地址（如 https://your-api-gateway.example.com）。 |
 
 ### 多账号注意事项
 
@@ -205,7 +205,7 @@ openclaw config set channels.lansenger.accounts.<accountId>.dmPolicy pairing
 
 1. **App ID**（必填）— 格式：`orgId-applicationId`
 2. **App Secret**（必填）— 详情页中的长字符串
-3. **API Gateway URL**（可选）— 仅当用户提到私有化部署时询问，否则默认使用 `https://open.e.lanxin.cn/open/apigw`。
+3. **API Gateway URL**（必填）— 必须提供企业网关地址（如 `https://your-api-gateway.example.com`）。
 
 **安全规则：** 绝对不要完整回显 App Secret。确认时始终脱敏处理（如 `ABC***xyz`）。
 
@@ -452,7 +452,7 @@ openclaw plugins install @lansenger-pm/openclaw-lansenger-channel
 2. 检查机器人是否被删除或重新创建——凭证可能已变更。
 3. 检查网络连通性：
    ```bash
-   curl -I https://open.e.lanxin.cn/open/apigw
+   curl -I https://your-api-gateway.example.com
    ```
 4. 查看 gateway 日志：
    ```bash

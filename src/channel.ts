@@ -20,7 +20,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as crypto from "node:crypto";
-import { LansengerClient, DEFAULT_API_GATEWAY_URL } from "./client.js";
+import { LansengerClient } from "./client.js";
 import type { ApproveCardData, ApproveCardButton, I18nAppCardData, ClientLogger } from "./client.js";
 import { getRunningClientByAccountId, getSessionAccountId, getLastInboundTimeByAccountId, stripOpenClawUuidSuffix, gatewayStartAccount, gatewayStopAccount } from "./runtime.js";
 import { lansengerSetupWizard } from "./setup-wizard.js";
@@ -213,7 +213,7 @@ function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): Resolve
       `Migrate to SecretRef for better security: run 'openclaw secrets configure'`
     );
   }
-  const apiGatewayUrl = account?.apiGatewayUrl ?? section?.apiGatewayUrl ?? process.env.LANSENGER_API_GATEWAY_URL ?? DEFAULT_API_GATEWAY_URL;
+  const apiGatewayUrl = account?.apiGatewayUrl ?? section?.apiGatewayUrl ?? process.env.LANSENGER_API_GATEWAY_URL;
 
   // ── Config field priority in multi-account mode ──────────────────────────
   //
@@ -367,7 +367,7 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
     meta: {
       label: "Lansenger (蓝信)",
       selectionLabel: "Lansenger (蓝信)",
-      docsPath: "https://open.e.lanxin.cn/docs",
+      docsPath: "https://developer.lanxin.cn",
       blurb: "Connect OpenClaw to Lansenger enterprise messaging platform. / 连接 OpenClaw 与蓝信企业即时通讯平台。",
       markdownCapable: true,
     },
@@ -557,7 +557,7 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
         ? Object.values(accounts).every((a: any) => !a?.appId || Boolean(a?.apiGatewayUrl))
         : true;
       if (!topLevelGatewayUrl && !envHasGatewayUrl && !allAccountsWithAppIdHaveGatewayUrl && (topLevelAppId || hasAnyCompleteAccount || envHasAppId)) {
-        warnings.push("Lansenger apiGatewayUrl is not set — most enterprise deployments require a custom gateway URL (e.g. https://apigw.lx.qianxin.com). The default https://open.e.lanxin.cn/open/apigw only works for Lansenger public cloud. / 蓝信 apiGatewayUrl 未设置 — 大部分企业部署需要自定义网关地址（如 https://apigw.lx.qianxin.com），默认地址仅适用于蓝信公有云。");
+        warnings.push("Lansenger apiGatewayUrl is not set — it is required for all deployments. Please provide your enterprise gateway URL. / 蓝信 apiGatewayUrl 未设置 — 此为必填项，请提供您的企业网关地址。");
       }
       if (accounts) {
         for (const [key, acc] of Object.entries(accounts)) {
@@ -618,7 +618,7 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
         ? Object.values(accounts).every((a: any) => !a?.appId || Boolean(a?.apiGatewayUrl))
         : true;
       if (!topLevelGatewayUrl && !envHasGatewayUrl && !allAccountsWithAppIdHaveGatewayUrl && (topLevelAppId || hasAnyCompleteAccount || envHasAppId)) {
-        findings.push({ checkId: "lansenger/apigatewayurl-not-set", severity: "warn", title: "apiGatewayUrl not set / API 网关地址未设置", detail: "Most enterprise deployments require a custom gateway URL (e.g. https://apigw.lx.qianxin.com). The default https://open.e.lanxin.cn/open/apigw only works for Lansenger public cloud. / 大部分企业部署需要自定义网关地址，默认地址仅适用于蓝信公有云。", remediation: "openclaw config set channels.lansenger.apiGatewayUrl https://apigw.lx.qianxin.com (or your enterprise gateway URL)" });
+        findings.push({ checkId: "lansenger/apigatewayurl-not-set", severity: "warn", title: "apiGatewayUrl not set / API 网关地址未设置", detail: "apiGatewayUrl is required for all deployments. Please provide your enterprise gateway URL. / apiGatewayUrl 为必填项，请提供您的企业网关地址。", remediation: "openclaw config set channels.lansenger.apiGatewayUrl <your-gateway-url>" });
       }
       if (accounts) {
         for (const [key, acc] of Object.entries(accounts)) {
@@ -848,9 +848,9 @@ const lansengerOnboarding = {
       "",
       "🔧 After Getting Credentials / 获取凭证后:",
       "   1. Enter App ID and App Secret in the configuration / 在配置中输入 App ID 和 App Secret",
-      "   2. API Gateway URL is optional / API 网关地址可选",
-      "      Default: https://open.e.lanxin.cn/open/apigw (Lansenger public cloud) /",
-      "      默认：https://open.e.lanxin.cn/open/apigw（蓝信公有云）",
+      "   2. API Gateway URL is required / API 网关地址必填",
+      "      Example: https://your-api-gateway.example.com /",
+      "      示例：https://your-api-gateway.example.com",
       "",
       "🤝 Multi-Bot Support / 多机器人支持:",
       "   - Each bot has independent App ID and App Secret / 每个机器人配置独立的 App ID 和 App Secret",
@@ -914,9 +914,9 @@ const lansengerOnboarding = {
         validate: (v: string) => String(v ?? "").trim() ? undefined : "Required / 必填",
       })).trim();
       apiGatewayUrl = String(await prompter.text({
-        message: "API Gateway URL (Optional / 可选)",
-        initialValue: "https://open.e.lanxin.cn/open/apigw",
-        validate: () => undefined,
+        message: "API Gateway URL (Required / 必填)",
+        initialValue: "",
+        validate: (v: string) => String(v ?? "").trim() ? undefined : "Required / 必填",
       })).trim();
     }
 

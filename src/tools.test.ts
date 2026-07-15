@@ -33,7 +33,7 @@ const mockAccount = {
   accountId: "test-account",
   appId: "test-id",
   appSecret: "test-secret",
-  apiGatewayUrl: "https://open.e.lanxin.cn/open/apigw",
+  apiGatewayUrl: "https://your-api-gateway.example.com",
   allowFrom: [],
   groupAllowFrom: [],
   dmPolicy: undefined,

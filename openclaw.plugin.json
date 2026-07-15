@@ -120,7 +120,7 @@
           },
           "apiGatewayUrl": {
             "type": "string",
-            "description": "Lansenger API Gateway URL / API 网关地址（默认：https://open.e.lanxin.cn/open/apigw）"
+            "description": "Lansenger API Gateway URL (required) / API 网关地址（必填）"
           },
           "dangerouslyAllowPrivateNetwork": {
             "type": "boolean",
@@ -312,9 +312,9 @@
         },
         "apiGatewayUrl": {
           "label": "API Gateway URL / API 网关地址",
-          "placeholder": "https://open.e.lanxin.cn/open/apigw",
+          "placeholder": "https://your-api-gateway.example.com",
           "sensitive": false,
-          "help": "Default: https://open.e.lanxin.cn/open/apigw (Lansenger public cloud). Custom gateway for enterprise deployments is also supported. / 默认：https://open.e.lanxin.cn/open/apigw（蓝信公有云）。也支持企业私有化部署的自定义网关地址。"
+          "help": "Required: your enterprise API gateway URL. / 必填：您的企业 API 网关地址。"
         },
         "dangerouslyAllowPrivateNetwork": {
           "label": "Allow Private Network Images / 允许内网图片",
@@ -433,7 +433,7 @@
         "accounts.*.apiGatewayUrl": {
           "label": "API Gateway URL / API 网关地址",
           "sensitive": false,
-          "help": "Custom gateway for enterprise deployments / 企业私有化部署的自定义网关地址"
+          "help": "Required: your enterprise API gateway URL / 必填：您的企业 API 网关地址"
         },
         "accounts.*.dangerouslyAllowPrivateNetwork": {
           "label": "Allow Private Network Images / 允许内网图片",

@@ -125,10 +125,10 @@ describe("lansengerSetupWizard", () => {
       expect(val).toBe("https://custom.url");
     });
 
-    it("initialValue defaults to public cloud URL", () => {
+    it("initialValue defaults to empty when no apiGatewayUrl configured", () => {
       const cfg = { channels: {} };
       const val = lansengerSetupWizard.textInputs[0].initialValue({ cfg, accountId: undefined });
-      expect(val).toBe("https://open.e.lanxin.cn/open/apigw");
+      expect(val).toBe("");
     });
   });
 

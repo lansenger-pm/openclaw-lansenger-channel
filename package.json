@@ -1,6 +1,6 @@
 {
   "name": "@lansenger-pm/openclaw-lansenger-channel",
-  "version": "3.17.10",
+  "version": "3.18.0",
   "type": "module",
   "main": "dist/index.js",
   "exports": {
@@ -74,7 +74,7 @@
       "label": "Lansenger (蓝信)",
       "selectionLabel": "Lansenger (蓝信)",
       "detailLabel": "Lansenger Bot",
-      "docsPath": "https://open.e.lanxin.cn/docs",
+      "docsPath": "https://developer.lanxin.cn",
       "blurb": "Connect OpenClaw to Lansenger enterprise messaging platform. / 连接 OpenClaw 与蓝信企业即时通讯平台。",
       "order": 80,
       "aliases": [
@@ -107,7 +107,7 @@
       },
       {
         "name": "LANSENGER_API_GATEWAY_URL",
-        "description": "Lansenger API Gateway URL (default: https://open.e.lanxin.cn/open/apigw)",
+        "description": "Lansenger API Gateway URL (required)",
         "sensitive": false
       }
     ],

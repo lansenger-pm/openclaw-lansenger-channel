@@ -13,8 +13,6 @@ export type ClientLogger = {
 
 const silentLogger: ClientLogger = { info: () => {}, error: () => {}, debug: () => {} };
 
-const DEFAULT_API_GATEWAY_URL = "https://open.e.lanxin.cn/open/apigw";
-
 function convertPxToPt(str: string): string {
   return str.replace(/font-size:\s*(\d+(?:\.\d+)?)px/gi, (_match, num) => {
     const pt = Math.max(12, Math.min(36, Math.round(parseFloat(num) * 0.75)));
@@ -111,7 +109,7 @@ function detectExtFromBytes(bytes: Buffer, mediaKind: string): string {
 export class LansengerClient {
   private appId: string;
   private appSecret: string;
-  private apiGatewayUrl: string;
+  private apiGatewayUrl: string | undefined;
   private appToken: string | null = null;
   private tokenExpiry = 0;
   private ws: WebSocket | null = null;
@@ -137,9 +135,12 @@ export class LansengerClient {
   constructor(config: { appId: string; appSecret: string; apiGatewayUrl?: string; logger?: ClientLogger; dangerouslyAllowPrivateNetwork?: boolean | null }) {
     this.appId = config.appId;
     this.appSecret = config.appSecret;
-    this.apiGatewayUrl = config.apiGatewayUrl ?? DEFAULT_API_GATEWAY_URL;
+    this.apiGatewayUrl = config.apiGatewayUrl;
     this.log = config.logger ?? silentLogger;
     this.dangerouslyAllowPrivateNetwork = config.dangerouslyAllowPrivateNetwork ?? false;
+    if (!this.apiGatewayUrl) {
+      this.log.error("LansengerClient: apiGatewayUrl is required but not provided. All API calls will fail.");
+    }
   }
 
   setMessageHandler(handler: (event: InboundEvent) => Promise<void>): void {
@@ -1643,5 +1644,3 @@ export type GroupSessionMeta = {
   members: GroupMember[] | null; // null when > 100 members
   memberCount: number;
 };
-
-export { DEFAULT_API_GATEWAY_URL };
