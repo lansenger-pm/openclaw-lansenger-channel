@@ -631,6 +631,110 @@ describe("LansengerClient.msgTarget (via sendText group vs dm)", () => {
   });
 });
 
+// ═══════════════════════════════════════════════════════════════════════
+// L2: msgTarget payload structure tests
+// Verify that DM messages use userIdList and group messages use groupId
+// ═══════════════════════════════════════════════════════════════════════
+
+describe("L2: msgTarget payload structure", () => {
+  let capturedBodies: Record<string, any>[];
+
+  beforeEach(() => {
+    capturedBodies = [];
+    vi.stubGlobal("fetch", async (url: string | Request, init?: RequestInit) => {
+      const u = typeof url === "string" ? url : url.url;
+      if (u.includes("apptoken")) return new Response(JSON.stringify({ errCode: 0, errMsg: "", data: { appToken: "tok", expiresIn: 7200 } }), { headers: { "content-type": "application/json" } });
+      if (init?.body) capturedBodies.push(JSON.parse(init.body as string));
+      return new Response(JSON.stringify({ errCode: 0, errMsg: "", data: { msgId: "m1" } }), { headers: { "content-type": "application/json" } });
+    });
+  });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it("L2-1: DM text message — body has userIdList, no groupId", async () => {
+    const client = new LansengerClient({ appId: "id", appSecret: "secret" });
+    client.setChatType("user-1", false);
+    await client.sendText("user-1", "hello");
+    expect(capturedBodies).toHaveLength(1);
+    expect(capturedBodies[0]!).toHaveProperty("userIdList", ["user-1"]);
+    expect(capturedBodies[0]!).not.toHaveProperty("groupId");
+    expect(capturedBodies[0]!.msgType).toBe("text");
+  });
+
+  it("L2-2: Group text message — body has groupId, no userIdList", async () => {
+    const client = new LansengerClient({ appId: "id", appSecret: "secret" });
+    client.setChatType("group-1", true);
+    await client.sendText("group-1", "hello group");
+    expect(capturedBodies).toHaveLength(1);
+    expect(capturedBodies[0]!).toHaveProperty("groupId", "group-1");
+    expect(capturedBodies[0]!).not.toHaveProperty("userIdList");
+    expect(capturedBodies[0]!.msgType).toBe("text");
+  });
+
+  it("L2-3: DM formatText — body has userIdList, msgType=formatText", async () => {
+    const client = new LansengerClient({ appId: "id", appSecret: "secret" });
+    client.setChatType("user-1", false);
+    await client.sendFormatText("user-1", "**bold**");
+    expect(capturedBodies).toHaveLength(1);
+    expect(capturedBodies[0]!).toHaveProperty("userIdList", ["user-1"]);
+    expect(capturedBodies[0]!.msgType).toBe("formatText");
+  });
+
+  it("L2-4: Group formatText — body has groupId, msgType=formatText", async () => {
+    const client = new LansengerClient({ appId: "id", appSecret: "secret" });
+    client.setChatType("group-1", true);
+    await client.sendFormatText("group-1", "**bold**");
+    expect(capturedBodies).toHaveLength(1);
+    expect(capturedBodies[0]!).toHaveProperty("groupId", "group-1");
+    expect(capturedBodies[0]!.msgType).toBe("formatText");
+  });
+
+  it("L2-5: DM linkCard — body has userIdList", async () => {
+    const client = new LansengerClient({ appId: "id", appSecret: "secret" });
+    client.setChatType("user-1", false);
+    await client.sendLinkCard("user-1", "Link", "https://example.com");
+    expect(capturedBodies).toHaveLength(1);
+    expect(capturedBodies[0]!).toHaveProperty("userIdList", ["user-1"]);
+    expect(capturedBodies[0]!.msgType).toBe("linkCard");
+  });
+
+  it("L2-6: Group appCard — body has groupId", async () => {
+    const client = new LansengerClient({ appId: "id", appSecret: "secret" });
+    client.setChatType("group-1", true);
+    await client.sendAppCard("group-1", { bodyTitle: "Body" });
+    expect(capturedBodies).toHaveLength(1);
+    expect(capturedBodies[0]!).toHaveProperty("groupId", "group-1");
+    expect(capturedBodies[0]!.msgType).toBe("appCard");
+  });
+
+  it("L2-7: chatTypeCache takes priority over ownerId", async () => {
+    const client = new LansengerClient({ appId: "id", appSecret: "secret" });
+    client.ownerId = "user-1";
+    // ownerId says "user-1 is DM", but cache says "user-1 is group"
+    client.setChatType("user-1", true);
+    await client.sendText("user-1", "hello");
+    expect(capturedBodies).toHaveLength(1);
+    // Should use group route (groupId, not userIdList) because cache wins
+    expect(capturedBodies[0]!).toHaveProperty("groupId", "user-1");
+    expect(capturedBodies[0]!).not.toHaveProperty("userIdList");
+  });
+
+  it("L2-8: no cache no ownerId — falls back to group: prefix for group", async () => {
+    const client = new LansengerClient({ appId: "id", appSecret: "secret" });
+    // no cache, no ownerId — only "group:" prefix identifies group
+    await client.sendText("group:some-id", "hello");
+    expect(capturedBodies).toHaveLength(1);
+    expect(capturedBodies[0]).toHaveProperty("groupId", "group:some-id");
+  });
+
+  it("L2-9: no cache no ownerId — non-group-prefix defaults to DM", async () => {
+    const client = new LansengerClient({ appId: "id", appSecret: "secret" });
+    // no cache, no ownerId, chatId doesn't start with "group:" → DM
+    await client.sendText("some-user-id", "hello");
+    expect(capturedBodies).toHaveLength(1);
+    expect(capturedBodies[0]).toHaveProperty("userIdList", ["some-user-id"]);
+  });
+});
+
 describe("processRawMessage additional msgTypes", () => {
   it("handles position message", async () => {
     const client = makeClient();
@@ -670,7 +774,8 @@ describe("processRawMessage additional msgTypes", () => {
       events: [{ data: { msgType: "unknown_type", messageId: "unk-1", chatType: "p2p", from: "user-1", conversationId: "conv-1", senderName: "Alice", msgData: {} } }],
     });
     const events = await client.processRawMessage(raw);
-    expect(events.length).toBe(0);
+    expect(events.length).toBe(1);
+    expect(events[0]!.text).toBe("[unknown_type]");
   });
 
   it("handles linkCard message", async () => {

@@ -1166,16 +1166,21 @@ describe("pendingApprovalCards", () => {
   });
 
   it("stores and retrieves card info", () => {
-    pendingApprovalCards.set("chat-1", { messageId: "msg-123", lang: "zh" });
+    pendingApprovalCards.set("chat-1", { messageId: "msg-123", lang: "zh", createdAtMs: Date.now() });
     const info = pendingApprovalCards.get("chat-1");
     expect(info?.messageId).toBe("msg-123");
     expect(info?.lang).toBe("zh");
   });
 
   it("deletes card info after retrieval", () => {
-    pendingApprovalCards.set("chat-1", { messageId: "msg-123", lang: "zh" });
+    pendingApprovalCards.set("chat-1", { messageId: "msg-123", lang: "zh", createdAtMs: Date.now() });
     pendingApprovalCards.delete("chat-1");
     expect(pendingApprovalCards.get("chat-1")).toBeUndefined();
+  });
+
+  it("expires old approval card entries", () => {
+    pendingApprovalCards.set("chat-old", { messageId: "msg-old", lang: "zh", createdAtMs: Date.now() - 31 * 60 * 1000 });
+    expect(pendingApprovalCards.get("chat-old")).toBeUndefined();
   });
 });
 

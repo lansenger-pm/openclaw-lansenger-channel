@@ -74,10 +74,20 @@ export function mergeInboundEvents(events: InboundEvent[]): InboundEvent {
 const ACK_MESSAGE_ID_KEY = "__lansenger_ack_msg_id";
 
 const runningAccounts = new Map<string, RunningAccount>();
+const startingAccounts = new Map<string, Promise<boolean>>();
 const accountStatusSinks = new Map<string, (patch: Omit<ChannelAccountSnapshot, "accountId">) => void>();
 const lastInboundChatIds = new Map<string, string>();
 const lastInboundTimes = new Map<string, number>();
 const sessionDeliveryTracker = new Map<string, Set<string>>();
+const SESSION_DELIVERY_TRACKER_MAX = 5000;
+
+function trimSessionDeliveryTracker(): void {
+  if (sessionDeliveryTracker.size <= SESSION_DELIVERY_TRACKER_MAX) return;
+  // Delete oldest half to avoid frequent trimming
+  const keysToDelete = [...sessionDeliveryTracker.keys()].slice(0, Math.floor(SESSION_DELIVERY_TRACKER_MAX / 2));
+  for (const k of keysToDelete) sessionDeliveryTracker.delete(k);
+  log.debug(`trimmed sessionDeliveryTracker: ${keysToDelete.length} entries removed, remaining=${sessionDeliveryTracker.size}`);
+}
 
 // Exported for unit tests
 export function _clearTestState(): void {
@@ -103,6 +113,24 @@ async function startAccount(api: OpenClawPluginApi, accountId?: string | null): 
   }
 
   const key = account.appId || account.accountId || "__default__";
+
+  // Prevent concurrent startAccount for the same key
+  const inFlight = startingAccounts.get(key);
+  if (inFlight) {
+    log.info(`startAccount: waiting for in-flight start (key=${key})`);
+    return inFlight;
+  }
+
+  const startPromise = _startAccountImpl(api, account, key);
+  startingAccounts.set(key, startPromise);
+  try {
+    return await startPromise;
+  } finally {
+    startingAccounts.delete(key);
+  }
+}
+
+async function _startAccountImpl(api: OpenClawPluginApi, account: ResolvedAccount, key: string): Promise<boolean> {
   if (runningAccounts.has(key)) {
     const entry = runningAccounts.get(key)!;
     if (entry.client.isWsAlive()) {
@@ -747,6 +775,7 @@ export async function gatewayStopAccount(ctx: ChannelGatewayContext<ResolvedAcco
     await entry.client.disconnect();
     runningAccounts.delete(key);
   }
+  cancelSyncRetry(key);
   accountStatusSinks.delete(key);
   log.info(`gateway: stopAccount (key=${key})`);
 }
@@ -903,7 +932,6 @@ async function handleDmPolicy(
         });
         const entry = runningAccounts.get(runningKey);
         const client = entry?.client ?? makeClient(account, sdkLogger());
-        client.setChatType(event.senderId, false);
         await client.sendFormatText(event.senderId, reply);
         log.info(`inbound: pairing code sent to sender=${event.senderId}`);
       } catch (e: unknown) {
@@ -1615,6 +1643,7 @@ async function handleInbound(
 
   const sessionDeliveredSet = sessionDeliveryTracker.get(sessionKey) ?? new Set<string>();
   sessionDeliveryTracker.set(sessionKey, sessionDeliveredSet);
+  trimSessionDeliveryTracker();
 
   log.info(`inbound: ${chatType} from=${event.senderId} bot=${account.appId.slice(0, 20)}... agent=${agentId} session=${sessionKey.slice(0, 32)}`);
 

@@ -31,15 +31,38 @@ const LANSENGER_TEXT_CHUNK_LIMIT = 4000;
 
 import { PersistentStore } from "./persistent-store.js";
 
+/**
+ * Get a running client by accountId, or create a temporary one.
+ * Returns { client, dispose } — caller MUST call dispose() when done
+ * (only actually disconnects temporary clients).
+ */
+function borrowClient(account: ResolvedAccount): { client: LansengerClient; dispose: () => Promise<void> } {
+  const running = getRunningClientByAccountId(account.appId);
+  if (running) return { client: running, dispose: async () => {} };
+  const client = makeClient(account);
+  return { client, dispose: () => client.disconnect().catch(() => {}) };
+}
+
 // ══════════════════════════════════════════════
 // PERSISTENT STORES
 // ══════════════════════════════════════════════
 
 const APPROVAL_CARD_FILE = path.join(os.homedir(), ".openclaw", "lansenger-approval-cards.json");
 
-class PersistentApprovalCardStore extends PersistentStore<{ messageId: string; lang: "zh" | "en" }> {
+const APPROVAL_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
+class PersistentApprovalCardStore extends PersistentStore<{ messageId: string; lang: "zh" | "en"; createdAtMs: number }> {
   constructor() {
     super(APPROVAL_CARD_FILE, "approval cards");
+  }
+
+  override get(key: string) {
+    const entry = this.data.get(key);
+    if (entry && Date.now() - entry.createdAtMs > APPROVAL_TTL_MS) {
+      this.delete(key);
+      return undefined;
+    }
+    return entry;
   }
 }
 
@@ -47,9 +70,18 @@ const pendingApprovalCards = new PersistentApprovalCardStore();
 
 const APPROVAL_CALLBACK_FILE = path.join(os.homedir(), ".openclaw", "lansenger-approval-callbacks.json");
 
-class PersistentApprovalCallbackStore extends PersistentStore<{ messageId: string; lang: "zh" | "en"; chatId: string; sessionKey: string }> {
+class PersistentApprovalCallbackStore extends PersistentStore<{ messageId: string; lang: "zh" | "en"; chatId: string; sessionKey: string; createdAtMs: number }> {
   constructor() {
     super(APPROVAL_CALLBACK_FILE, "approval callbacks");
+  }
+
+  override get(key: string) {
+    const entry = this.data.get(key);
+    if (entry && Date.now() - entry.createdAtMs > APPROVAL_TTL_MS) {
+      this.delete(key);
+      return undefined;
+    }
+    return entry;
   }
 }
 
@@ -307,8 +339,8 @@ async function probeLansengerAccount(account: ResolvedAccount): Promise<Lansenge
   if (!account.appId || !account.appSecret) {
     return { ok: false, error: "missing credentials (appId, appSecret)" };
   }
+  const client = makeClient(account);
   try {
-    const client = makeClient(account);
     const token = await client.getAppToken();
     if (token) {
       return { ok: true, appId: account.appId };
@@ -320,6 +352,8 @@ async function probeLansengerAccount(account: ResolvedAccount): Promise<Lansenge
       appId: account.appId,
       error: err instanceof Error ? err.message : String(err),
     };
+  } finally {
+    client.disconnect().catch(() => {});
   }
 }
 
@@ -436,7 +470,7 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
     messaging: {
       targetPrefixes: ["lansenger"],
       normalizeTarget: (target: string) =>
-        target.trim().replace(/^lansenger:/i, "").trim(),
+        (target ?? "").trim().replace(/^lansenger:/i, "").trim(),
       targetResolver: {
         looksLikeId: (id: string) => {
           const trimmed = id?.trim();
@@ -629,10 +663,14 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
         const sdkSessionKey = (ctx as any).sessionKey as string | undefined;
         const sessionAccountId = sdkSessionKey ? getSessionAccountId(sdkSessionKey) : undefined;
         const account = resolveAccount(ctx.cfg, sessionAccountId ?? ctx.accountId);
-        const client = getRunningClientByAccountId(account.appId) ?? makeClient(account);
-        log.debug(`sendText: to=${ctx.to} textLen=${ctx.text?.length ?? 0} accountId=${ctx.accountId ?? "n/a"}`);
-        const result = await client.sendFormatText(ctx.to, ctx.text);
-        return { messageId: result.messageId ?? "", sessionKey: sdkSessionKey };
+        const { client, dispose } = borrowClient(account);
+        try {
+          log.debug(`sendText: to=${ctx.to} textLen=${ctx.text?.length ?? 0} accountId=${ctx.accountId ?? "n/a"}`);
+          const result = await client.sendFormatText(ctx.to, ctx.text);
+          return { messageId: result.messageId ?? "", sessionKey: sdkSessionKey };
+        } finally {
+          await dispose();
+        }
       },
       sendMedia: async (ctx) => {
         const sessionKey = (ctx as any).sessionKey as string | undefined;
@@ -721,11 +759,15 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
         const sdkSessionKey = (ctx as any).sessionKey as string | undefined;
         const sessionAccountId = sdkSessionKey ? getSessionAccountId(sdkSessionKey) : undefined;
         const account = resolveAccount(ctx.cfg, sessionAccountId ?? ctx.accountId);
-        const client = getRunningClientByAccountId(account.appId) ?? makeClient(account);
-        log.debug(`sendFormattedText: to=${ctx.to} textLen=${ctx.text?.length ?? 0} accountId=${account.appId ?? "n/a"}`);
-        const result = await client.sendFormatText(ctx.to, ctx.text);
-        log.debug(`sendFormattedText: result — success=${result.success} messageId=${result.messageId ?? "none"} error=${result.error ?? "none"}`);
-        return [{ channel: "lansenger", messageId: result.messageId ?? "", sessionKey: sdkSessionKey }];
+        const { client, dispose } = borrowClient(account);
+        try {
+          log.debug(`sendFormattedText: to=${ctx.to} textLen=${ctx.text?.length ?? 0} accountId=${account.appId ?? "n/a"}`);
+          const result = await client.sendFormatText(ctx.to, ctx.text);
+          log.debug(`sendFormattedText: result — success=${result.success} messageId=${result.messageId ?? "none"} error=${result.error ?? "none"}`);
+          return [{ channel: "lansenger", messageId: result.messageId ?? "", sessionKey: sdkSessionKey }];
+        } finally {
+          await dispose();
+        }
       },
       textChunkLimit: LANSENGER_TEXT_CHUNK_LIMIT,
       chunkerMode: "markdown",
@@ -1186,16 +1228,26 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
             const approveCard = (lang === "zh" ? payload.zh : payload.en) ?? payload.en;
             const result = await client.sendApproveCard(target.to, approveCard as ApproveCardData);
             if (result.messageId) {
-              const cardKey = account.accountId ? `${account.accountId}:${target.to}` : target.to;
-              pendingApprovalCards.set(cardKey, { messageId: result.messageId, lang: lang as "zh" | "en" });
-              // Store callback mapping for button click resolution
-              if (payload.requestId) {
-                pendingApprovalCallbacks.set(payload.requestId, {
-                  messageId: result.messageId,
-                  lang: lang as "zh" | "en",
-                  chatId: target.to,
-                  sessionKey: payload.sessionKey ?? "unknown",
-                });
+              try {
+                const cardKey = account.accountId ? `${account.accountId}:${target.to}` : target.to;
+                const now = Date.now();
+                pendingApprovalCards.set(cardKey, { messageId: result.messageId, lang: lang as "zh" | "en", createdAtMs: now });
+                // Store callback mapping for button click resolution
+                if (payload.requestId) {
+                  pendingApprovalCallbacks.set(payload.requestId, {
+                    messageId: result.messageId,
+                    lang: lang as "zh" | "en",
+                    chatId: target.to,
+                    sessionKey: payload.sessionKey ?? "unknown",
+                    createdAtMs: now,
+                  });
+                }
+              } catch (e) {
+                // Rollback card mapping on failure
+                const cardKey = account.accountId ? `${account.accountId}:${target.to}` : target.to;
+                pendingApprovalCards.delete(cardKey);
+                if (payload.requestId) pendingApprovalCallbacks.delete(payload.requestId);
+                throw e;
               }
             }
             return { delivered: result.success, messageId: result.messageId ?? null, to: target.to, lang };
@@ -1251,11 +1303,15 @@ export const lansengerPlugin: ChannelPlugin<ResolvedAccount, LansengerProbeResul
          const sdkSessionKey = (ctx as any).sessionKey as string | undefined;
           const sessionAccountId = sdkSessionKey ? getSessionAccountId(sdkSessionKey) : undefined;
           const account = resolveAccount(ctx.cfg, sessionAccountId ?? ctx.accountId);
-         const client = getRunningClientByAccountId(account.appId) ?? makeClient(account);
-         log.debug(`message.sendText: to=${ctx.to} textLen=${ctx.text?.length ?? 0}`);
-         const result = await client.sendFormatText(ctx.to, ctx.text);
-         log.debug(`message.sendText: result — success=${result.success} messageId=${result.messageId ?? "none"}`);
-         return { messageId: result.messageId ?? "" };
+         const { client, dispose } = borrowClient(account);
+         try {
+           log.debug(`message.sendText: to=${ctx.to} textLen=${ctx.text?.length ?? 0}`);
+           const result = await client.sendFormatText(ctx.to, ctx.text);
+           log.debug(`message.sendText: result — success=${result.success} messageId=${result.messageId ?? "none"}`);
+           return { messageId: result.messageId ?? "" };
+         } finally {
+           await dispose();
+         }
       },
     },
   }),

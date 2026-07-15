@@ -187,7 +187,7 @@ export class LansengerClient {
     }
     try {
       const url = `${this.apiGatewayUrl}${API_ENDPOINTS.appToken}?grant_type=client_credential&appid=${this.appId}&secret=${this.appSecret}`;
-      const resp = await fetch(url);
+      const resp = await fetch(url, { signal: AbortSignal.timeout(30_000) });
       if (!resp.ok) {
         this.log.error(`getAppToken: HTTP ${resp.status}`);
         return null;
@@ -301,7 +301,7 @@ export class LansengerClient {
       this.log.debug(`uploadMedia: filePath=${filePath} uploadType=${typeStr} originalName=${originalName ?? "n/a"} filename=${filename}`);
       const form = new FormData();
       form.append("media", new Blob([fileContent]), filename);
-      const resp = await fetch(url, { method: "POST", body: form });
+      const resp = await fetch(url, { method: "POST", body: form, signal: AbortSignal.timeout(300_000) });
       if (!resp.ok) return { error: `Upload HTTP error: ${resp.status}` };
       const data = (await resp.json()) as LansengerApiResponse;
       if (data.errCode !== 0) return { error: data.errMsg ?? "Upload API error" };
@@ -646,7 +646,7 @@ export class LansengerClient {
     if (!token) return { error: "No access token" };
     try {
       const url = `${this.apiGatewayUrl}/v2/groups/fetch?app_token=${token}&page_offset=${pageOffset}&page_size=${pageSize}`;
-      const resp = await fetch(url);
+      const resp = await fetch(url, { signal: AbortSignal.timeout(30_000) });
       if (!resp.ok) return { error: `HTTP error: ${resp.status}` };
       const data = (await resp.json()) as LansengerApiResponse;
       if (data.errCode !== 0) return { error: data.errMsg ?? "API error" };
@@ -672,7 +672,7 @@ export class LansengerClient {
     if (!token) return null;
     try {
       const url = `${this.apiGatewayUrl}/v2/groups/${encodeURIComponent(groupId)}/info/fetch?app_token=${token}`;
-      const resp = await fetch(url);
+      const resp = await fetch(url, { signal: AbortSignal.timeout(30_000) });
       if (!resp.ok) return null;
       const data = (await resp.json()) as LansengerApiResponse;
       if (data.errCode !== 0) {
@@ -694,7 +694,7 @@ export class LansengerClient {
     try {
       let url = `${this.apiGatewayUrl}/v2/groups/${encodeURIComponent(groupId)}/members/fetch?app_token=${token}&page_offset=${pageOffset}`;
       if (pageSize !== undefined) url += `&page_size=${pageSize}`;
-      const resp = await fetch(url);
+      const resp = await fetch(url, { signal: AbortSignal.timeout(30_000) });
       if (!resp.ok) return null;
       const data = (await resp.json()) as LansengerApiResponse;
       if (data.errCode !== 0) {
@@ -719,7 +719,7 @@ export class LansengerClient {
     try {
       let url = `${this.apiGatewayUrl}/v2/groups/${encodeURIComponent(groupId)}/members/is_in_group?app_token=${token}`;
       if (staffId) url += `&staff_id=${encodeURIComponent(staffId)}`;
-      const resp = await fetch(url);
+      const resp = await fetch(url, { signal: AbortSignal.timeout(30_000) });
       if (!resp.ok) return null;
       const data = (await resp.json()) as LansengerApiResponse;
       if (data.errCode !== 0) {
@@ -802,7 +802,7 @@ export class LansengerClient {
     if (!token) return null;
     try {
       const url = `${this.apiGatewayUrl}${API_ENDPOINTS.fetchMedia}/${mediaId}/fetch?app_token=${token}`;
-      const resp = await fetch(url);
+      const resp = await fetch(url, { signal: AbortSignal.timeout(300_000) });
       if (!resp.ok) return null;
       const bytes = Buffer.from(await resp.arrayBuffer());
       let ext: string | undefined;
@@ -841,6 +841,8 @@ export class LansengerClient {
     const tmpPath = path.join(os.tmpdir(), `lansenger_${mediaKind}_${uuid}${namePart}${ext}`);
     try {
       await fs.writeFile(tmpPath, mediaBytes);
+      // Auto-delete temp file after 1 hour
+      setTimeout(() => { fs.unlink(tmpPath).catch(() => {}); }, 3600_000).unref();
       return tmpPath;
     } catch {
       return null;
@@ -1014,6 +1016,7 @@ export class LansengerClient {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ appId: this.appId, secret: this.appSecret }),
+        signal: AbortSignal.timeout(30_000),
       });
       if (!resp.ok) {
         this.log.error(`getWsUrl: HTTP ${resp.status}`);
@@ -1042,6 +1045,7 @@ export class LansengerClient {
     while (this.running) {
       try {
         const ws = new WebSocket(currentUrl);
+        ws.binaryType = "nodebuffer";
         this.ws = ws;
 
         ws.onopen = () => {
@@ -1074,19 +1078,23 @@ export class LansengerClient {
         let resolveClose: (() => void) | null = null;
         const closePromise = new Promise<void>((r) => { resolveClose = r; });
 
+        // at-most-once guard: WS may fire both onerror and onclose
+        let closed = false;
+        const resolveOnce = () => { if (!closed) { closed = true; resolveClose?.(); } };
+
         ws.onclose = (ev) => {
           this.log.info(`WS closed (code=${ev.code} reason=${ev.reason || "none"} wasClean=${ev.wasClean})`);
           this.stopHeartbeat();
           this.clearPongTimeout();
           this.onWsClose?.();
-          resolveClose?.();
+          resolveOnce();
         };
         ws.onerror = (ev) => {
           const errMsg = (ev as any)?.message ?? (ev as any)?.error?.message ?? "unknown";
           this.log.error(`WS error: ${errMsg}`);
           this.stopHeartbeat();
           this.clearPongTimeout();
-          resolveClose?.();
+          resolveOnce();
         };
 
         await closePromise;
@@ -1121,6 +1129,7 @@ export class LansengerClient {
       if (ws.readyState === WebSocket.OPEN) {
         try {
           ws.ping();
+          this.clearPongTimeout();
           this.pongTimeoutTimer = setTimeout(() => {
             if (Date.now() - this.lastPongAt > PONG_TIMEOUT_MS && ws.readyState === WebSocket.OPEN) {
               this.log.error("pong timeout — gracefully closing zombie connection");
@@ -1275,7 +1284,7 @@ export class LansengerClient {
     }
     if (msgType === "appCard") {
       const ac = payload.appCard ?? {};
-      const text = ac.title ?? ac.body?.text ?? ac.appName ?? "";
+      const text = ac.title ?? ac.bodyContent ?? ac.appName ?? "";
       return { text: text ? `[App Card] ${text}` : "[App Card]" };
     }
     if (msgType === "appArticles") {
@@ -1308,7 +1317,7 @@ export class LansengerClient {
       }
       return { text: parts.join("\n") };
     }
-    return { text: null };
+    return { text: `[${msgType}]` };
   }
 
   // ══════════════════════════════════════════════
@@ -1377,11 +1386,12 @@ export class LansengerClient {
     return paths;
   }
 
-  private async postJson(url: string, payload: unknown): Promise<LansengerApiResponse> {
+  private async postJson(url: string, payload: unknown, timeoutMs = 30_000): Promise<LansengerApiResponse> {
     const resp = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     const rawBody = await resp.text();
     if (!resp.ok) return { errCode: -1, errMsg: `HTTP ${resp.status}: ${rawBody.slice(0, 200)}` };
@@ -1524,6 +1534,9 @@ export type LansengerApiResponse = {
 };
 
 export type LansengerWsMessage = {
+  type?: string;
+  eventType?: string;
+  data?: Record<string, any>;
   events?: Array<{ type?: string; data: Record<string, any> }>;
 };
 

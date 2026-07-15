@@ -4,6 +4,33 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.17.7] - 2026-07-15
+
+### Fixed
+
+- **normalizeTarget null/undefined crash** (#11): `target ?? ""` guard added to prevent TypeError when target is nullish.
+- **WS heartbeat pong timer leak** (#10): `clearPongTimeout()` called before each new pong timeout timer to prevent stacking.
+- **session approval decision mapped as allow-once** (#14): `session` now correctly maps to `"allow-session"` instead of `"allow-once"`.
+- **commandAuthorized !== true too strict** (#13): Changed to `=== false` so pairing-mode DMs with undefined auth are not silently dropped.
+- **resolveClose double-call risk** (#15): Added at-most-once guard (`closed` flag) to prevent onerror+onclose both resolving closePromise.
+- **account dedup logic allowing duplicate connections** (#16): `startedAppIds` set tracks actual appIds from accounts to prevent legacy-format section.appId from starting an already-running account.
+- **Dead code debounceMs** (#12): Removed orphan expression statement.
+- **secret-contract code duplication** (#17): `secret-contract-api.ts` now re-exports from `src/secret-contract.ts` instead of duplicating code.
+- **probeLansengerAccount client leak** (#18): `client.disconnect()` called in `finally` block after probing.
+- **appCard text extraction wrong path** (#27): Changed `ac.body?.text` to `ac.bodyContent` to match actual Lansenger API structure.
+- **WebSocket missing binaryType** (#21): Set `ws.binaryType = "nodebuffer"` to handle binary frames correctly.
+- **syncRetryTimers not cleaned on account stop** (#25): `cancelSyncRetry(key)` called in `gatewayStopAccount`.
+- **deliverPending no transaction protection** (#32): Added try/catch with rollback for approval card/callback mapping.
+- **sendFormattedText fallback client leak** (#31): Added `borrowClient` helper that auto-disconnects temporary clients.
+- **LansengerWsMessage type mismatch** (#29): Added `type`, `eventType`, `data` fields to match actual WS message structure.
+- **Unknown msgType messages silently dropped** (#30): Now returns `[msgType]` placeholder text instead of skipping.
+- **uploadMedia uses Web API FormData/Blob** (#23): Declared `engines.node >= 20` since FormData/Blob require Node 20+.
+- **HTTP requests no timeout** (#22): Added `AbortSignal.timeout()` — 30s for regular API, 300s for media upload/download.
+- **autoStart concurrent race condition** (#28): Added `startingAccounts` Map to prevent concurrent `startAccount` for the same key.
+- **pendingApproval entries never expire** (#26): Added `createdAtMs` with 30-minute TTL lazy cleanup on `get()`.
+- **sessionDeliveryTracker unbounded growth** (#20): Added 5000 entry cap with half-size trim when exceeded.
+- **Temp media files never cleaned** (#19): `saveMediaToTemp` auto-deletes files after 1 hour via `setTimeout().unref()`.
+
 ## [3.17.6] - 2026-07-15
 
 ### Fixed
