@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.18.0] - 2026-07-15
+
+### Breaking
+
+- **apiGatewayUrl is now required** — the default value `https://open.e.lanxin.cn/open/apigw` has been removed. Users must explicitly provide their enterprise gateway URL via `openclaw.json` config, setup wizard, or `LANSENGER_API_GATEWAY_URL` environment variable.
+
+### Changed
+
+- `DEFAULT_API_GATEWAY_URL` constant removed from `LansengerClient`. `apiGatewayUrl` type changed to `string | undefined`; constructor logs error when omitted.
+- Setup wizard: `apiGatewayUrl` field marked as required, placeholder changed to generic example.
+- All documentation (5 READMEs, SKILL.md, openclaw.plugin.json): `apiGatewayUrl` marked as required, hardcoded gateway URLs replaced with placeholder `https://your-api-gateway.example.com`.
+- Doc links updated: `https://open.e.lanxin.cn/docs` → `https://developer.lanxin.cn`.
+
 ## [3.17.10] - 2026-07-15
 
 ### Fixed
