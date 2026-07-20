@@ -391,7 +391,7 @@ Ou utiliser le propriétaire détecté automatiquement (`homeChannel`), défini 
 - **Média** — les balises `<media>` fonctionnent pour les fichiers du workspace ; pour les chemins externes, utilisez `lansenger_send_file`.
 - **openclaw skill/message lansenger** — ces commandes CLI n'existent PAS ; utilisez les outils de l'agent.
 - **Copie automatique de la compétence lansenger-setup** — le plugin copie la compétence `lansenger-setup` dans `~/.openclaw/skills/` au démarrage pour que l'agent puisse aider à configurer Lansenger avant l'activation complète du canal. Ce comportement est intentionnel — ne le supprimez pas manuellement.
-- **Outils agent** — les outils agent (`lansenger_send_*`) nécessitent le plugin outils ET une injection réussie de la passerelle — si les outils ne sont pas disponibles, utilisez la CLI comme repli. Les commandes CLI (`lansenger message send-*`) nécessitent `pipx install lansenger-cli`.
+- **Outils agent** — les outils agent (`lansenger_send_*`) sont intégrés dans ce plugin de canal — toujours disponibles lorsque le canal est configuré et en cours d'exécution. Les commandes CLI (`lansenger message send-*`) nécessitent `pipx install lansenger-cli` et constituent une alternative optionnelle.
 - **alsoAllow** — les outils agent sont enregistrés par ce plugin de canal mais peuvent être **invisibles** sous un profil d'outils restrictif. Ajoutez `"tools": { "alsoAllow": ["group:plugins"] }` dans `openclaw.json` pour que l'agent puisse voir et utiliser les outils `lansenger_send_*`. Sans cela, les outils peuvent ne pas apparaître silencieusement dans la liste d'outils de l'agent.
 
 ## Développement

@@ -314,6 +314,7 @@
           "label": "API Gateway URL / API 网关地址",
           "placeholder": "https://your-api-gateway.example.com",
           "sensitive": false,
+          "required": true,
           "help": "Required: your enterprise API gateway URL. / 必填：您的企业 API 网关地址。"
         },
         "dangerouslyAllowPrivateNetwork": {

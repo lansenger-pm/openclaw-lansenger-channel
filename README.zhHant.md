@@ -391,7 +391,7 @@ openclaw config set commands.ownerAllowFrom '["lansenger:使用者ID-1", "lansen
 - **媒體標籤**——`<media>` 標籤適用於工作區檔案；外部路徑請使用 `lansenger_send_file`。
 - **openclaw skill/message lansenger**——這些 CLI 命令不存在；請使用代理工具。
 - **lansenger-setup 技能自動複製**——插件在啟動時將 `lansenger-setup` 技能複製到 `~/.openclaw/skills/`，以便在頻道完全啟用前就能幫助設定藍信。此為設計行為，請勿手動刪除。
-- **代理工具**——代理工具（`lansenger_send_*`）需要工具插件且閘道注入成功——若工具不可用，請使用 CLI 作為備選。CLI 命令（`lansenger message send-*`）需要 `pipx install lansenger-cli`。
+- **代理工具**——代理工具（`lansenger_send_*`）已內建於此頻道插件——頻道設定且執行時始終可用。CLI 命令（`lansenger message send-*`）需要 `pipx install lansenger-cli`，是可選替代方案。
 - **alsoAllow**——本插件註冊了 agent 工具（`lansenger_send_*`），但在嚴格工具策略下可能**不可見**。需在 `openclaw.json` 中新增 `"tools": { "alsoAllow": ["group:plugins"] }` 以確保 agent 能看到並使用這些工具。否則工具可能靜默不出現在 agent 工具列表中。
 
 ## 開發
