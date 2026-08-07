@@ -13,14 +13,14 @@ import { errorShape } from "openclaw/plugin-sdk/gateway-runtime";
 import { listNativeCommandSpecsForConfig } from "openclaw/plugin-sdk/native-command-registry";
 import { resolveNativeCommandsEnabled } from "openclaw/plugin-sdk/native-command-config-runtime";
 import { normalizeCommandBody } from "openclaw/plugin-sdk/command-auth";
-import { pendingApprovalCards, pendingApprovalCallbacks } from "./channel.js";
+import { pendingApprovalCards, pendingApprovalCallbacks, resolveLansengerApprovers } from "./channel.js";
 import { BUILTIN_COMMAND_I18N } from "./command-i18n.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import * as path from "node:path";
 import * as os from "node:os";
 import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 
 const log = createSubsystemLogger("lansenger");
 
@@ -837,6 +837,21 @@ async function handleApproveCardCallback(
   const entry = runningAccounts.get(runningKey);
   const client = entry?.client ?? makeClient(account, sdkLogger());
 
+  // Verify the callback sender is an authorized approver for this account.
+  // The framework gateway does not authenticate the senderId, so the plugin
+  // must enforce this itself to prevent unauthorized approval/denial.
+  const allowedApprovers = resolveLansengerApprovers({ cfg: api.config, accountId: account.accountId });
+  const normalizedApprovers = new Set(allowedApprovers.map((id) => id.replace(/^lansenger:/, "")));
+  if (normalizedApprovers.size > 0 && !normalizedApprovers.has(staffId)) {
+    log.warn(`approveCard callback: rejected — staffId=${staffId} is not an authorized approver (allowed=${[...normalizedApprovers].join(",")})`);
+    try {
+      await client.sendFormatText(chatId, lang === "zh"
+        ? "⚠️ 你没有权限审批此请求。"
+        : "⚠️ You are not authorized to approve this request.");
+    } catch {}
+    return;
+  }
+
   // Map choice to approval decision
   const decisionMap: Record<string, "allow-once" | "allow-session" | "allow-always" | "deny"> = {
     once: "allow-once",
@@ -955,6 +970,9 @@ async function handleDmPolicy(
   // Auto-configure homeChannel on the first DM so tools/apps can resolve the owner ID
   // without needing a DM to come in first (survives gateway restart).
   if (event.senderId && account.appId) {
+    if (!/^[A-Za-z0-9_-]+$/.test(event.senderId)) {
+      log.warn(`autoConfigureHomeChannel: skipped — senderId has unsafe characters: ${event.senderId}`);
+    } else {
     const section = (api.config.channels as any)?.["lansenger"];
     if (section?.configWrites !== false) {
       const isMultiAccount = !!section?.accounts;
@@ -967,21 +985,24 @@ async function handleDmPolicy(
           ? `channels.lansenger.accounts.${accountKey}.homeChannel`
           : "channels.lansenger.homeChannel";
         try {
-          execSync(
-            `openclaw config set ${configPath} "${event.senderId}"`,
-            { stdio: "pipe", timeout: 5000 },
-          );
+          execFileSync("openclaw", ["config", "set", configPath, event.senderId], {
+            stdio: "pipe", timeout: 5000,
+          });
           log.info(`autoConfigureHomeChannel: set ${configPath} = "${event.senderId}"`);
         } catch (e: any) {
           log.warn(`autoConfigureHomeChannel: ${e.message}`);
         }
       }
     }
+    }
   }
 
   // Auto-configure commands.ownerAllowFrom on first DM so the owner can use
   // slash commands without manually adding themselves to the allow list.
   if (account.appId) {
+    if (!/^[A-Za-z0-9_-]+$/.test(event.senderId)) {
+      log.warn(`autoConfigureCommandOwner: skipped — senderId has unsafe characters: ${event.senderId}`);
+    } else {
     try {
       const commandsCfg = (api.config as any)?.commands ?? {};
       const existing: string[] = commandsCfg?.ownerAllowFrom ?? [];
@@ -992,14 +1013,14 @@ async function handleDmPolicy(
       );
       if (!alreadyExists) {
         const updated = [...existing, id];
-        execSync(
-          `openclaw config set commands.ownerAllowFrom '${JSON.stringify(updated)}'`,
-          { stdio: "pipe", timeout: 5000 },
-        );
+        execFileSync("openclaw", ["config", "set", "commands.ownerAllowFrom", JSON.stringify(updated)], {
+          stdio: "pipe", timeout: 5000,
+        });
         log.info(`autoConfigureCommandOwner: set commands.ownerAllowFrom = ${JSON.stringify(updated)}`);
       }
     } catch (e: any) {
       log.warn(`autoConfigureCommandOwner: ${e.message}`);
+    }
     }
   }
 
