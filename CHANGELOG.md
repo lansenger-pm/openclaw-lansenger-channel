@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.18.2] - 2026-08-07
+
+### Changed
+
+- **OpenClaw framework dependency upgraded to `^2026.7.1`** (from `^2026.6.1`): tracks the latest upstream release. The plugin's SDK surface (`channel-core`, `channel-secret-runtime`, `channel-inbound`, `approval-runtime`, `directory-runtime`, etc.) remains fully compatible — no code changes required.
+- Verified against OpenClaw `2026.7.1`: `tsc --noEmit` passes, all 459 tests pass.
+
+### Notes
+
+- Upstream improvements that benefit this channel plugin are now available: exec-approval result routing back to the originating chat (OpenClaw #96160), native sender/conversation identifier passthrough (OpenClaw #91903), and channel ingress recovery hardening.
+
 ## [3.18.1] - 2026-07-15
 
 No code changes — CHANGELOG for v3.18.0 was missing from the published tarball.
