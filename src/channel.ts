@@ -3,6 +3,7 @@ import {
   createChannelPluginBase,
 } from "openclaw/plugin-sdk/channel-core";
 import { createChannelMessageAdapterFromOutbound } from "openclaw/plugin-sdk/channel-outbound";
+import type { ChatType } from "openclaw/plugin-sdk/core";
 import { DEFAULT_ACCOUNT_ID } from "openclaw/plugin-sdk/account-id";
 import type { OpenClawConfig, ChannelPlugin } from "openclaw/plugin-sdk/channel-core";
 import { createChannelApprovalCapability } from "openclaw/plugin-sdk/approval-runtime";
@@ -649,11 +650,19 @@ const chatPlugin = createChatChannelPlugin<ResolvedAccount>({
 
   threading: {
     topLevelReplyToMode: "reply",
-    buildToolContext: ({ context }: any) => ({
-      currentChannelId: (context as any).To as string | undefined,
-      currentChatType: (context as any).ChatType as string | undefined,
-      currentGroupId: (context as any).GroupId as string | undefined,
-    }),
+    buildToolContext: ({ context }: any) => {
+      const rawChatType = (context as any).ChatType as string | undefined;
+      const currentChatType: ChatType | undefined =
+        rawChatType === "group" ? "group"
+        : rawChatType === "channel" ? "channel"
+        : rawChatType === "dm" || rawChatType === "direct" || rawChatType === "p2p" ? "direct"
+        : undefined;
+      return {
+        currentChannelId: (context as any).To as string | undefined,
+        currentChatType,
+        currentGroupId: (context as any).GroupId as string | undefined,
+      };
+    },
   },
 
   outbound: {

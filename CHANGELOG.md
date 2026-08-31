@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.18.4] - 2026-08-31
+
+### Fixed
+
+- **OpenClaw `2026.8.1` compatibility**: upstream removed the bare `openclaw/plugin-sdk`, `openclaw/plugin-sdk/channel-runtime`, and `openclaw/plugin-sdk/channel-secret-runtime` subpath exports, which broke plugin loading with module-resolution errors. Migrated the affected imports to their new homes: gateway context types now come from `channel-contract`, account status sink / abort helpers from `channel-outbound` (the stable destination ahead of the 2026-09-01 `channel-lifecycle` removal gate), and channel secret helpers from `channel-secret-basic-runtime`.
+- **Inbound debounce flush contract**: `createChannelInboundDebouncer` now requires `onFlush` to return an `InboundDebounceFlush` (`admission` / `completion`) built via `createFlush`, instead of a bare promise. Adapted both debounce call sites to the new lifecycle protocol; admission releases when dispatch completes, preserving the previous enqueue/flush behavior.
+- **Threading tool context typing**: `currentChatType` is now typed as the SDK's `ChatType` union (`direct | group | channel`) instead of a raw string. The adapter normalizes both Lansenger-style values (`dm`/`group`) and SDK-style values (`direct`/`group`/`channel`).
+- Verified against OpenClaw `2026.8.1`: `tsc` passes, all 461 tests pass.
+
 ## [3.18.3] - 2026-08-20
 
 ### Fixed

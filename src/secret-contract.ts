@@ -1,8 +1,8 @@
-import type { SecretTargetRegistryEntry, ResolverContext, SecretDefaults } from "openclaw/plugin-sdk/channel-secret-runtime";
+import type { SecretTargetRegistryEntry, ResolverContext, SecretDefaults } from "openclaw/plugin-sdk/channel-secret-basic-runtime";
 import {
   getChannelSurface,
   collectSimpleChannelFieldAssignments,
-} from "openclaw/plugin-sdk/channel-secret-runtime";
+} from "openclaw/plugin-sdk/channel-secret-basic-runtime";
 
 // ── Target Registry ──────────────────────────────────────────
 // Registers the appSecret field so the framework knows it's a

@@ -1,7 +1,7 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/channel-core";
-import type { ChannelGatewayContext, ChannelAccountSnapshot } from "openclaw/plugin-sdk";
+import type { ChannelGatewayContext, ChannelAccountSnapshot } from "openclaw/plugin-sdk/channel-contract";
 import { createSubsystemLogger } from "openclaw/plugin-sdk/logging-core";
-import { createAccountStatusSink, waitUntilAbort } from "openclaw/plugin-sdk/channel-runtime";
+import { createAccountStatusSink, waitUntilAbort } from "openclaw/plugin-sdk/channel-outbound";
 import { CHANNEL_APPROVAL_NATIVE_RUNTIME_CONTEXT_CAPABILITY, resolveApprovalOverGateway } from "openclaw/plugin-sdk/approval-handler-runtime";
 import { registerChannelRuntimeContext } from "openclaw/plugin-sdk/channel-runtime-context";
 import { createChannelInboundDebouncer, shouldDebounceTextInbound, resolveInboundDebounceMs } from "openclaw/plugin-sdk/channel-inbound";
@@ -144,10 +144,12 @@ async function _startAccountImpl(api: OpenClawPluginApi, account: ResolvedAccoun
       buildKey: (event: InboundEvent) => `${event.chatId}:${event.senderId}`,
       shouldDebounce: (event: InboundEvent) =>
         shouldDebounceTextInbound({ text: event.text, cfg: api.config, hasMedia: !!event.mediaPaths?.length }),
-      onFlush: async (events: InboundEvent[]) => {
-        const merged = mergeInboundEvents(events);
-        await handleInbound(api, merged, account, key);
-      },
+      onFlush: (events: InboundEvent[], createFlush) => createFlush({
+        dispatch: async () => {
+          const merged = mergeInboundEvents(events);
+          await handleInbound(api, merged, account, key);
+        },
+      }),
     });
     debouncer = { debounceMs: resolvedMs, enqueue: created.enqueue, flushKey: created.flushKey };
     log.info(`debounce enabled: debounceMs=${resolvedMs} key=${key}`);
@@ -684,10 +686,12 @@ export async function gatewayStartAccount(ctx: ChannelGatewayContext<ResolvedAcc
       buildKey: (event: InboundEvent) => `${event.chatId}:${event.senderId}`,
       shouldDebounce: (event: InboundEvent) =>
         shouldDebounceTextInbound({ text: event.text, cfg: api.config, hasMedia: !!event.mediaPaths?.length }),
-      onFlush: async (events: InboundEvent[]) => {
-        const merged = mergeInboundEvents(events);
-        await handleInbound(api, merged, account, key);
-      },
+      onFlush: (events: InboundEvent[], createFlush) => createFlush({
+        dispatch: async () => {
+          const merged = mergeInboundEvents(events);
+          await handleInbound(api, merged, account, key);
+        },
+      }),
     });
     debouncer = { debounceMs: resolvedMs, enqueue: created.enqueue, flushKey: created.flushKey };
     log.info(`gateway debounce enabled: debounceMs=${resolvedMs} key=${key}`);
