@@ -78,20 +78,9 @@ const startingAccounts = new Map<string, Promise<boolean>>();
 const accountStatusSinks = new Map<string, (patch: Omit<ChannelAccountSnapshot, "accountId">) => void>();
 const lastInboundChatIds = new Map<string, string>();
 const lastInboundTimes = new Map<string, number>();
-const sessionDeliveryTracker = new Map<string, Set<string>>();
-const SESSION_DELIVERY_TRACKER_MAX = 5000;
-
-function trimSessionDeliveryTracker(): void {
-  if (sessionDeliveryTracker.size <= SESSION_DELIVERY_TRACKER_MAX) return;
-  // Delete oldest half to avoid frequent trimming
-  const keysToDelete = [...sessionDeliveryTracker.keys()].slice(0, Math.floor(SESSION_DELIVERY_TRACKER_MAX / 2));
-  for (const k of keysToDelete) sessionDeliveryTracker.delete(k);
-  log.debug(`trimmed sessionDeliveryTracker: ${keysToDelete.length} entries removed, remaining=${sessionDeliveryTracker.size}`);
-}
 
 // Exported for unit tests
 export function _clearTestState(): void {
-  sessionDeliveryTracker.clear();
   lastInboundChatIds.clear();
   lastInboundTimes.clear();
   sessionAccountTracker.clear();
@@ -1417,7 +1406,6 @@ async function deliverInboundCore(
   refMsgId: string | undefined,
   turnTextDelivered: Set<string>,
   turnMediaDelivered: Set<string>,
-  sessionDeliveredSet: Set<string>,
   ackMessageId: string | undefined,
 ): Promise<void> {
   const replyTo = event.chatId;
@@ -1517,11 +1505,9 @@ async function deliverInboundCore(
 
                 const messageIds: string[] = [];
                 const turnTextKey = text?.trim() ? `${text.trim().slice(0, 80)}:${text.trim().length}` : "";
-                const sessionTextKey = turnTextKey ? `t:${sessionKey}:${turnTextKey}` : "";
 
-                if (text?.trim() && !turnTextDelivered.has(turnTextKey) && !sessionDeliveredSet.has(sessionTextKey)) {
+                if (text?.trim() && !turnTextDelivered.has(turnTextKey)) {
                   turnTextDelivered.add(turnTextKey);
-                  sessionDeliveredSet.add(sessionTextKey);
                   const result = await deliverReply(client, to, text, { reminder, refMsgId });
                   if (result.messageId) messageIds.push(result.messageId);
                 }
@@ -1661,10 +1647,6 @@ async function handleInbound(
     setSessionAccountId(sessionKey, account.accountId);
   }
 
-  const sessionDeliveredSet = sessionDeliveryTracker.get(sessionKey) ?? new Set<string>();
-  sessionDeliveryTracker.set(sessionKey, sessionDeliveredSet);
-  trimSessionDeliveryTracker();
-
   log.info(`inbound: ${chatType} from=${event.senderId} bot=${account.appId.slice(0, 20)}... agent=${agentId} session=${sessionKey.slice(0, 32)}`);
 
   // ── TEXT ASSEMBLY ──
@@ -1689,7 +1671,7 @@ async function handleInbound(
     cmdResult.textForCommands, cmdResult.commandAuthorized,
     cmdResult.allowTextCommands, cmdResult.shouldComputeAuth, cmdResult.hasCommand,
     cmdResult.botUsername, groupMeta, reminder, refMsgId,
-    turnTextDelivered, turnMediaDelivered, sessionDeliveredSet, ackMessageId,
+    turnTextDelivered, turnMediaDelivered, ackMessageId,
   );
 }
 

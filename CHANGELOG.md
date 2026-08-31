@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.18.3] - 2026-08-20
+
+### Fixed
+
+- **Session-scoped text dedup silenced legitimate replies**: The `sessionDeliveryTracker` deduplicated outbound text by a content hash (`first 80 chars + length`) across the entire OpenClaw session lifetime, with no per-entry expiry — only a coarse 5000-session size cap. As a result, when the agent sent the same short text (e.g. a greeting, "收到", a confirmation, or an identical status/error message) in different turns of the same session, the second and all subsequent occurrences were silently dropped without sending or logging. Removed the session-level tracker entirely (`sessionDeliveryTracker`, `sessionDeliveredSet`, `trimSessionDeliveryTracker`); only per-turn dedup (`turnTextDelivered`/`turnMediaDelivered`) remains, which matches the original design intent of preventing duplicates within a single inbound turn. Media delivery was already turn-only and is unaffected.
+
 ## [3.18.2] - 2026-08-07
 
 ### Changed

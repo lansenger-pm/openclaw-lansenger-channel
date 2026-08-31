@@ -1102,6 +1102,103 @@ describe("handleInbound policies (via webhook)", () => {
   });
 
   // =====================================================================
+  // 5b. text dedup scope
+  // =====================================================================
+  describe("text dedup scope", () => {
+    it("deduplicates identical text within one turn", async () => {
+      api = makeNoCredApi({ dmPolicy: "open" });
+      startLansengerGateway(api);
+
+      const fetchCalls: Array<{ url: string; body: any }> = [];
+      const inboundRun = vi.fn().mockImplementation(async (params: any) => {
+        const turn = params.adapter.resolveTurn();
+        await turn.delivery.deliver(
+          { text: "OK", to: "user-1" },
+          { kind: "final" },
+        );
+        await turn.delivery.deliver(
+          { text: "OK", to: "user-1" },
+          { kind: "final" },
+        );
+      });
+      api.runtime.channel.inbound.run = inboundRun;
+
+      vi.stubGlobal("fetch", async (url: string | Request, init?: any) => {
+        const u = typeof url === "string" ? url : url.url;
+        if (u.includes("apptoken"))
+          return new Response(
+            JSON.stringify({ errCode: 0, errMsg: "", data: { appToken: "tok", expiresIn: 7200 } }),
+            { headers: { "content-type": "application/json" } },
+          );
+        if (u.includes("bot/messages/create") || u.includes("messages/group/create")) {
+          const body = init?.body ? JSON.parse(init.body.toString()) : {};
+          fetchCalls.push({ url: u, body });
+        }
+        return new Response(
+          JSON.stringify({ errCode: 0, errMsg: "", data: { msgId: "m1" } }),
+          { headers: { "content-type": "application/json" } },
+        );
+      });
+
+      const route = api._httpRoutes.at(-1)!
+      await route.handler(makeReq(dmWebhookBody({ senderId: "user-1" })), makeRes());
+
+      const deliveryCalls = fetchCalls.filter(
+        (c) => c.body.msgType === "formatText" || c.body.msgType === "text",
+      );
+      expect(deliveryCalls.length).toBe(1);
+    });
+
+    it("delivers identical text again in a later turn of the same session", async () => {
+      api = makeNoCredApi({ dmPolicy: "open" });
+      startLansengerGateway(api);
+
+      const fetchCalls: Array<{ url: string; body: any }> = [];
+      const inboundRun = vi.fn().mockImplementation(async (params: any) => {
+        const turn = params.adapter.resolveTurn();
+        await turn.delivery.deliver(
+          { text: "OK", to: "user-1" },
+          { kind: "final" },
+        );
+      });
+      api.runtime.channel.inbound.run = inboundRun;
+
+      vi.stubGlobal("fetch", async (url: string | Request, init?: any) => {
+        const u = typeof url === "string" ? url : url.url;
+        if (u.includes("apptoken"))
+          return new Response(
+            JSON.stringify({ errCode: 0, errMsg: "", data: { appToken: "tok", expiresIn: 7200 } }),
+            { headers: { "content-type": "application/json" } },
+          );
+        if (u.includes("bot/messages/create") || u.includes("messages/group/create")) {
+          const body = init?.body ? JSON.parse(init.body.toString()) : {};
+          fetchCalls.push({ url: u, body });
+        }
+        return new Response(
+          JSON.stringify({ errCode: 0, errMsg: "", data: { msgId: "m1" } }),
+          { headers: { "content-type": "application/json" } },
+        );
+      });
+
+      const route = api._httpRoutes.at(-1)!
+      await route.handler(
+        makeReq(dmWebhookBody({ senderId: "user-1", messageId: "msg-dm-1" })),
+        makeRes(),
+      );
+      await route.handler(
+        makeReq(dmWebhookBody({ senderId: "user-1", messageId: "msg-dm-2" })),
+        makeRes(),
+      );
+
+      const deliveryCalls = fetchCalls.filter(
+        (c) => c.body.msgType === "formatText" || c.body.msgType === "text",
+      );
+      expect(inboundRun).toHaveBeenCalledTimes(2);
+      expect(deliveryCalls.length).toBe(2);
+    });
+  });
+
+  // =====================================================================
   // 6. deliverReply formatText → text fallback
   // =====================================================================
   describe("deliverReply", () => {
