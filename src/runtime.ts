@@ -5,7 +5,7 @@ import { createAccountStatusSink, waitUntilAbort } from "openclaw/plugin-sdk/cha
 import { CHANNEL_APPROVAL_NATIVE_RUNTIME_CONTEXT_CAPABILITY, resolveApprovalOverGateway } from "openclaw/plugin-sdk/approval-handler-runtime";
 import { registerChannelRuntimeContext } from "openclaw/plugin-sdk/channel-runtime-context";
 import { createChannelInboundDebouncer, shouldDebounceTextInbound, resolveInboundDebounceMs } from "openclaw/plugin-sdk/channel-inbound";
-import { LansengerClient } from "./client.js";
+import { LansengerClient, MAX_CONNECTION_AGE_MS } from "./client.js";
 import type { InboundEvent, ClientLogger, ApiResult, ApproveCardData, LansengerCommand, ReminderParams, GroupSessionMeta } from "./client.js";
 import { resolveAccount, makeClient, isPathAllowed } from "./channel.js";
 import type { ResolvedAccount } from "./channel.js";
@@ -27,6 +27,7 @@ const log = createSubsystemLogger("lansenger");
 function sdkLogger(): ClientLogger {
   return {
     info: (msg: string) => log.info(msg),
+    warn: (msg: string) => log.warn(msg),
     error: (msg: string) => log.error(msg),
     debug: (msg: string) => log.debug(msg),
   };
@@ -79,12 +80,70 @@ const accountStatusSinks = new Map<string, (patch: Omit<ChannelAccountSnapshot, 
 const lastInboundChatIds = new Map<string, string>();
 const lastInboundTimes = new Map<string, number>();
 
+/**
+ * Per-key start mutex shared by startAccount (autoStart) and gatewayStartAccount (host-driven).
+ * Previously the two paths used different bookkeeping (startingAccounts vs runningAccounts)
+ * and could run concurrently for the same key, creating orphan clients with live WS
+ * connections that nothing would ever disconnect (the "zombie connection" defect).
+ */
+const startLocks = new Map<string, Promise<void>>();
+
+async function withStartLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const prev = startLocks.get(key) ?? Promise.resolve();
+  let release!: () => void;
+  const current = new Promise<void>((resolve) => { release = resolve; });
+  startLocks.set(key, current);
+  try {
+    await prev;
+    return await fn();
+  } finally {
+    release();
+    if (startLocks.get(key) === current) startLocks.delete(key);
+  }
+}
+
+/** Health patrol: periodic liveness check + connection age rotation. */
+const HEALTH_PATROL_INTERVAL_MS = 30_000;
+let healthPatrolTimer: ReturnType<typeof setInterval> | null = null;
+let healthPatrolTick = 0;
+
+/**
+ * Stable, order-insensitive JSON signature of a resolved account. Used to decide
+ * whether a gatewayStartAccount call should ADOPT the existing healthy client
+ * (same config, e.g. autoStart/host race at boot) or RECONNECT (config changed).
+ */
+function accountConfigSignature(account: ResolvedAccount): string {
+  const stable = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(stable);
+    if (v && typeof v === "object") {
+      const out: Record<string, unknown> = {};
+      for (const k of Object.keys(v as Record<string, unknown>).sort()) {
+        out[k] = stable((v as Record<string, unknown>)[k]);
+      }
+      return out;
+    }
+    return v;
+  };
+  try {
+    return JSON.stringify(stable(account));
+  } catch {
+    return "";
+  }
+}
+
 // Exported for unit tests
 export function _clearTestState(): void {
   lastInboundChatIds.clear();
   lastInboundTimes.clear();
   sessionAccountTracker.clear();
   runningAccounts.clear();
+  startingAccounts.clear();
+  startLocks.clear();
+  if (healthPatrolTimer) {
+    clearInterval(healthPatrolTimer);
+    healthPatrolTimer = null;
+  }
+  healthPatrolTick = 0;
 }
 const sessionAccountTracker = new Map<string, string>();
 
@@ -110,13 +169,30 @@ async function startAccount(api: OpenClawPluginApi, accountId?: string | null): 
     return inFlight;
   }
 
-  const startPromise = _startAccountImpl(api, account, key);
+  const startPromise = withStartLock(key, () => _startAccountImpl(api, account, key));
   startingAccounts.set(key, startPromise);
   try {
     return await startPromise;
   } finally {
     startingAccounts.delete(key);
   }
+}
+
+/**
+ * Dual-contract onFlush (OpenClaw 2026.7.1 + 2026.8.1 compatible):
+ *  - 2026.8.1 passes a `createFlush` builder (admission/completion lifecycle) and
+ *    expects the flush object it returns;
+ *  - 2026.7.1 calls onFlush(items) with ONE argument and awaits a bare promise.
+ * Detect at runtime which contract the host uses so one build runs on both.
+ */
+function makeDualContractOnFlush(api: OpenClawPluginApi, account: ResolvedAccount, key: string): any {
+  return (events: InboundEvent[], createFlush?: any) => {
+    const dispatch = async () => {
+      const merged = mergeInboundEvents(events);
+      await handleInbound(api, merged, account, key);
+    };
+    return createFlush ? createFlush({ dispatch }) : dispatch();
+  };
 }
 
 async function _startAccountImpl(api: OpenClawPluginApi, account: ResolvedAccount, key: string): Promise<boolean> {
@@ -130,7 +206,6 @@ async function _startAccountImpl(api: OpenClawPluginApi, account: ResolvedAccoun
     try { await entry.client.disconnect(); } catch {}
     runningAccounts.delete(key);
   }
-
   const client = makeClient(account, sdkLogger());
 
   const debounceApi = (api.runtime as any)?.channel?.debounce;
@@ -144,12 +219,7 @@ async function _startAccountImpl(api: OpenClawPluginApi, account: ResolvedAccoun
       buildKey: (event: InboundEvent) => `${event.chatId}:${event.senderId}`,
       shouldDebounce: (event: InboundEvent) =>
         shouldDebounceTextInbound({ text: event.text, cfg: api.config, hasMedia: !!event.mediaPaths?.length }),
-      onFlush: (events: InboundEvent[], createFlush) => createFlush({
-        dispatch: async () => {
-          const merged = mergeInboundEvents(events);
-          await handleInbound(api, merged, account, key);
-        },
-      }),
+      onFlush: makeDualContractOnFlush(api, account, key),
     });
     debouncer = { debounceMs: resolvedMs, enqueue: created.enqueue, flushKey: created.flushKey };
     log.info(`debounce enabled: debounceMs=${resolvedMs} key=${key}`);
@@ -363,12 +433,24 @@ export function startLansengerGateway(api: OpenClawPluginApi): void {
   });
 
   api.registerGatewayMethod("lansenger.status", async (opts) => {
-    const entries = Array.from(runningAccounts.entries()).map(([key, entry]) => ({
-      appId: key,
-      accountId: entry.account?.accountId,
-      running: true,
-    }));
-    opts.respond(true, { running: entries.length > 0, accounts: entries });
+    // P4 fix: report REAL liveness instead of a hardcoded running:true. A zombie
+    // entry (dead WS still in runningAccounts) previously showed as "running".
+    const entries = Array.from(runningAccounts.entries()).map(([key, entry]) => {
+      const wsAlive = entry.client.isWsAlive();
+      const ageMs = entry.client.wsAgeMs();
+      const lastPongAgeMs = entry.client.lastPongAgeMs();
+      return {
+        appId: key,
+        accountId: entry.account?.accountId,
+        running: wsAlive,
+        wsAlive,
+        wsState: entry.client.wsState(),
+        connectedAtMs: entry.client.wsOpenedAtMs() || null,
+        connectionAgeSec: ageMs ? Math.round(ageMs / 1000) : null,
+        lastPongAgeSec: lastPongAgeMs >= 0 ? Math.round(lastPongAgeMs / 1000) : null,
+      };
+    });
+    opts.respond(true, { running: entries.length > 0 && entries.every((e) => e.wsAlive), accounts: entries });
   });
 
   api.registerHttpRoute({
@@ -511,6 +593,7 @@ export function startLansengerGateway(api: OpenClawPluginApi): void {
   });
 
   autoStart(api, accounts);
+  startHealthPatrol(api);
 }
 
 /**
@@ -665,111 +748,245 @@ export async function gatewayStartAccount(ctx: ChannelGatewayContext<ResolvedAcc
 
   accountStatusSinks.set(key, statusSink);
 
-  if (runningAccounts.has(key)) {
-    const entry = runningAccounts.get(key)!;
-    log.info(`gateway: disconnecting existing WS for reconnection with updated config (key=${key})`);
-    try { await entry.client.disconnect(); } catch {}
-    runningAccounts.delete(key);
-  }
+  // The whole start section runs under the per-key mutex shared with startAccount.
+  // This closes the boot race where autoStart and the host-driven start each created
+  // a client for the same key concurrently, leaving an orphan with a live WS
+  // connection that nothing would ever disconnect ("zombie connection" defect).
+  let ownedClient: LansengerClient | undefined;
+  let adopted = false;
 
-  const api = pluginApi!;
-  const client = makeClient(account, sdkLogger());
-
-  const debounceApi = (api.runtime as any)?.channel?.debounce;
-  const debounceMs = debounceApi ? resolveInboundDebounceMs({ cfg: api.config, channel: "lansenger" }) : 0;
-  let debouncer: RunningAccount["debouncer"] = undefined;
-
-  if (debounceApi && debounceMs > 0) {
-    const { debounceMs: resolvedMs, debouncer: created } = createChannelInboundDebouncer({
-      cfg: api.config,
-      channel: "lansenger",
-      buildKey: (event: InboundEvent) => `${event.chatId}:${event.senderId}`,
-      shouldDebounce: (event: InboundEvent) =>
-        shouldDebounceTextInbound({ text: event.text, cfg: api.config, hasMedia: !!event.mediaPaths?.length }),
-      onFlush: (events: InboundEvent[], createFlush) => createFlush({
-        dispatch: async () => {
-          const merged = mergeInboundEvents(events);
-          await handleInbound(api, merged, account, key);
-        },
-      }),
-    });
-    debouncer = { debounceMs: resolvedMs, enqueue: created.enqueue, flushKey: created.flushKey };
-    log.info(`gateway debounce enabled: debounceMs=${resolvedMs} key=${key}`);
-  }
-
-  client.setMessageHandler(async (event: InboundEvent) => {
-    // Callback events must bypass the debouncer — they have no text to debounce
-    if (event.approveCardCallback) {
-      await handleInbound(api, event, account, key);
-      return;
-    }
-    if (debouncer) {
-      await debouncer.enqueue(event);
-    } else {
-      await handleInbound(api, event, account, key);
-    }
-  });
-  client.setWsLifecycleCallbacks({
-    onOpen: () => {
-      statusSink({ connected: true, lastConnectedAt: Date.now(), lastError: null });
-      log.info(`gateway: WS connected (key=${key})`);
-    },
-    onClose: () => {
-      statusSink({ connected: false });
-      log.info(`gateway: WS disconnected (key=${key})`);
-    },
-  });
-
-  const connected = await client.connect();
-  if (!connected) {
-    statusSink({ connected: false, lastError: "Failed to connect to Lansenger WebSocket" });
-    throw new Error("Failed to connect to Lansenger WebSocket");
-  }
-
-  runningAccounts.set(key, { accountId: ctx.accountId, account, client, debouncer });
-  statusSink({ connected: true, lastConnectedAt: Date.now(), lastError: null });
-  log.info(`gateway: started (key=${key} accountId=${ctx.accountId})`);
-
-  // Register native approval runtime context so the framework can route
-  // approval cards through our nativeRuntime.deliverPending path.
-  if (ctx.channelRuntime) {
-    registerChannelRuntimeContext({
-      channelRuntime: ctx.channelRuntime,
-      channelId: "lansenger",
-      accountId: ctx.accountId,
-      capability: CHANNEL_APPROVAL_NATIVE_RUNTIME_CONTEXT_CAPABILITY,
-      context: { appId: account.appId },
-      abortSignal: ctx.abortSignal,
-    });
-    // Sync native slash commands (fire-and-forget — don't block gateway startup)
-    if (pluginApi) {
-      syncLansengerNativeCommands(client, pluginApi, key, account).catch((e) =>
-        log.error(`syncCommands: unhandled error — ${e instanceof Error ? e.message : String(e)} (key=${key})`),
+  await withStartLock(key, async () => {
+    const existing = runningAccounts.get(key);
+    if (existing) {
+      const configChanged = accountConfigSignature(existing.account) !== accountConfigSignature(account);
+      if (!configChanged && existing.client.isWsAlive()) {
+        // Same config + healthy connection (typical boot race with autoStart): adopt it
+        // instead of tearing it down and dialing a second connection for the same appId
+        // (the server-side session is last-writer-wins, so duplicate dials cause routing flaps).
+        adopted = true;
+        ownedClient = existing.client;
+        log.info(
+          `gateway: adopting existing healthy WS (key=${key} wsState=${existing.client.wsState()} ` +
+          `age=${Math.round(existing.client.wsAgeMs() / 1000)}s accountId=${ctx.accountId})`,
+        );
+        // Rebind lifecycle callbacks so THIS context's status sink receives updates.
+        existing.client.setWsLifecycleCallbacks({
+          onOpen: () => {
+            statusSink({ connected: true, lastConnectedAt: Date.now(), lastError: null });
+            log.info(`gateway: WS connected (key=${key})`);
+          },
+          onClose: () => {
+            statusSink({ connected: false });
+            log.info(`gateway: WS disconnected (key=${key})`);
+          },
+        });
+        statusSink({ connected: true, lastConnectedAt: Date.now(), lastError: null });
+        // Register the native approval runtime context even when adopting: the
+        // original starter may have been autoStart (startAccount), which never
+        // registers it — the pre-fix code always re-dialed and registered here.
+        // Command sync is NOT repeated: the original starter already synced.
+        if (ctx.channelRuntime) {
+          registerChannelRuntimeContext({
+            channelRuntime: ctx.channelRuntime,
+            channelId: "lansenger",
+            accountId: ctx.accountId,
+            capability: CHANNEL_APPROVAL_NATIVE_RUNTIME_CONTEXT_CAPABILITY,
+            context: { appId: account.appId },
+            abortSignal: ctx.abortSignal,
+          });
+        }
+        return;
+      }
+      log.info(
+        `gateway: disconnecting existing WS for reconnection (key=${key} reason=${configChanged ? "config-changed" : "ws-dead"} ` +
+        `wsState=${existing.client.wsState()})`,
       );
-    }
-  }
-
-  return waitUntilAbort(ctx.abortSignal, async () => {
-    const e = runningAccounts.get(key);
-    if (e) {
-      await e.client.disconnect();
+      try { await existing.client.disconnect(); } catch {}
       runningAccounts.delete(key);
     }
-    accountStatusSinks.delete(key);
-    log.info(`gateway: stopped on abort (key=${key})`);
+
+    const api = pluginApi!;
+    const client = makeClient(account, sdkLogger());
+
+    const debounceApi = (api.runtime as any)?.channel?.debounce;
+    const debounceMs = debounceApi ? resolveInboundDebounceMs({ cfg: api.config, channel: "lansenger" }) : 0;
+    let debouncer: RunningAccount["debouncer"] = undefined;
+
+    if (debounceApi && debounceMs > 0) {
+      const { debounceMs: resolvedMs, debouncer: created } = createChannelInboundDebouncer({
+        cfg: api.config,
+        channel: "lansenger",
+        buildKey: (event: InboundEvent) => `${event.chatId}:${event.senderId}`,
+        shouldDebounce: (event: InboundEvent) =>
+          shouldDebounceTextInbound({ text: event.text, cfg: api.config, hasMedia: !!event.mediaPaths?.length }),
+        onFlush: makeDualContractOnFlush(api, account, key),
+      });
+      debouncer = { debounceMs: resolvedMs, enqueue: created.enqueue, flushKey: created.flushKey };
+      log.info(`gateway debounce enabled: debounceMs=${resolvedMs} key=${key}`);
+    }
+
+    client.setMessageHandler(async (event: InboundEvent) => {
+      // Callback events must bypass the debouncer — they have no text to debounce
+      if (event.approveCardCallback) {
+        await handleInbound(api, event, account, key);
+        return;
+      }
+      if (debouncer) {
+        await debouncer.enqueue(event);
+      } else {
+        await handleInbound(api, event, account, key);
+      }
+    });
+    client.setWsLifecycleCallbacks({
+      onOpen: () => {
+        statusSink({ connected: true, lastConnectedAt: Date.now(), lastError: null });
+        log.info(`gateway: WS connected (key=${key})`);
+      },
+      onClose: () => {
+        statusSink({ connected: false });
+        log.info(`gateway: WS disconnected (key=${key})`);
+      },
+    });
+
+    const connected = await client.connect();
+    if (!connected) {
+      statusSink({ connected: false, lastError: "Failed to connect to Lansenger WebSocket" });
+      throw new Error("Failed to connect to Lansenger WebSocket");
+    }
+
+    runningAccounts.set(key, { accountId: ctx.accountId, account, client, debouncer });
+    ownedClient = client;
+    statusSink({ connected: true, lastConnectedAt: Date.now(), lastError: null });
+    log.info(`gateway: started (key=${key} accountId=${ctx.accountId})`);
+
+    // Register native approval runtime context so the framework can route
+    // approval cards through our nativeRuntime.deliverPending path.
+    if (ctx.channelRuntime) {
+      registerChannelRuntimeContext({
+        channelRuntime: ctx.channelRuntime,
+        channelId: "lansenger",
+        accountId: ctx.accountId,
+        capability: CHANNEL_APPROVAL_NATIVE_RUNTIME_CONTEXT_CAPABILITY,
+        context: { appId: account.appId },
+        abortSignal: ctx.abortSignal,
+      });
+      // Sync native slash commands (fire-and-forget — don't block gateway startup)
+      if (pluginApi) {
+        syncLansengerNativeCommands(client, pluginApi, key, account).catch((e) =>
+          log.error(`syncCommands: unhandled error — ${e instanceof Error ? e.message : String(e)} (key=${key})`),
+        );
+      }
+    }
+  });
+
+  const clientRef = ownedClient!;
+  return waitUntilAbort(ctx.abortSignal, async () => {
+    // Identity check (P2 fix): only tear down the entry WE created/adopted. Previously
+    // this cleanup captured only the key, so when two contexts raced for the same key,
+    // the older context's abort would disconnect the NEWER context's live client —
+    // killing the server-routed connection while an orphan stayed alive (silent death).
+    const e = runningAccounts.get(key);
+    if (e && e.client === clientRef) {
+      await e.client.disconnect();
+      runningAccounts.delete(key);
+    } else if (e) {
+      log.info(
+        `gateway: abort cleanup skipped — entry now owned by another context (key=${key} ` +
+        `currentAccountId=${e.accountId ?? "n/a"})`,
+      );
+    }
+    // Only remove the status sink if it is still OURS — an adopting context has
+    // already replaced it, and deleting theirs would leave future patrol-healed
+    // clients without status callbacks.
+    if (accountStatusSinks.get(key) === statusSink) {
+      accountStatusSinks.delete(key);
+    }
+    log.info(`gateway: stopped on abort (key=${key} adopted=${adopted})`);
   });
 }
 
 export async function gatewayStopAccount(ctx: ChannelGatewayContext<ResolvedAccount>): Promise<void> {
   const key = ctx.account.appId || ctx.accountId || "__default__";
-  const entry = runningAccounts.get(key);
-  if (entry) {
-    await entry.client.disconnect();
-    runningAccounts.delete(key);
-  }
+  await withStartLock(key, async () => {
+    const entry = runningAccounts.get(key);
+    if (entry) {
+      await entry.client.disconnect();
+      runningAccounts.delete(key);
+    }
+  });
   cancelSyncRetry(key);
   accountStatusSinks.delete(key);
   log.info(`gateway: stopAccount (key=${key})`);
+}
+
+/**
+ * Health patrol (P4 fix): every 30s check each running account.
+ *  - dead WS (isWsAlive() === false) → self-heal: bounded disconnect + restart under the start lock;
+ *  - connection older than MAX_CONNECTION_AGE_MS (12h) → rotate to refresh the server-side
+ *    routing session (server session TTL is 24h and is NOT renewed by ping/pong);
+ *  - periodic snapshot log so heartbeat health is observable in logs (previously a dead
+ *    account produced zero log lines until the next gateway restart).
+ * Exported for unit tests (ws-robustness.test.ts).
+ */
+export async function healthPatrol(api: OpenClawPluginApi): Promise<void> {
+  healthPatrolTick++;
+  for (const [key, entry] of Array.from(runningAccounts.entries())) {
+    const wsAlive = entry.client.isWsAlive();
+    const ageMs = entry.client.wsAgeMs();
+    const lastPongAgeMs = entry.client.lastPongAgeMs();
+
+    if (healthPatrolTick % 10 === 0) {
+      log.info(
+        `patrol: key=${key} wsState=${entry.client.wsState()} alive=${wsAlive} ` +
+        `age=${ageMs ? Math.round(ageMs / 1000) + "s" : "n/a"} lastPongAge=${lastPongAgeMs >= 0 ? Math.round(lastPongAgeMs / 1000) + "s" : "never"}`,
+      );
+    }
+
+    if (!wsAlive) {
+      log.warn(
+        `patrol: dead WS detected (key=${key} wsState=${entry.client.wsState()} ` +
+        `lastPongAge=${lastPongAgeMs >= 0 ? Math.round(lastPongAgeMs / 1000) + "s" : "never"}) — self-healing`,
+      );
+      await healAccount(api, key, entry.client, "patrol-dead-ws");
+      continue;
+    }
+
+    if (ageMs > MAX_CONNECTION_AGE_MS) {
+      log.info(
+        `patrol: connection age ${Math.round(ageMs / 3600000)}h exceeds ${MAX_CONNECTION_AGE_MS / 3600000}h (key=${key}) — rotating to refresh server session`,
+      );
+      await healAccount(api, key, entry.client, "patrol-age-rotation");
+    }
+  }
+}
+
+/** Bounded disconnect + restart of one account, under the per-key start lock. Exported for unit tests. */
+export async function healAccount(api: OpenClawPluginApi, key: string, expectedClient: LansengerClient, reason: string): Promise<void> {
+  await withStartLock(key, async () => {
+    const cur = runningAccounts.get(key);
+    if (!cur || cur.client !== expectedClient) {
+      // Another path (restart/abort/patrol) already handled this entry.
+      log.info(`heal: skipped — entry changed under us (key=${key} reason=${reason})`);
+      return;
+    }
+    try { await cur.client.disconnect(); } catch {}
+    runningAccounts.delete(key);
+    const ok = await _startAccountImpl(api, cur.account, key);
+    if (!ok) {
+      log.error(`heal: restart failed (key=${key} reason=${reason}) — will retry on next patrol tick`);
+    }
+  });
+}
+
+function startHealthPatrol(api: OpenClawPluginApi): void {
+  if (healthPatrolTimer) return;
+  healthPatrolTimer = setInterval(() => {
+    healthPatrol(api).catch((e) =>
+      log.error(`patrol: unhandled error — ${e instanceof Error ? e.message : String(e)}`),
+    );
+  }, HEALTH_PATROL_INTERVAL_MS);
+  healthPatrolTimer.unref?.();
+  log.info(`health patrol armed (interval=${HEALTH_PATROL_INTERVAL_MS / 1000}s, rotationAge=${MAX_CONNECTION_AGE_MS / 3600000}h)`);
 }
 
 function autoStart(api: OpenClawPluginApi, accounts?: Record<string, any>): void {

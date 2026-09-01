@@ -184,24 +184,40 @@ function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): Resolve
 
   if (resolvedAccountId && accounts && accounts[resolvedAccountId]) {
     account = accounts[resolvedAccountId];
-  } else if (accounts && Object.keys(accounts).length > 0) {
+  } else if (resolvedAccountId && accounts) {
+    // Reverse-lookup by appId (N2 fix): listAccountIds() advertises appIds as the
+    // canonical account keys, so the host calls start/status with an appId. Without
+    // this branch the lookup fell through to "first account with credentials", which
+    // silently started the WRONG account (main) twice and never the intended one —
+    // the deterministic trigger of the double-client / orphan-connection defect.
     for (const [key, acc] of Object.entries(accounts)) {
-      if (acc?.appId && acc?.appSecret) {
+      if (acc?.appId && acc.appId === resolvedAccountId) {
         account = acc;
         resolvedAccountId = key;
         break;
       }
     }
-    if (!account) {
-      account = Object.values(accounts)[0] ?? {};
-      resolvedAccountId = Object.keys(accounts)[0] ?? null;
+  }
+  if (!account) {
+    if (accounts && Object.keys(accounts).length > 0) {
+      for (const [key, acc] of Object.entries(accounts)) {
+        if (acc?.appId && acc?.appSecret) {
+          account = acc;
+          resolvedAccountId = key;
+          break;
+        }
+      }
+      if (!account) {
+        account = Object.values(accounts)[0] ?? {};
+        resolvedAccountId = Object.keys(accounts)[0] ?? null;
+      }
+    } else if (section && section.appId) {
+      account = section;
+      resolvedAccountId = section.appId;
+    } else {
+      account = section ?? {};
+      resolvedAccountId = null;
     }
-  } else if (section && section.appId) {
-    account = section;
-    resolvedAccountId = section.appId;
-  } else {
-    account = section ?? {};
-    resolvedAccountId = null;
   }
   
   const appId = account?.appId ?? process.env.LANSENGER_APP_ID ?? "";
