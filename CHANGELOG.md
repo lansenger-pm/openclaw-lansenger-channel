@@ -12,6 +12,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Fixed
 
+- **审批回调映射清理被框架解析阻塞**（双版本 E2E 发现）：`resolveApprovalOverGateway` 在无活动网关时（2026.7.1 行为差异）可长时间挂起，阻塞 `pendingApprovalCallbacks` 清理——期间重复点击按钮会重复处理。改为卡片更新后**先清理映射再尽力解析**（重复点击变为幂等 no-op）。
+
+### Added
+
+- **CLI E2E（5 用例）**：真实 openclaw CLI + 隔离 state dir——插件安装（版本自适应 flags：2026.8.1 信任/能力门禁）、channels add 向导契约（配置写入断言）、幂等重配、渠道识别、config validate。向导输出经 /dev/tty 渲染，断言以配置产物为准；命名账号 TTY 门控已记录手动清单。
+- **Agent 工具 E2E（7 用例）**：15 工具注册完整性 + 代表性契约（send_text/format_text/approve_card/query_groups/revoke）+ deliveryContext 目标解析 + 入站播种群路由。
+- **审批卡闭环 E2E（4 用例）**：授权→三态卡片更新（真实 HTTP）、未授权→拒绝通知且卡片不动、deny→拒绝态、未知 requestId→忽略。
+
+### Fixed
+
 - **心跳 pong 超时在 pingInterval < 15s 时永不触发**（E2E 发现）：每个 ping 会清除并重新武装上一个 pong 超时定时器——当服务端下发的 pingInterval 短于 15s（registry 允许 0–180s）时定时器被无限顺延，静默连接永不检测。改为逐 tick 陈旧度检查，阈值 `PONG_TIMEOUT_MS + pingInterval`（宽限覆盖"最新 ping 的 pong 尚未到期"，同时修复了初次实现中 20s 间隔下首 tick 误杀新连接的问题）。检测时延：lastPong + 15s + interval；isWsAlive 僵尸检测（2×interval+15s）与 30s 巡检继续兜底。
 - **测试基建**：ws 库服务器自动回复 pong（RFC 6455）——假服务器静默模拟需翻转 `_autoPong`；`_clearTestState` 不清理测试间残留连接导致服务端连接计数神谕失效，新增 `cleanupRuntime()`。
 

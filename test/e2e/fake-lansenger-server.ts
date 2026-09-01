@@ -140,6 +140,15 @@ export class FakeLansengerServer {
         data,
       }],
     });
+    this.sendToApp(appId, payload);
+  }
+
+  /** Push an arbitrary top-level JSON message (e.g. approve_card_callback). */
+  pushRaw(appId: string, obj: unknown): void {
+    this.sendToApp(appId, JSON.stringify(obj));
+  }
+
+  private sendToApp(appId: string, payload: string): void {
     const set = this.socketsByAppId.get(appId);
     if (!set) throw new Error(`fake server: no live socket for appId=${appId}`);
     for (const ws of set) {
