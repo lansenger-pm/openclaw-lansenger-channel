@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Added
 
+- **真人测试清单（docs/human-test-checklist.md）**：P0 冒烟（4 项）→ P1 全功能（19 项：消息/群聊/安全/审批卡/多账号/TTY 向导）→ P2 健壮性（断网/重启/坏密钥/72h 长稳），含观测工具箱与逐项判定标准。
 - **双版本兼容（OpenClaw 2026.7.1 + 2026.8.1）**：`makeDualContractOnFlush` 运行时自适应防抖契约——2026.8.1 传入 `createFlush`（admission/completion 生命周期）时走新契约，2026.7.1 单参调用时回退裸 Promise；devDependency 放宽为 `>=2026.7.1 <2026.9.0`（内网源解析到 2026.7.1、外网源解析到 2026.8.1）。导入路径采用两版本共有的稳定子路径（channel-contract/channel-outbound/channel-secret-basic-runtime）。已双版本全量验证：各 507 测试 + tsc + build 全绿；`ws-robustness.test.ts` 5.9 在两个版本下实测防抖真实时序。
 
 ### Fixed
