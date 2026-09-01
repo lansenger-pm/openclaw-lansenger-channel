@@ -1095,11 +1095,29 @@ async function handleApproveCardCallback(
     // Card is already updated, so don't re-throw
   }
 
-  // Clean up
+  // Clean up FIRST (before the framework resolution): a duplicate click while the
+  // gateway resolution is pending must be a no-op, not a double-processing. This
+  // also prevents a hung/slow gateway from blocking the cleanup (found by the
+  // dual-version E2E: on 2026.7.1 resolveApprovalOverGateway stalls without a
+  // live gateway, leaving the mapping consumable).
   pendingApprovalCallbacks.delete(requestId);
   const cardKey = account.accountId ? `${account.accountId}:${chatId}` : chatId;
   pendingApprovalCards.delete(cardKey);
   log.info(`approveCard callback: cleaned up — requestId=${requestId} chatId=${chatId}`);
+
+  // Resolve approval via framework (best-effort, AFTER cleanup)
+  try {
+    await resolveApprovalOverGateway({
+      cfg: api.config,
+      approvalId: requestId,
+      decision: decision as any,
+      senderId: staffId,
+    });
+    log.info(`approveCard callback: approval resolved — requestId=${requestId} decision=${decision}`);
+  } catch (e: unknown) {
+    log.error(`approveCard callback: resolveApprovalOverGateway failed — ${e instanceof Error ? e.message : String(e)}`);
+    // Card is already updated, so don't re-throw
+  }
 }
 interface PolicyResult {
   allowed: boolean;
