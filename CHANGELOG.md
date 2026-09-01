@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — fix/zombie-lifecycle-dual（基于 3.18.4，同时兼容 OpenClaw 2026.7.1 与 2026.8.1）
+## [3.18.5] - 2026-09-01
 
 ### Added
 
@@ -925,4 +925,3 @@ No code changes — CHANGELOG for v3.18.0 was missing from the published tarball
 - DM security: pairing mode (default), allowlist, open, disabled.
 - Approval workflow: appCard with `headStatusInfo` for pending/approved/denied states.
 - Auto-start WebSocket gateway on plugin activation
-
