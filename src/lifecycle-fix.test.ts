@@ -6,6 +6,7 @@ import type { ResolvedAccount } from "./channel.js";
 import {
   startLansengerGateway,
   gatewayStartAccount,
+  healAccount,
   getRunningClient,
   getRunningAccount,
   _clearTestState,
@@ -363,5 +364,35 @@ describe("gatewayStartAccount lifecycle (P1/P2)", () => {
     cB.abort();
     await new Promise((r) => setTimeout(r, 30));
     await Promise.allSettled([pA, pB]);
+  });
+
+  it("abort cleanup still disconnects a PATROL-HEALED client (ownership survives rotation)", async () => {
+    const api = makeRuntimeApi();
+    startLansengerGateway(api);
+
+    // Context A owns the account.
+    const cA = new AbortController();
+    const pA = gatewayStartAccount(makeCtx(makeAccount(), cA.signal));
+    await new Promise((r) => setTimeout(r, 30));
+    const clientA = getRunningClient();
+
+    // Patrol heal replaces client A with a fresh client — WITHOUT a new gateway
+    // context. Ownership must stay with context A.
+    await healAccount(api, "app-1", clientA!, "test-rotation");
+    await new Promise((r) => setTimeout(r, 30));
+    const clientB = getRunningClient();
+    expect(clientB).not.toBe(clientA); // rotated
+    expect(clientB!.isWsAlive()).toBe(true);
+
+    // A's abort fires: it still OWNS the key → the healed client must be torn down.
+    // (Regression: identity-check cleanup skipped here, leaving an orphan until
+    // process exit — exactly the defect this PR eliminates.)
+    cA.abort();
+    await new Promise((r) => setTimeout(r, 30));
+
+    expect(getRunningClient()).toBeNull(); // entry cleaned, no orphan
+    expect(clientB!.isWsAlive()).toBe(false);   // healed client disconnected
+
+    await Promise.allSettled([pA]);
   });
 });

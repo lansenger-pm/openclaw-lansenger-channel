@@ -25,7 +25,8 @@ jobs:
         run: npm install --no-save openclaw@${{ matrix.openclaw }}
       - name: Type check
         run: npx tsc --noEmit
+      - name: Build (BEFORE tests — the CLI E2E suite installs the plugin via
+          `plugins install --link`, which validates ./dist/index.js exists)
+        run: npm run build
       - name: Unit + E2E tests
         run: npm test
-      - name: Build
-        run: npm run build

@@ -1,4 +1,14 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
+
+// Spy on the framework approval resolution to assert it runs EXACTLY ONCE per
+// click (regression: a paste error in the cleanup-reorder fix left a duplicate
+// resolveApprovalOverGateway block — every click resolved twice).
+vi.mock("openclaw/plugin-sdk/approval-handler-runtime", async (importOriginal) => {
+  const original = await importOriginal<any>();
+  return { ...original, resolveApprovalOverGateway: vi.fn(async () => {}) };
+});
+import { resolveApprovalOverGateway } from "openclaw/plugin-sdk/approval-handler-runtime";
+
 import { FakeLansengerServer } from "./fake-lansenger-server.js";
 import { makeMiniHost, waitFor, cleanupRuntime } from "./helpers.js";
 import { startLansengerGateway, getRunningClient, _clearTestState } from "../../src/runtime.js";
@@ -26,6 +36,7 @@ describe("E2E: approval card closed loop (real wire)", () => {
     await cleanupRuntime(getRunningClient, server);
     server.apiCalls.length = 0;
     pendingApprovalCallbacks.clear();
+    vi.mocked(resolveApprovalOverGateway).mockClear();
 
     api = makeMiniHost(server); // commands.ownerAllowFrom: ["lansenger:user-1"] → approver = user-1
     startLansengerGateway(api);
@@ -57,6 +68,13 @@ describe("E2E: approval card closed loop (real wire)", () => {
     expect(body).toContain("card-req-ok-1"); // the original card message id
     // callback consumed — a second click must be a no-op
     await waitFor(() => pendingApprovalCallbacks.get("req-ok-1") === undefined, 3_000, "callback mapping consumed");
+    // framework resolution ran EXACTLY ONCE (regression: duplicate block resolved twice)
+    await waitFor(() => vi.mocked(resolveApprovalOverGateway).mock.calls.length === 1, 3_000, "approval resolved once");
+    expect(vi.mocked(resolveApprovalOverGateway).mock.calls[0]![0]).toMatchObject({
+      approvalId: "req-ok-1",
+      decision: "allow-once",
+      senderId: "user-1",
+    });
   }, 15_000);
 
   it("UNAUTHORIZED staff clicking → rejected with notice, NO card update", async () => {

@@ -926,4 +926,3 @@ No code changes — CHANGELOG for v3.18.0 was missing from the published tarball
 - Approval workflow: appCard with `headStatusInfo` for pending/approved/denied states.
 - Auto-start WebSocket gateway on plugin activation
 
-.

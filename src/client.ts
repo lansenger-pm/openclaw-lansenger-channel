@@ -7,7 +7,9 @@ import { assertHttpUrlTargetsPrivateNetwork, isPrivateNetworkOptInEnabled } from
 
 export type ClientLogger = {
   info: (message: string) => void;
-  warn: (message: string) => void;
+  /** Optional for backward compatibility — callers providing a legacy logger
+   *  (info/error/debug only) keep compiling; internal sites use `warn?.()`. */
+  warn?: (message: string) => void;
   error: (message: string) => void;
   debug: (message: string) => void;
 };
@@ -1022,7 +1024,7 @@ export class LansengerClient {
     // leak a second reconnect loop on the same client (two loops → double pings,
     // interleaved reconnects). disconnect() clears wsTask, so reconnect-after-stop works.
     if (this.wsTask) {
-      this.log.warn(`connect: already running — ignoring duplicate connect (${this.tag()})`);
+      this.log.warn?.(`connect: already running — ignoring duplicate connect (${this.tag()})`);
       return true;
     }
     this.running = true;
@@ -1087,7 +1089,7 @@ export class LansengerClient {
     }
     const fallback = setTimeout(() => {
       if (ws.readyState !== WebSocket.CLOSED) {
-        this.log.warn(
+        this.log.warn?.(
           `disconnect: graceful close incomplete after ${CLOSE_FALLBACK_MS / 1000}s (state=${this.wsStateOf(ws)}, was ${stateBefore}) — terminating (${this.tag()})`,
         );
         try { ws.terminate(); } catch { /* already dead */ }

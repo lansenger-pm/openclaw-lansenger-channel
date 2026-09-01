@@ -75,8 +75,16 @@ export function mergeInboundEvents(events: InboundEvent[]): InboundEvent {
 const ACK_MESSAGE_ID_KEY = "__lansenger_ack_msg_id";
 
 const runningAccounts = new Map<string, RunningAccount>();
-const startingAccounts = new Map<string, Promise<boolean>>();
 const accountStatusSinks = new Map<string, (patch: Omit<ChannelAccountSnapshot, "accountId">) => void>();
+/**
+ * Per-key ownership tokens: the gatewayStartAccount context that currently OWNS the
+ * account entry. Ownership survives patrol heals/rotations (the client object is
+ * replaced, the owner is not), so the owning context's abort cleanup still tears
+ * down the healed client — preventing heal-and-abort from re-creating the orphan
+ * this PR eliminates. A NEW gatewayStartAccount replaces the token (the old
+ * context's abort then correctly skips).
+ */
+const accountOwners = new Map<string, symbol>();
 const lastInboundChatIds = new Map<string, string>();
 const lastInboundTimes = new Map<string, number>();
 
@@ -137,8 +145,8 @@ export function _clearTestState(): void {
   lastInboundTimes.clear();
   sessionAccountTracker.clear();
   runningAccounts.clear();
-  startingAccounts.clear();
   startLocks.clear();
+  accountOwners.clear();
   if (healthPatrolTimer) {
     clearInterval(healthPatrolTimer);
     healthPatrolTimer = null;
@@ -162,20 +170,10 @@ async function startAccount(api: OpenClawPluginApi, accountId?: string | null): 
 
   const key = account.appId || account.accountId || "__default__";
 
-  // Prevent concurrent startAccount for the same key
-  const inFlight = startingAccounts.get(key);
-  if (inFlight) {
-    log.info(`startAccount: waiting for in-flight start (key=${key})`);
-    return inFlight;
-  }
-
-  const startPromise = withStartLock(key, () => _startAccountImpl(api, account, key));
-  startingAccounts.set(key, startPromise);
-  try {
-    return await startPromise;
-  } finally {
-    startingAccounts.delete(key);
-  }
+  // Serialized by the same per-key mutex as gatewayStartAccount: a concurrent
+  // startAccount queues behind any in-flight start and then sees the healthy
+  // entry inside _startAccountImpl (skip). No separate in-flight map needed.
+  return withStartLock(key, () => _startAccountImpl(api, account, key));
 }
 
 /**
@@ -745,17 +743,19 @@ export async function gatewayStartAccount(ctx: ChannelGatewayContext<ResolvedAcc
   const statusSink = createAccountStatusSink({ accountId: ctx.accountId, setStatus: ctx.setStatus });
   const account = ctx.account;
   const key = account.appId || ctx.accountId || "__default__";
-
-  accountStatusSinks.set(key, statusSink);
+  const ownerToken = Symbol(key);
 
   // The whole start section runs under the per-key mutex shared with startAccount.
   // This closes the boot race where autoStart and the host-driven start each created
   // a client for the same key concurrently, leaving an orphan with a live WS
   // connection that nothing would ever disconnect ("zombie connection" defect).
-  let ownedClient: LansengerClient | undefined;
   let adopted = false;
 
   await withStartLock(key, async () => {
+    // Sink + ownership are registered INSIDE the lock: a concurrent stop or a
+    // racing start cannot observe a half-registered context.
+    accountStatusSinks.set(key, statusSink);
+    accountOwners.set(key, ownerToken);
     const existing = runningAccounts.get(key);
     if (existing) {
       const configChanged = accountConfigSignature(existing.account) !== accountConfigSignature(account);
@@ -764,7 +764,6 @@ export async function gatewayStartAccount(ctx: ChannelGatewayContext<ResolvedAcc
         // instead of tearing it down and dialing a second connection for the same appId
         // (the server-side session is last-writer-wins, so duplicate dials cause routing flaps).
         adopted = true;
-        ownedClient = existing.client;
         log.info(
           `gateway: adopting existing healthy WS (key=${key} wsState=${existing.client.wsState()} ` +
           `age=${Math.round(existing.client.wsAgeMs() / 1000)}s accountId=${ctx.accountId})`,
@@ -855,7 +854,6 @@ export async function gatewayStartAccount(ctx: ChannelGatewayContext<ResolvedAcc
     }
 
     runningAccounts.set(key, { accountId: ctx.accountId, account, client, debouncer });
-    ownedClient = client;
     statusSink({ connected: true, lastConnectedAt: Date.now(), lastError: null });
     log.info(`gateway: started (key=${key} accountId=${ctx.accountId})`);
 
@@ -879,17 +877,20 @@ export async function gatewayStartAccount(ctx: ChannelGatewayContext<ResolvedAcc
     }
   });
 
-  const clientRef = ownedClient!;
   return waitUntilAbort(ctx.abortSignal, async () => {
-    // Identity check (P2 fix): only tear down the entry WE created/adopted. Previously
-    // this cleanup captured only the key, so when two contexts raced for the same key,
-    // the older context's abort would disconnect the NEWER context's live client —
-    // killing the server-routed connection while an orphan stayed alive (silent death).
+    // OWNERSHIP check: tear the entry down iff this context still owns the key.
+    //  - A newer gatewayStartAccount replaced the token → skip (its cleanup owns
+    //    the entry now) — the original P2 misfire scenario.
+    //  - A patrol heal/rotation replaced the CLIENT but kept our token → still
+    //    disconnect (the healed client is ours to clean up) — closing the
+    //    heal-then-abort orphan window found in review.
     const e = runningAccounts.get(key);
-    if (e && e.client === clientRef) {
+    const isOwner = accountOwners.get(key) === ownerToken;
+    if (e && isOwner) {
       await e.client.disconnect();
       runningAccounts.delete(key);
-    } else if (e) {
+      accountOwners.delete(key);
+    } else if (e && !isOwner) {
       log.info(
         `gateway: abort cleanup skipped — entry now owned by another context (key=${key} ` +
         `currentAccountId=${e.accountId ?? "n/a"})`,
@@ -907,16 +908,22 @@ export async function gatewayStartAccount(ctx: ChannelGatewayContext<ResolvedAcc
 
 export async function gatewayStopAccount(ctx: ChannelGatewayContext<ResolvedAccount>): Promise<void> {
   const key = ctx.account.appId || ctx.accountId || "__default__";
+  let stopped = false;
   await withStartLock(key, async () => {
     const entry = runningAccounts.get(key);
     if (entry) {
       await entry.client.disconnect();
       runningAccounts.delete(key);
+      // Sink + ownership are cleared INSIDE the lock and only when we actually
+      // stopped the account — a racing gatewayStartAccount that already set its
+      // sink before blocking on this lock must not lose it.
+      accountStatusSinks.delete(key);
+      accountOwners.delete(key);
+      stopped = true;
     }
   });
   cancelSyncRetry(key);
-  accountStatusSinks.delete(key);
-  log.info(`gateway: stopAccount (key=${key})`);
+  log.info(`gateway: stopAccount (key=${key} stopped=${stopped})`);
 }
 
 /**
@@ -1080,20 +1087,6 @@ async function handleApproveCardCallback(
   const status: "approved" | "denied" = choice === "deny" ? "denied" : "approved";
   const cardResult = await client.updateCardStatus(messageId, status, lang, displayStrategyKind, buttonThemeMap[choice]);
   log.info(`approveCard callback: card update — status=${status} lang=${lang} success=${cardResult.success}`);
-
-  // Resolve approval via framework
-  try {
-    await resolveApprovalOverGateway({
-      cfg: api.config,
-      approvalId: requestId,
-      decision: decision as any,
-      senderId: staffId,
-    });
-    log.info(`approveCard callback: approval resolved — requestId=${requestId} decision=${decision}`);
-  } catch (e: unknown) {
-    log.error(`approveCard callback: resolveApprovalOverGateway failed — ${e instanceof Error ? e.message : String(e)}`);
-    // Card is already updated, so don't re-throw
-  }
 
   // Clean up FIRST (before the framework resolution): a duplicate click while the
   // gateway resolution is pending must be a no-op, not a double-processing. This
