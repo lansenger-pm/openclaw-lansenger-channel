@@ -136,6 +136,7 @@ grep -E 'auto-started|gateway: (started|adopting|disconnecting)|WS connected' /t
 | `src/tools.ts` | 15 个 agent 工具 | — |
 | `src/setup-wizard.ts` | channels add 向导 | `lansengerSetupWizard` |
 | `src/lifecycle-fix.test.ts` | 生命周期回归套件（P1/P2/N1/N2） | — |
+| `test/e2e/` | E2E 功能测试（假蓝信网关 + 真实协议，23 用例） | `FakeLansengerServer` |
 | `src/ws-robustness.test.ts` | 长连接健壮性套件（心跳/退避/容错/自愈） | — |
 | `openclaw.plugin.json` | 插件清单（id=lansenger，工具契约） | — |
 

@@ -26,7 +26,7 @@
 3. **fetch 必须 stub**：`vi.stubGlobal("fetch", ...)`，按 URL 片段分流（`ws/endpoint` / `apptoken` / `messages/create`）。
 4. **fake timers 纪律**：用到 `vi.useFakeTimers()` 的用例必须在 `afterEach` `vi.useRealTimers()` 兜底（vitest.config.ts 无全局 setup，靠用例自觉）。
 5. **生命周期类测试不要直接 `await gatewayStartAccount(...)`**：它返回的 promise 到 abort 才 resolve——先 `const p = gatewayStartAccount(ctx)`，用 `setTimeout` 等待，最后 `await Promise.allSettled([p])`。
-6. **提交前**：`npx vitest run` 全绿 + `npx tsc --noEmit` 0 error + `npm run build` 产出 `dist/`（网关加载的是 dist，**改完源码必须重新 build 才生效**）。
+6. **提交前**：`npm test` 全绿（单元 + E2E）+ `npx tsc --noEmit` 0 error + `npm run build` 产出 `dist/`（网关加载的是 dist，**改完源码必须重新 build 才生效**）；改 SDK 交互代码需双版本验证（见约束 8）。
 
 ## 编码约束（红线，详见 KNOWLEDGE.md「核心编码约束」）
 
@@ -58,8 +58,9 @@
 npm install            # 安装依赖（内网 registry，openclaw 依赖 ^2026.7.1）
 npm run build          # tsc → dist/（网关加载的是 dist，改完必须 build）
 npx tsc --noEmit       # 类型检查
-npx vitest run         # 全量单测（503+）
-npx vitest run src/lifecycle-fix.test.ts src/ws-robustness.test.ts   # 生命周期回归 + 长连接健壮性
+npm test               # 全量：单元 + E2E（530+，约 1 分钟）
+npm run test:unit     # 仅单元（快速反馈）
+npm run test:e2e      # 仅 E2E（真实协议，test/e2e/）
 
 # 实机验证（插件以 --link 安装，改完 build + 重启网关即生效）
 openclaw gateway restart

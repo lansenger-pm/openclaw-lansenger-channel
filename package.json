@@ -43,7 +43,9 @@
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
-    "prepublishOnly": "tsc && vitest run"
+    "prepublishOnly": "tsc && vitest run",
+    "test:unit": "vitest run --exclude \"test/e2e/**\"",
+    "test:e2e": "vitest run test/e2e"
   },
   "keywords": [
     "openclaw",

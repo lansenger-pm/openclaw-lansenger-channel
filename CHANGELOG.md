@@ -12,6 +12,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Fixed
 
+- **心跳 pong 超时在 pingInterval < 15s 时永不触发**（E2E 发现）：每个 ping 会清除并重新武装上一个 pong 超时定时器——当服务端下发的 pingInterval 短于 15s（registry 允许 0–180s）时定时器被无限顺延，静默连接永不检测。改为逐 tick 陈旧度检查，阈值 `PONG_TIMEOUT_MS + pingInterval`（宽限覆盖"最新 ping 的 pong 尚未到期"，同时修复了初次实现中 20s 间隔下首 tick 误杀新连接的问题）。检测时延：lastPong + 15s + interval；isWsAlive 僵尸检测（2×interval+15s）与 30s 巡检继续兜底。
+- **测试基建**：ws 库服务器自动回复 pong（RFC 6455）——假服务器静默模拟需翻转 `_autoPong`；`_clearTestState` 不清理测试间残留连接导致服务端连接计数神谕失效，新增 `cleanupRuntime()`。
+
+### Added
+
+- **E2E 功能测试套件（`test/e2e/`，23 用例）**：真实插件代码（零 ws/fetch mock）↔ 本地 FakeLansengerServer（真实 HTTP/WS 协议契约 + 可控故障注入 + 出站调用录制 + 服务端连接计数）。覆盖连接管理（心跳/pong 超时/断连重连/凭证失败/多账号隔离/孤儿回归/巡检自愈/status 真实性）、出站契约（DM/group 形状、formatText、appCard px→pt、appToken 缓存、revoke/dynamic、chatTypeCache 路由）、入站管线（open/allowlist/pairing 策略、防抖合并、ack 语言检测、群 requireMention）。详见 `docs/functional-test-plan.md`。
+- **CI（`.github/workflows/ci.yml`）**：openclaw 2026.7.1 × 2026.8.1 双版本矩阵，tsc + 全量测试 + build，PR 必须双版本全绿。
+
+### Fixed
+
 - **（自审修复）采纳路径补注册审批运行时上下文**：gatewayStartAccount 采纳 autoStart 客户端时此前跳过 `registerChannelRuntimeContext`（旧代码总是重拨并注册），导致启动竞态下审批卡原生路由能力丢失；采纳时同步注册（命令同步不重复，原启动者已同步）。
 - **（自审修复）isWsAlive 的 CONNECTING 判定**：重连拨号期间 lastPongAt 仍是上一连接旧值，旧逻辑用其判僵尸导致新鲜拨号被误判为死（巡检/采纳误触发重建）；且 ws 库无内置握手超时。现 CONNECTING 用 `wsStartedAt` 判定（>30s 视为卡死，可被巡检接管救援），OPEN 才用 pong 陈旧度。
 - **（自审修复）abort 清理按身份删除 statusSink**：旧 context abort 不再误删采纳 context 的 sink，避免后续巡检重建客户端失去状态回调。
