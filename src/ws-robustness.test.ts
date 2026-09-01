@@ -214,14 +214,15 @@ describe("heartbeat robustness", () => {
     expect((WebSocket as any).instances.length).toBe(1); // no spurious reconnect
   });
 
-  it("1.2 pong timeout (15s silence) → graceful close → reconnect with fresh URL", async () => {
+  it("1.2 pong timeout (15s+interval silence) → graceful close → reconnect with fresh URL", async () => {
     vi.useFakeTimers();
     endpointResponses = [{ wsEndpoint: "wss://mock-1.local", pingInterval: 20 }, { wsEndpoint: "wss://mock-2.local", pingInterval: 20 }];
     const client = await connectClient();
     const ws = await openCurrent(client);
 
-    await vi.advanceTimersByTimeAsync(20_000); // ping #1 — server goes silent
-    await vi.advanceTimersByTimeAsync(15_000); // pong timeout fires
+    await vi.advanceTimersByTimeAsync(20_000); // tick 1: ping #1 — server goes silent
+    expect(ws.pingCount).toBe(1);
+    await vi.advanceTimersByTimeAsync(20_000); // tick 2 @40s: staleness 40s > (15s+20s) → close
     expect(ws.closeCount).toBe(1); // graceful close attempted
     expect(ws.terminateCount).toBe(0); // clean close completed — no terminate needed
 
@@ -237,8 +238,7 @@ describe("heartbeat robustness", () => {
     const client = await connectClient();
     const ws = await openCurrent(client);
 
-    await vi.advanceTimersByTimeAsync(20_000); // ping
-    await vi.advanceTimersByTimeAsync(15_000); // pong timeout → close() → stuck CLOSING
+    await vi.advanceTimersByTimeAsync(40_000); // tick 2 @40s: silence > 35s → close() → stuck CLOSING
     expect(ws.readyState).toBe(2); // half-open: handshake pending
     expect(ws.closeCount).toBe(1);
 

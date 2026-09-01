@@ -125,7 +125,6 @@ export class LansengerClient {
   private backoffIdx = 0;
   private heartbeatIntervalMs = DEFAULT_HEARTBEAT_INTERVAL_MS;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-  private pongTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
   private lastPongAt = 0;
   private wsOpenedAt = 0;
   private wsStartedAt = 0;
@@ -1173,7 +1172,6 @@ export class LansengerClient {
 
         ws.on("pong", () => {
           this.lastPongAt = Date.now();
-          this.clearPongTimeout();
         });
 
         let resolveClose: (() => void) | null = null;
@@ -1188,7 +1186,6 @@ export class LansengerClient {
           const ageSec = this.wsOpenedAt ? Math.round((Date.now() - this.wsOpenedAt) / 1000) : 0;
           this.log.info(`WS closed (${this.tag()} code=${ev.code} reason=${ev.reason || "none"} wasClean=${ev.wasClean} age=${ageSec}s)`);
           this.stopHeartbeat();
-          this.clearPongTimeout();
           this.onWsClose?.();
           resolveOnce();
         };
@@ -1196,7 +1193,6 @@ export class LansengerClient {
           const errMsg = (ev as any)?.message ?? (ev as any)?.error?.message ?? "unknown";
           this.log.error(`WS error: ${errMsg} (${this.tag()} state=${this.wsStateOf(ws)})`);
           this.stopHeartbeat();
-          this.clearPongTimeout();
           resolveOnce();
         };
 
@@ -1232,43 +1228,45 @@ export class LansengerClient {
 
   private startHeartbeat(ws: WebSocket): void {
     this.stopHeartbeat();
-    this.clearPongTimeout();
     this.lastPongAt = Date.now();
     this.heartbeatTimer = setInterval(() => {
       if (ws.readyState === WebSocket.OPEN) {
+        // Pong-staleness check ON THE TICK. A per-ping timer would be perpetually
+        // re-armed by the next ping and NEVER fire when the server-issued
+        // pingInterval is shorter than PONG_TIMEOUT_MS (registry allows 0–180s;
+        // e.g. interval=5s disabled pong detection entirely — found by the E2E
+        // suite against a fake server with pingInterval=1s).
+        //
+        // Threshold = PONG_TIMEOUT_MS + interval: the grace window covers "a pong
+        // for the latest ping is not DUE yet" (first pong of a fresh connection
+        // arrives ~interval after open). Checking against PONG_TIMEOUT_MS alone
+        // would false-positive on every fresh connection whenever interval > 15s.
+        // Detection latency for a silent server: lastPong + (15s + interval).
+        const silenceThreshold = PONG_TIMEOUT_MS + this.heartbeatIntervalMs;
+        if (this.lastPongAt > 0 && Date.now() - this.lastPongAt > silenceThreshold) {
+          this.log.error(`pong timeout — gracefully closing zombie connection (${this.tag()})`);
+          ws.close();
+          // Fallback: force terminate if graceful close doesn't complete in time
+          const fallback = setTimeout(() => {
+            if (ws.readyState !== WebSocket.CLOSED) {
+              this.log.error("graceful close timed out — forcing terminate");
+              try { ws.terminate(); } catch {}
+            }
+          }, CLOSE_FALLBACK_MS);
+          fallback.unref?.();
+          return;
+        }
         try {
           ws.ping();
-          this.clearPongTimeout();
-          this.pongTimeoutTimer = setTimeout(() => {
-            if (Date.now() - this.lastPongAt > PONG_TIMEOUT_MS && ws.readyState === WebSocket.OPEN) {
-              this.log.error(`pong timeout — gracefully closing zombie connection (${this.tag()})`);
-              ws.close();
-              // Fallback: force terminate if graceful close doesn't complete in time
-              setTimeout(() => {
-                if (ws.readyState !== WebSocket.CLOSED) {
-                  this.log.error("graceful close timed out — forcing terminate");
-                  try { ws.terminate(); } catch {}
-                }
-              }, CLOSE_FALLBACK_MS);
-            }
-          }, PONG_TIMEOUT_MS);
         } catch {
           this.log.error(`heartbeat ping failed (${this.tag()})`);
         }
       } else if (ws.readyState === WebSocket.CLOSING || ws.readyState === WebSocket.CLOSED) {
         this.log.error(`heartbeat: WS no longer open (state=${this.wsState()}) — forcing close to trigger reconnect`);
         this.stopHeartbeat();
-        this.clearPongTimeout();
         try { ws.terminate(); } catch {}
       }
     }, this.heartbeatIntervalMs);
-  }
-
-  private clearPongTimeout(): void {
-    if (this.pongTimeoutTimer) {
-      clearTimeout(this.pongTimeoutTimer);
-      this.pongTimeoutTimer = null;
-    }
   }
 
   private stopHeartbeat(): void {
@@ -1276,7 +1274,6 @@ export class LansengerClient {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
     }
-    this.clearPongTimeout();
   }
 
   // ══════════════════════════════════════════════
