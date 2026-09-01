@@ -28,6 +28,5 @@ npm-debug.log*
 tmp/
 temp/
 *.tmp
-/docs
 .trae/
 lansenger-pm-openclaw-lansenger-channel-*.tgz
