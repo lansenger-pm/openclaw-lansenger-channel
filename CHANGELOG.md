@@ -4,14 +4,51 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [3.18.4] - 2026-08-31
+## [Unreleased] — fix/zombie-lifecycle-dual（基于 3.18.4，同时兼容 OpenClaw 2026.7.1 与 2026.8.1）
+
+### Added
+
+- **真人测试清单（docs/human-test-checklist.md）**：P0 冒烟（4 项）→ P1 全功能（19 项：消息/群聊/安全/审批卡/多账号/TTY 向导）→ P2 健壮性（断网/重启/坏密钥/72h 长稳），含观测工具箱与逐项判定标准。
+- **双版本兼容（OpenClaw 2026.7.1 + 2026.8.1）**：`makeDualContractOnFlush` 运行时自适应防抖契约——2026.8.1 传入 `createFlush`（admission/completion 生命周期）时走新契约，2026.7.1 单参调用时回退裸 Promise；devDependency 放宽为 `>=2026.7.1 <2026.9.0`（内网源解析到 2026.7.1、外网源解析到 2026.8.1）。导入路径采用两版本共有的稳定子路径（channel-contract/channel-outbound/channel-secret-basic-runtime）。已双版本全量验证：各 507 测试 + tsc + build 全绿；`ws-robustness.test.ts` 5.9 在两个版本下实测防抖真实时序。
 
 ### Fixed
 
-- **OpenClaw `2026.8.1` compatibility**: upstream removed the bare `openclaw/plugin-sdk`, `openclaw/plugin-sdk/channel-runtime`, and `openclaw/plugin-sdk/channel-secret-runtime` subpath exports, which broke plugin loading with module-resolution errors. Migrated the affected imports to their new homes: gateway context types now come from `channel-contract`, account status sink / abort helpers from `channel-outbound` (the stable destination ahead of the 2026-09-01 `channel-lifecycle` removal gate), and channel secret helpers from `channel-secret-basic-runtime`.
-- **Inbound debounce flush contract**: `createChannelInboundDebouncer` now requires `onFlush` to return an `InboundDebounceFlush` (`admission` / `completion`) built via `createFlush`, instead of a bare promise. Adapted both debounce call sites to the new lifecycle protocol; admission releases when dispatch completes, preserving the previous enqueue/flush behavior.
-- **Threading tool context typing**: `currentChatType` is now typed as the SDK's `ChatType` union (`direct | group | channel`) instead of a raw string. The adapter normalizes both Lansenger-style values (`dm`/`group`) and SDK-style values (`direct`/`group`/`channel`).
-- Verified against OpenClaw `2026.8.1`: `tsc` passes, all 461 tests pass.
+- **审批回调映射清理被框架解析阻塞**（双版本 E2E 发现）：`resolveApprovalOverGateway` 在无活动网关时（2026.7.1 行为差异）可长时间挂起，阻塞 `pendingApprovalCallbacks` 清理——期间重复点击按钮会重复处理。改为卡片更新后**先清理映射再尽力解析**（重复点击变为幂等 no-op）。
+
+### Added
+
+- **CLI E2E（5 用例）**：真实 openclaw CLI + 隔离 state dir——插件安装（版本自适应 flags：2026.8.1 信任/能力门禁）、channels add 向导契约（配置写入断言）、幂等重配、渠道识别、config validate。向导输出经 /dev/tty 渲染，断言以配置产物为准；命名账号 TTY 门控已记录手动清单。
+- **Agent 工具 E2E（7 用例）**：15 工具注册完整性 + 代表性契约（send_text/format_text/approve_card/query_groups/revoke）+ deliveryContext 目标解析 + 入站播种群路由。
+- **审批卡闭环 E2E（4 用例）**：授权→三态卡片更新（真实 HTTP）、未授权→拒绝通知且卡片不动、deny→拒绝态、未知 requestId→忽略。
+
+### Fixed
+
+- **心跳 pong 超时在 pingInterval < 15s 时永不触发**（E2E 发现）：每个 ping 会清除并重新武装上一个 pong 超时定时器——当服务端下发的 pingInterval 短于 15s（registry 允许 0–180s）时定时器被无限顺延，静默连接永不检测。改为逐 tick 陈旧度检查，阈值 `PONG_TIMEOUT_MS + pingInterval`（宽限覆盖"最新 ping 的 pong 尚未到期"，同时修复了初次实现中 20s 间隔下首 tick 误杀新连接的问题）。检测时延：lastPong + 15s + interval；isWsAlive 僵尸检测（2×interval+15s）与 30s 巡检继续兜底。
+- **测试基建**：ws 库服务器自动回复 pong（RFC 6455）——假服务器静默模拟需翻转 `_autoPong`；`_clearTestState` 不清理测试间残留连接导致服务端连接计数神谕失效，新增 `cleanupRuntime()`。
+
+### Added
+
+- **E2E 功能测试套件（`test/e2e/`，23 用例）**：真实插件代码（零 ws/fetch mock）↔ 本地 FakeLansengerServer（真实 HTTP/WS 协议契约 + 可控故障注入 + 出站调用录制 + 服务端连接计数）。覆盖连接管理（心跳/pong 超时/断连重连/凭证失败/多账号隔离/孤儿回归/巡检自愈/status 真实性）、出站契约（DM/group 形状、formatText、appCard px→pt、appToken 缓存、revoke/dynamic、chatTypeCache 路由）、入站管线（open/allowlist/pairing 策略、防抖合并、ack 语言检测、群 requireMention）。详见 `docs/functional-test-plan.md`。
+- **CI（`.github/workflows/ci.yml`）**：openclaw 2026.7.1 × 2026.8.1 双版本矩阵，tsc + 全量测试 + build，PR 必须双版本全绿。
+
+### Fixed
+
+- **（自审修复）采纳路径补注册审批运行时上下文**：gatewayStartAccount 采纳 autoStart 客户端时此前跳过 `registerChannelRuntimeContext`（旧代码总是重拨并注册），导致启动竞态下审批卡原生路由能力丢失；采纳时同步注册（命令同步不重复，原启动者已同步）。
+- **（自审修复）isWsAlive 的 CONNECTING 判定**：重连拨号期间 lastPongAt 仍是上一连接旧值，旧逻辑用其判僵尸导致新鲜拨号被误判为死（巡检/采纳误触发重建）；且 ws 库无内置握手超时。现 CONNECTING 用 `wsStartedAt` 判定（>30s 视为卡死，可被巡检接管救援），OPEN 才用 pong 陈旧度。
+- **（自审修复）abort 清理按身份删除 statusSink**：旧 context abort 不再误删采纳 context 的 sink，避免后续巡检重建客户端失去状态回调。
+- **P1 孤儿连接（假死根因之一）**：`gatewayStartAccount` 与 `startAccount`（autoStart）两条启动路径互不感知，同一 appId 可并发创建多个 WS 客户端，最后写入者胜出、其余成为永不清理的孤儿连接（实测 3 账号 6 连接）。现统一走 `withStartLock(key)` per-key 互斥；锁内决策：配置未变且连接健康 → 采纳（adopt，不二次拨号），否则有界断开重建。
+- **P2 abort 误杀**：abort 清理闭包只捕获 key，会拆掉新 context 接管后的活连接（服务端 Redis 会话随即指向死 connId → 静默假死）。现按 client 引用身份判断，条目已被接管时跳过并留日志。
+- **N1/P3 disconnect 永久挂起**：`disconnect()` 在 WS CONNECTING 期被调用时 `this.ws` 为 null → close 被跳过 → `await wsTask` 永不返回（实测 gatewayStartAccount promise 永久泄漏）；半开 TCP 上优雅关闭同样无界。现 `this.ws` 在构造后立即赋值；close + 5s terminate 兜底；wsTask 10s 有界等待；`runWs` 因 running=false 退出时显式留日志（旧版静默死亡零日志）。
+- **N2 主账号确定性双启动**：`listAccountIds` 对外通告 appId 作为账号 key，但 `resolveAccount` 无 appId 反查 → host 用 log-report 的 appId 启动时解析回退到主账号，主账号每次网关重启被双启动。现 `resolveAccount` 增加 appId 反查（与 `inspectAccount` 对齐）。
+- **P4 状态盲区**：`lansenger.status` 硬编码 `running:true`、无周期巡检。现 status 输出 `wsAlive/wsState/connectedAtMs/connectionAgeSec/lastPongAgeSec`；新增 30s 健康巡检（死连接自愈 + 连接年龄 >12h 强制轮换以刷新服务端 24h 会话）。
+
+### Added
+
+- 高危场景日志全覆盖：连接生死（带 appId/wsState/age）、采纳/重建决策、abort 身份跳过、巡检快照（每 5min）与异常、静默退出、重连退避——事故后可完整还原时间线。
+- 回归测试套件 `src/lifecycle-fix.test.ts`（12 用例）。
+- 长连接健壮性套件 `src/ws-robustness.test.ts`（30 用例）：心跳/pong 超时、重连退避（递增/重置/封顶/抑制/双发去重）、端点签发失败、入站消息容错（畸形 JSON/二进制/handler 异常隔离）、巡检自愈（僵尸检测/年龄轮换/身份跳过/真实状态）。
+- `connect()` 双重拨号守卫：runWs 活跃期间重复 connect 直接忽略，防止双循环双 ping。
+- AI 开发文档体系：`AGENTS.md`、`CLAUDE.md`、`KNOWLEDGE.md`、`NAVIGATION.md`、`docs/zombie-lifecycle-postmortem.md`（事故复盘）、`docs/self-test-plan.md`（完整自测计划）。
 
 ## [3.18.3] - 2026-08-20
 
@@ -887,4 +924,5 @@ No code changes — CHANGELOG for v3.18.0 was missing from the published tarball
 - Multi-language READMEs (en, zhHans, zhHant, zhHantHK, fr).
 - DM security: pairing mode (default), allowlist, open, disabled.
 - Approval workflow: appCard with `headStatusInfo` for pending/approved/denied states.
-- Auto-start WebSocket gateway on plugin activation.
+- Auto-start WebSocket gateway on plugin activation
+

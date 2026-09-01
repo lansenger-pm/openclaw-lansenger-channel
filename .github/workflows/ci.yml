@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Dual-version contract: the plugin supports BOTH OpenClaw lines.
+        # Any change to SDK interaction code must stay green on both.
+        openclaw: ["2026.7.1", "2026.8.1"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies (openclaw ${{ matrix.openclaw }})
+        run: npm install
+      - name: Pin openclaw to ${{ matrix.openclaw }}
+        run: npm install --no-save openclaw@${{ matrix.openclaw }}
+      - name: Type check
+        run: npx tsc --noEmit
+      - name: Build (BEFORE tests — the CLI E2E suite installs the plugin via
+          `plugins install --link`, which validates ./dist/index.js exists)
+        run: npm run build
+      - name: Unit + E2E tests
+        run: npm test
