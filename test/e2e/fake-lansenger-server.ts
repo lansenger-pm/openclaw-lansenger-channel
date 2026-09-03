@@ -34,6 +34,34 @@ export class FakeLansengerServer {
   private rejectEndpoint = false;
   /** Tickets issued by /v1/ws/endpoint/create (appId → ticket). */
   private tickets = new Map<string, string>();
+  /** Tokens issued via /v1/apptoken/create (for revocation simulation). */
+  private issuedTokens = new Set<string>();
+  /** Tokens that answer errCode 40019 on outbound calls until refreshed. */
+  private revokedTokens = new Set<string>();
+  private validSecretOverride: string | null = null;
+  private get validSecret(): string {
+    return this.validSecretOverride ?? this.opts.validSecret ?? "test-secret";
+  }
+
+  /** Revoke every outstanding app token (secret unchanged): outbound calls
+   *  carrying an old token answer errCode 40019 until the client refreshes.
+   *  Mirrors a server-side token cache flush (e.g. gateway restart). */
+  revokeAllTokens(): void {
+    for (const t of this.issuedTokens) this.revokedTokens.add(t);
+  }
+
+  /** Simulate an admin-console appSecret reset: refreshes must now use the new
+   *  secret and all outstanding tokens are revoked (the client-reported case). */
+  rotateSecret(newSecret: string): void {
+    this.validSecretOverride = newSecret;
+    this.revokeAllTokens();
+  }
+
+  /** True when an outbound call carries a revoked app_token. */
+  private tokenRevoked(url: URL): boolean {
+    const token = url.searchParams.get("app_token") ?? "";
+    return token !== "" && this.revokedTokens.has(token);
+  }
 
   constructor(private readonly opts: { pingIntervalSec?: number; validSecret?: string } = {}) {}
 
@@ -192,7 +220,7 @@ export class FakeLansengerServer {
         }
         const appId = String(body.appId ?? "");
         const secret = String(body.secret ?? "");
-        const expected = this.opts.validSecret ?? "test-secret";
+        const expected = this.validSecret;
         if (secret !== expected) {
           respond(null, 40018, "APP Secret错误(fake)");
           return;
@@ -209,11 +237,21 @@ export class FakeLansengerServer {
 
       if (p === "/v1/apptoken/create") {
         const secret = url.searchParams.get("secret") ?? "";
-        if (secret !== (this.opts.validSecret ?? "test-secret")) {
+        if (secret !== this.validSecret) {
           respond(null, 40018, "APP Secret错误(fake)");
           return;
         }
-        respond({ appToken: `tok-${Math.random().toString(36).slice(2)}`, expiresIn: 7200 });
+        const token = `tok-${Math.random().toString(36).slice(2)}`;
+        this.issuedTokens.add(token);
+        this.revokedTokens.delete(token);
+        respond({ appToken: token, expiresIn: 7200 });
+        return;
+      }
+
+      // Token revocation gate: every app_token-authenticated endpoint below
+      // rejects revoked tokens with the definitive token-invalid code 40019.
+      if (this.tokenRevoked(url)) {
+        respond(null, 40019, "access token invalid(fake)");
         return;
       }
 

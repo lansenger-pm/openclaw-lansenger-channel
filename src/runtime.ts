@@ -437,6 +437,9 @@ export function startLansengerGateway(api: OpenClawPluginApi): void {
       const wsAlive = entry.client.isWsAlive();
       const ageMs = entry.client.wsAgeMs();
       const lastPongAgeMs = entry.client.lastPongAgeMs();
+      // G2: expose token health so a rotated appSecret (rejected refresh) is
+      // observable instead of silent. Additive only — existing fields untouched.
+      const token = entry.client.getTokenStatus();
       return {
         appId: key,
         accountId: entry.account?.accountId,
@@ -446,6 +449,13 @@ export function startLansengerGateway(api: OpenClawPluginApi): void {
         connectedAtMs: entry.client.wsOpenedAtMs() || null,
         connectionAgeSec: ageMs ? Math.round(ageMs / 1000) : null,
         lastPongAgeSec: lastPongAgeMs >= 0 ? Math.round(lastPongAgeMs / 1000) : null,
+        token: {
+          hasToken: token.hasToken,
+          tokenAgeSec: token.tokenAgeSec,
+          lastRefreshResult: token.lastRefreshResult,
+          lastRefreshErrCode: token.lastRefreshErrCode,
+          lastRefreshAgeSec: token.lastRefreshAgeSec,
+        },
       };
     });
     opts.respond(true, { running: entries.length > 0 && entries.every((e) => e.wsAlive), accounts: entries });

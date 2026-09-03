@@ -1162,7 +1162,13 @@ describe("LansengerClient.uploadMedia", () => {
     vi.stubGlobal("fetch", async () => errorApi(40001, "bad"));
     const client = new LansengerClient({ appId: "id", appSecret: "secret" });
     const result = await client.uploadMedia("/tmp/photo.jpg");
-    expect(result).toEqual({ error: "No access token" });
+    // v3.18.6: no-token errors keep the original prefix; transient refresh
+    // failures (non-secret-rejection codes like 40001) carry NO rotation hint.
+    expect("error" in result).toBe(true);
+    if ("error" in result) {
+      expect(result.error).toContain("No access token");
+      expect(result.error).not.toContain("gateway restart");
+    }
   });
 
   it("returns error on upload HTTP error", async () => {

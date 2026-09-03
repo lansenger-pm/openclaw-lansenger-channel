@@ -32,7 +32,7 @@ const LANSINGER_I18N: Record<string, Record<WizardLocale, string>> = {
   secretHelpLine1:     { en: "App Secret from your Lansenger Personal Bot", "zh-CN": "个人机器人的 App Secret", "zh-TW": "個人機器人的 App Secret" },
   secretHelpLine2:     { en: "Found alongside App ID → Contacts → Bots → Personal Bots", "zh-CN": "通讯录 → 智能机器人 → 个人机器人", "zh-TW": "通訊錄 → 智慧機器人 → 個人機器人" },
   secretEnvPrompt:     { en: "LANSENGER_APP_SECRET detected. Use env var?", "zh-CN": "检测到环境变量 LANSENGER_APP_SECRET，是否使用？", "zh-TW": "偵測到環境變數 LANSENGER_APP_SECRET，是否使用？" },
-  secretKeepPrompt:    { en: "App Secret already configured. Keep it?", "zh-CN": "App Secret 已配置，是否保留？", "zh-TW": "App Secret 已設定，是否保留？" },
+  secretKeepPrompt:    { en: "App Secret already configured. Keep it? (If you RESET/regenerated the secret in the Lansenger admin console, choose Replace and enter the new one.)", "zh-CN": "App Secret 已配置，是否保留？（若你已在蓝信管理平台重置/重新生成了 App Secret，请选择替换并输入新密钥。）", "zh-TW": "App Secret 已配置，是否保留？（若你已在藍信管理平台重置/重新生成了 App Secret，請選擇替換並輸入新密鑰。）" },
   secretInputPrompt:   { en: "Enter Lansenger App Secret", "zh-CN": "输入蓝信 App Secret", "zh-TW": "輸入藍信 App Secret" },
 
   baseUrlMessage:      { en: "API Gateway URL (optional, default Lansenger public cloud)", "zh-CN": "API 网关地址（可选，默认蓝信公有云）", "zh-TW": "API 閘道位址（可選，預設藍信公有雲）" },

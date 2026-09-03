@@ -60,6 +60,54 @@ const WS_HANDSHAKE_STUCK_MS = 30_000;
 export const MAX_CONNECTION_AGE_MS = 12 * 60 * 60 * 1000;
 const CHINESE_RE = /[\u4e00-\u9fff\u3400-\u4dbf]/;
 
+/**
+ * Server errCode meaning "appSecret rejected" (seen only at token refresh time).
+ * NEVER part of the token-retry set: retrying cannot fix a rejected secret —
+ * the operator must update openclaw.json and restart the gateway.
+ */
+export const REJECTED_SECRET_ERRCODE = 40018;
+
+/**
+ * Server errCodes meaning the appToken itself is invalid/expired. Only these
+ * trigger the one-shot refresh+retry (the request was rejected at auth time and
+ * never delivered, so retrying is safe). 40018 is always excluded.
+ * Override/extend via LANSENGER_TOKEN_INVALID_ERRCODES (comma separated) until
+ * the server-side code table is confirmed.
+ */
+const DEFAULT_TOKEN_INVALID_ERRCODES = [40019];
+
+function resolveTokenInvalidErrCodes(): Set<number> {
+  const set = new Set<number>(DEFAULT_TOKEN_INVALID_ERRCODES);
+  const raw = process.env.LANSENGER_TOKEN_INVALID_ERRCODES;
+  if (raw && raw.trim()) {
+    for (const part of raw.split(",")) {
+      const n = Number(part.trim());
+      if (Number.isFinite(n) && n > 0) set.add(n);
+    }
+  }
+  set.delete(REJECTED_SECRET_ERRCODE);
+  return set;
+}
+
+const TOKEN_INVALID_ERRCODES = resolveTokenInvalidErrCodes();
+
+/**
+ * Server errCodes meaning the appSecret itself was rejected. Only these set
+ * the rotation hint / "rejected" status — transient refresh errors (rate
+ * limits, server hiccups) must never tell operators to rotate secrets.
+ */
+const SECRET_REJECTION_ERRCODES = new Set<number>([REJECTED_SECRET_ERRCODE]);
+
+function isSecretRejectionErrCode(code: number): boolean {
+  return SECRET_REJECTION_ERRCODES.has(code);
+}
+
+function tokenRejectionHint(errCode: number): string {
+  return `appSecret rejected by server (errCode=${errCode}). ` +
+    `Update channels.lansenger.appSecret (or channels.lansenger.accounts.<key>.appSecret) in openclaw.json, ` +
+    `then run 'openclaw gateway restart'.`;
+}
+
 const API_ENDPOINTS = {
   appToken: "/v1/apptoken/create",
   wsEndpoint: "/v1/ws/endpoint/create",
@@ -121,6 +169,14 @@ export class LansengerClient {
   private apiGatewayUrl: string | undefined;
   private appToken: string | null = null;
   private tokenExpiry = 0;
+  private tokenIssuedAtMs = 0;
+  private tokenRefreshInFlight: Promise<string | null> | null = null;
+  private tokenStatusInternal: {
+    lastRefreshResult: "ok" | "rejected" | "none";
+    lastRefreshErrCode?: number;
+    lastRefreshAtMs?: number;
+  } = { lastRefreshResult: "none" };
+  private lastTokenRejectionHint: string | null = null;
   private ws: WebSocket | null = null;
   private wsTask: Promise<void> | null = null;
   private running = false;
@@ -226,26 +282,138 @@ export class LansengerClient {
     if (this.appToken && Date.now() / 1000 < this.tokenExpiry) {
       return this.appToken;
     }
+    // Single-flight: concurrent callers during a refresh share one in-flight request.
+    if (this.tokenRefreshInFlight) return this.tokenRefreshInFlight;
+    this.tokenRefreshInFlight = this.refreshAppToken().finally(() => {
+      this.tokenRefreshInFlight = null;
+    });
+    return this.tokenRefreshInFlight;
+  }
+
+  private async refreshAppToken(): Promise<string | null> {
     try {
       const url = `${this.apiGatewayUrl}${API_ENDPOINTS.appToken}?grant_type=client_credential&appid=${this.appId}&secret=${this.appSecret}`;
       const resp = await fetch(url, { signal: AbortSignal.timeout(30_000) });
       if (!resp.ok) {
         this.log.error(`getAppToken: HTTP ${resp.status}`);
+        this.recordTokenRefresh("none");
         return null;
       }
       const data = (await resp.json()) as LansengerApiResponse;
       if (data.errCode !== 0) {
         this.log.error(`getAppToken: errCode=${data.errCode} errMsg=${data.errMsg ?? "n/a"}`);
+        if (isSecretRejectionErrCode(data.errCode)) {
+          const hint = tokenRejectionHint(data.errCode);
+          this.log.error(`getAppToken: ${hint}`);
+          this.lastTokenRejectionHint = hint;
+          this.recordTokenRefresh("rejected", data.errCode);
+        } else {
+          this.recordTokenRefresh("none");
+        }
         return null;
       }
       this.appToken = data.data?.appToken ?? null;
       const expiresIn = data.data?.expiresIn ?? 7200;
       this.tokenExpiry = Date.now() / 1000 + expiresIn - 300;
+      this.tokenIssuedAtMs = Date.now();
+      this.lastTokenRejectionHint = null;
+      this.recordTokenRefresh("ok");
       this.log.info(`getAppToken: refreshed (expires in ${expiresIn}s)`);
       return this.appToken;
     } catch (e: any) {
       this.log.error(`getAppToken: ${e.message}`);
+      this.recordTokenRefresh("none");
       return null;
+    }
+  }
+
+  private recordTokenRefresh(result: "ok" | "rejected" | "none", errCode?: number): void {
+    this.tokenStatusInternal = {
+      lastRefreshResult: result,
+      lastRefreshErrCode: errCode,
+      lastRefreshAtMs: Date.now(),
+    };
+  }
+
+  /** Read-only token status for `lansenger.status` (additive; never removes fields). */
+  getTokenStatus(): {
+    hasToken: boolean;
+    tokenAgeSec: number | null;
+    lastRefreshResult: "ok" | "rejected" | "none";
+    lastRefreshErrCode: number | null;
+    lastRefreshAgeSec: number | null;
+  } {
+    const hasToken = !!(this.appToken && Date.now() / 1000 < this.tokenExpiry);
+    const tokenAgeSec = hasToken && this.tokenIssuedAtMs > 0
+      ? Math.round((Date.now() - this.tokenIssuedAtMs) / 1000)
+      : null;
+    const lastRefreshAgeSec = this.tokenStatusInternal.lastRefreshAtMs
+      ? Math.round((Date.now() - this.tokenStatusInternal.lastRefreshAtMs) / 1000)
+      : null;
+    return {
+      hasToken,
+      tokenAgeSec,
+      lastRefreshResult: this.tokenStatusInternal.lastRefreshResult,
+      lastRefreshErrCode: this.tokenStatusInternal.lastRefreshErrCode ?? null,
+      lastRefreshAgeSec,
+    };
+  }
+
+  private isTokenInvalidErrCode(code: number): boolean {
+    return TOKEN_INVALID_ERRCODES.has(code);
+  }
+
+  private invalidateToken(): void {
+    this.appToken = null;
+    this.tokenExpiry = 0;
+  }
+
+  /** Text for outbound "no token" failures. Stays exactly "No access token"
+   *  unless the most recent refresh was explicitly rejected by the server. */
+  private noTokenError(): string {
+    return this.lastTokenRejectionHint ? `No access token — ${this.lastTokenRejectionHint}` : "No access token";
+  }
+
+  /** Error text for a non-zero API response; appends the rotation hint when the
+   *  most recent refresh was rejected (i.e. the secret itself was rotated). */
+  private outboundError(data: LansengerApiResponse, fallback = "API error"): string | undefined {
+    const msg = data.errMsg ?? fallback;
+    return this.lastTokenRejectionHint ? `${msg} — ${this.lastTokenRejectionHint}` : msg;
+  }
+
+  /**
+   * One-shot token-retry wrapper shared by ALL outbound API calls.
+   * Runs `attempt(token)`; when the result's errCode is a definitive
+   * token-invalid code (rejected at auth time — never delivered), refreshes the
+   * token once (single-flight) and retries with the fresh token. Network errors,
+   * HTTP-level failures and any other errCode are returned as-is (no retry).
+   */
+  private async withTokenRetry<T>(
+    label: string,
+    token: string,
+    attempt: (token: string) => Promise<T>,
+    classifyErrCode: (result: T) => number | null,
+  ): Promise<T> {
+    const first = await attempt(token);
+    const code = classifyErrCode(first);
+    if (code === null || !this.isTokenInvalidErrCode(code)) return first;
+    this.log.warn?.(`withTokenRetry[${label}]: token rejected (errCode=${code}) — refreshing once and retrying`);
+    // Invalidate only if the cache still holds OUR token — a concurrent caller
+    // may have already refreshed a newer one (P3-2: don't evict fresh tokens).
+    if (this.appToken === token) this.invalidateToken();
+    const fresh = await this.getAppToken();
+    if (!fresh || fresh === token) return first;
+    return attempt(fresh);
+  }
+
+  /** GET-JSON twin of postJson so raw-fetch call sites share the retry path. */
+  private async getJson(url: string, timeoutMs = 30_000): Promise<LansengerApiResponse> {
+    const resp = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+    if (!resp.ok) return { errCode: -1, errMsg: `HTTP error: ${resp.status}` };
+    try {
+      return (await resp.json()) as LansengerApiResponse;
+    } catch {
+      return { errCode: -1, errMsg: `JSON parse error (HTTP ${resp.status})` };
     }
   }
 
@@ -255,17 +423,17 @@ export class LansengerClient {
 
   async sendText(chatId: string, content: string, opts?: { reminder?: ReminderParams; refMsgId?: string }): Promise<ApiResult> {
     const token = await this.getAppToken();
-    if (!token) return { success: false, error: "No access token" };
+    if (!token) return { success: false, error: this.noTokenError() };
     try {
       const { url, wrap } = this.msgTarget(chatId);
       const textData: Record<string, unknown> = { content };
       if (opts?.reminder) textData.reminder = opts.reminder;
       const payload = wrap({ text: textData, msgType: "text" });
       if (opts?.refMsgId) payload.refMsgId = opts.refMsgId;
-      const data = await this.postJson(`${url}?app_token=${token}`, payload);
+      const data = await this.withTokenRetry("sendText", token, (t) => this.postJson(`${url}?app_token=${t}`, payload), (d) => d.errCode);
       if (data.errCode !== 0) {
         this.log.error(`sendText: errCode=${data.errCode} errMsg=${data.errMsg ?? "n/a"}`);
-        return { success: false, error: data.errMsg ?? undefined };
+        return { success: false, error: this.outboundError(data) };
       }
       return { success: true, messageId: data.data?.msgId ?? undefined, rawResponse: data };
     } catch (e: any) {
@@ -276,28 +444,32 @@ export class LansengerClient {
 
   async sendFormatText(chatId: string, content: string, opts?: { reminder?: ReminderParams; refMsgId?: string }): Promise<ApiResult> {
     const token = await this.getAppToken();
-    if (!token) return { success: false, error: "No access token" };
+    if (!token) return { success: false, error: this.noTokenError() };
     try {
       const { url, wrap } = this.msgTarget(chatId);
-      const fmtData: Record<string, unknown> = { formatType: 1, text: content };
-      if (opts?.reminder) fmtData.reminder = opts.reminder;
-      const payload = wrap({ formatText: fmtData, msgType: "formatText" });
-      if (opts?.refMsgId) payload.refMsgId = opts.refMsgId;
-      const data = await this.postJson(`${url}?app_token=${token}`, payload);
-      if (data.errCode !== 0 && opts?.reminder) {
-        this.log.info(`sendFormatText with reminder failed (${data.errMsg ?? "unknown"}), retrying without reminder`);
-        const retryPayload = wrap({ formatText: { formatType: 1, text: content }, msgType: "formatText" });
-        if (opts?.refMsgId) retryPayload.refMsgId = opts.refMsgId;
-        const retryData = await this.postJson(`${url}?app_token=${token}`, retryPayload);
-        if (retryData.errCode !== 0) {
-          this.log.error(`sendFormatText: errCode=${retryData.errCode} errMsg=${retryData.errMsg ?? "n/a"}`);
-          return { success: false, error: retryData.errMsg ?? undefined };
+      // One attempt = post (with reminder) + optional reminder-less fallback, all on the
+      // SAME token. withTokenRetry wraps the whole attempt so a token rotation inside
+      // the fallback still gets exactly one refresh+retry.
+      const attempt = async (t: string): Promise<LansengerApiResponse> => {
+        const fmtData: Record<string, unknown> = { formatType: 1, text: content };
+        if (opts?.reminder) fmtData.reminder = opts.reminder;
+        const payload = wrap({ formatText: fmtData, msgType: "formatText" });
+        if (opts?.refMsgId) payload.refMsgId = opts.refMsgId;
+        const data = await this.postJson(`${url}?app_token=${t}`, payload);
+        // Reminder fallback retries with the SAME (possibly rejected) token —
+        // pointless for token-invalid codes; leave them to withTokenRetry.
+        if (data.errCode !== 0 && opts?.reminder && !this.isTokenInvalidErrCode(data.errCode)) {
+          this.log.info(`sendFormatText with reminder failed (${data.errMsg ?? "unknown"}), retrying without reminder`);
+          const retryPayload = wrap({ formatText: { formatType: 1, text: content }, msgType: "formatText" });
+          if (opts?.refMsgId) retryPayload.refMsgId = opts.refMsgId;
+          return await this.postJson(`${url}?app_token=${t}`, retryPayload);
         }
-        return { success: true, messageId: retryData.data?.msgId ?? undefined, rawResponse: retryData };
-      }
+        return data;
+      };
+      const data = await this.withTokenRetry("sendFormatText", token, attempt, (d) => d.errCode);
       if (data.errCode !== 0) {
         this.log.error(`sendFormatText: errCode=${data.errCode} errMsg=${data.errMsg ?? "n/a"}`);
-        return { success: false, error: data.errMsg ?? undefined };
+        return { success: false, error: this.outboundError(data) };
       }
       return { success: true, messageId: data.data?.msgId ?? undefined, rawResponse: data };
     } catch (e: any) {
@@ -308,14 +480,14 @@ export class LansengerClient {
 
   async sendTextWithMedia(chatId: string, content: string, mediaType: number, mediaIds: string[], reminder?: ReminderParams): Promise<ApiResult> {
     const token = await this.getAppToken();
-    if (!token) return { success: false, error: "No access token" };
+    if (!token) return { success: false, error: this.noTokenError() };
     try {
       const { url, wrap } = this.msgTarget(chatId);
       const textData: Record<string, unknown> = { content, mediaType, mediaIds };
       if (reminder) textData.reminder = reminder;
       const payload = wrap({ text: textData, msgType: "text" });
-      const data = await this.postJson(`${url}?app_token=${token}`, payload);
-      if (data.errCode !== 0) return { success: false, error: data.errMsg ?? undefined };
+      const data = await this.withTokenRetry("sendTextWithMedia", token, (t) => this.postJson(`${url}?app_token=${t}`, payload), (d) => d.errCode);
+      if (data.errCode !== 0) return { success: false, error: this.outboundError(data) };
       return { success: true, messageId: data.data?.msgId ?? undefined, rawResponse: data };
     } catch (e: any) {
       return { success: false, error: e.message };
@@ -328,24 +500,32 @@ export class LansengerClient {
 
   async uploadMedia(filePath: string, uploadType?: string, originalName?: string, videoWidth?: number, videoHeight?: number, videoDuration?: number): Promise<{ mediaId: string } | { error: string }> {
     const token = await this.getAppToken();
-    if (!token) return { error: "No access token" };
+    if (!token) return { error: this.noTokenError() };
     const typeStr = uploadType ?? uploadMediaTypeFromPath(filePath);
     try {
-      let url = `${this.apiGatewayUrl}${API_ENDPOINTS.uploadMedia}?type=${typeStr}&app_token=${token}`;
-      if (typeStr === "video") {
-        if (videoWidth) url += `&width=${videoWidth}`;
-        if (videoHeight) url += `&height=${videoHeight}`;
-        if (videoDuration) url += `&duration=${videoDuration}`;
-      }
       const fileContent = await fs.readFile(filePath);
       const filename = originalName ?? path.basename(filePath);
       this.log.debug(`uploadMedia: filePath=${filePath} uploadType=${typeStr} originalName=${originalName ?? "n/a"} filename=${filename}`);
-      const form = new FormData();
-      form.append("media", new Blob([fileContent]), filename);
-      const resp = await fetch(url, { method: "POST", body: form, signal: AbortSignal.timeout(300_000) });
-      if (!resp.ok) return { error: `Upload HTTP error: ${resp.status}` };
-      const data = (await resp.json()) as LansengerApiResponse;
-      if (data.errCode !== 0) return { error: data.errMsg ?? "Upload API error" };
+      // Multipart POST as a single attempt so token rotation gets one refresh+retry.
+      const attempt = async (t: string): Promise<LansengerApiResponse> => {
+        let url = `${this.apiGatewayUrl}${API_ENDPOINTS.uploadMedia}?type=${typeStr}&app_token=${t}`;
+        if (typeStr === "video") {
+          if (videoWidth) url += `&width=${videoWidth}`;
+          if (videoHeight) url += `&height=${videoHeight}`;
+          if (videoDuration) url += `&duration=${videoDuration}`;
+        }
+        const form = new FormData();
+        form.append("media", new Blob([fileContent]), filename);
+        const resp = await fetch(url, { method: "POST", body: form, signal: AbortSignal.timeout(300_000) });
+        if (!resp.ok) return { errCode: -1, errMsg: `Upload HTTP error: ${resp.status}` };
+        try {
+          return (await resp.json()) as LansengerApiResponse;
+        } catch {
+          return { errCode: -1, errMsg: `Upload JSON parse error (HTTP ${resp.status})` };
+        }
+      };
+      const data = await this.withTokenRetry("uploadMedia", token, attempt, (d) => d.errCode);
+      if (data.errCode !== 0) return { error: this.outboundError(data, "Upload API error") ?? "Upload API error" };
       return { mediaId: data.data?.mediaId ?? "" };
     } catch (e: any) {
       return { error: e.message };
@@ -416,18 +596,18 @@ export class LansengerClient {
 
   async revokeMessage(messageIds: string[], chatType: string = "bot", senderId?: string): Promise<ApiResult> {
     const token = await this.getAppToken();
-    if (!token) return { success: false, error: "No access token" };
+    if (!token) return { success: false, error: this.noTokenError() };
     if (!["bot", "group"].includes(chatType)) {
       return { success: false, error: `chatType must be 'bot' or 'group' (got '${chatType}')` };
     }
     // NOTE: senderId validation relaxed — the Lansenger API accepts group
     // revokes without senderId (defaults to the authenticated caller).
     try {
-      const url = `${this.apiGatewayUrl}${API_ENDPOINTS.revokeMessage}?app_token=${token}`;
+      const url = `${this.apiGatewayUrl}${API_ENDPOINTS.revokeMessage}`;
       const payload: Record<string, unknown> = { chatType, messageIds };
       if (senderId) payload.senderId = senderId;
-      const data = await this.postJson(url, payload);
-      if (data.errCode !== 0) return { success: false, error: data.errMsg ?? undefined };
+      const data = await this.withTokenRetry("revokeMessage", token, (t) => this.postJson(`${url}?app_token=${t}`, payload), (d) => d.errCode);
+      if (data.errCode !== 0) return { success: false, error: this.outboundError(data) };
       return { success: true, rawResponse: data };
     } catch (e: any) {
       return { success: false, error: e.message };
@@ -440,7 +620,7 @@ export class LansengerClient {
 
   async sendLinkCard(chatId: string, title: string, link: string, options?: LinkCardOptions): Promise<ApiResult> {
     const token = await this.getAppToken();
-    if (!token) return { success: false, error: "No access token" };
+    if (!token) return { success: false, error: this.noTokenError() };
     try {
       const { url, wrap } = this.msgTarget(chatId);
       const payload = wrap({
@@ -455,8 +635,8 @@ export class LansengerClient {
         },
         msgType: "linkCard",
       });
-      const data = await this.postJson(`${url}?app_token=${token}`, payload);
-      if (data.errCode !== 0) return { success: false, error: data.errMsg ?? undefined };
+      const data = await this.withTokenRetry("sendLinkCard", token, (t) => this.postJson(`${url}?app_token=${t}`, payload), (d) => d.errCode);
+      if (data.errCode !== 0) return { success: false, error: this.outboundError(data) };
       return { success: true, messageId: data.data?.msgId ?? undefined, rawResponse: data };
     } catch (e: any) {
       return { success: false, error: e.message };
@@ -465,12 +645,12 @@ export class LansengerClient {
 
   async sendI18nAppCard(chatId: string, cardData: I18nAppCardData): Promise<ApiResult> {
     const token = await this.getAppToken();
-    if (!token) return { success: false, error: "No access token" };
+    if (!token) return { success: false, error: this.noTokenError() };
     try {
       const { url, wrap } = this.msgTarget(chatId);
       const payload = wrap({ i18nAppCard: cardData, msgType: "i18nAppCard" });
-      const data = await this.postJson(`${url}?app_token=${token}`, payload);
-      if (data.errCode !== 0) return { success: false, error: data.errMsg ?? undefined };
+      const data = await this.withTokenRetry("sendI18nAppCard", token, (t) => this.postJson(`${url}?app_token=${t}`, payload), (d) => d.errCode);
+      if (data.errCode !== 0) return { success: false, error: this.outboundError(data) };
       return { success: true, messageId: data.data?.msgId ?? undefined, rawResponse: data };
     } catch (e: any) {
       return { success: false, error: e.message };
@@ -479,12 +659,12 @@ export class LansengerClient {
 
   async sendApproveCard(chatId: string, cardData: ApproveCardData): Promise<ApiResult> {
     const token = await this.getAppToken();
-    if (!token) return { success: false, error: "No access token" };
+    if (!token) return { success: false, error: this.noTokenError() };
     try {
       const { url, wrap } = this.msgTarget(chatId);
       const payload = wrap({ approveCard: cardData, msgType: "approveCard" });
-      const data = await this.postJson(`${url}?app_token=${token}`, payload);
-      if (data.errCode !== 0) return { success: false, error: data.errMsg ?? undefined };
+      const data = await this.withTokenRetry("sendApproveCard", token, (t) => this.postJson(`${url}?app_token=${t}`, payload), (d) => d.errCode);
+      if (data.errCode !== 0) return { success: false, error: this.outboundError(data) };
       return { success: true, messageId: data.data?.msgId ?? undefined, rawResponse: data };
     } catch (e: any) {
       return { success: false, error: e.message };
@@ -493,7 +673,7 @@ export class LansengerClient {
 
   async sendAppCard(chatId: string, cardData: AppCardData): Promise<ApiResult> {
     const token = await this.getAppToken();
-    if (!token) return { success: false, error: "No access token" };
+    if (!token) return { success: false, error: this.noTokenError() };
     try {
       const resolvedCard: AppCardData = convertPxToPtCard(cardData);
       if (resolvedCard.isDynamic && !resolvedCard.headStatusInfo) {
@@ -504,8 +684,8 @@ export class LansengerClient {
       }
       const { url, wrap } = this.msgTarget(chatId);
       const payload = wrap({ appCard: resolvedCard, msgType: "appCard" });
-      const data = await this.postJson(`${url}?app_token=${token}`, payload);
-      if (data.errCode !== 0) return { success: false, error: data.errMsg ?? undefined };
+      const data = await this.withTokenRetry("sendAppCard", token, (t) => this.postJson(`${url}?app_token=${t}`, payload), (d) => d.errCode);
+      if (data.errCode !== 0) return { success: false, error: this.outboundError(data) };
       return { success: true, messageId: data.data?.msgId ?? undefined, rawResponse: data };
     } catch (e: any) {
       return { success: false, error: e.message };
@@ -514,7 +694,7 @@ export class LansengerClient {
 
   async sendAppArticles(chatId: string, articles: AppArticle[], options?: ArticleCardOptions): Promise<ApiResult> {
     const token = await this.getAppToken();
-    if (!token) return { success: false, error: "No access token" };
+    if (!token) return { success: false, error: this.noTokenError() };
     try {
       const { url, wrap } = this.msgTarget(chatId);
       const payload = wrap({
@@ -528,8 +708,8 @@ export class LansengerClient {
         })),
         msgType: "appArticles",
       });
-      const data = await this.postJson(`${url}?app_token=${token}`, payload);
-      if (data.errCode !== 0) return { success: false, error: data.errMsg ?? undefined };
+      const data = await this.withTokenRetry("sendAppArticles", token, (t) => this.postJson(`${url}?app_token=${t}`, payload), (d) => d.errCode);
+      if (data.errCode !== 0) return { success: false, error: this.outboundError(data) };
       return { success: true, messageId: data.data?.msgId ?? undefined, rawResponse: data };
     } catch (e: any) {
       return { success: false, error: e.message };
@@ -538,7 +718,7 @@ export class LansengerClient {
 
   async updateCardStatus(messageId: string, status: "pending" | "approved" | "denied", lang?: "zh" | "en", strategyKind?: "allow-once" | "allow-session" | "allow-always" | "deny" | "expired", resolvedButtonTheme?: number): Promise<ApiResult> {
     const token = await this.getAppToken();
-    if (!token) return { success: false, error: "No access token" };
+    if (!token) return { success: false, error: this.noTokenError() };
     const detectedLang = lang ?? "zh";
     const statusConfig: Record<string, { zh: string; en: string; color: string }> = {
       pending: { zh: "待审批", en: "Pending", color: "#FFB116" },
@@ -560,7 +740,7 @@ export class LansengerClient {
     const strategyCfg = strategyLabels[strategyKind ?? "deny"] ?? strategyLabels["deny"]!;
 
     try {
-      const url = `${this.apiGatewayUrl}${API_ENDPOINTS.dynamicUpdate}?app_token=${token}`;
+      const url = `${this.apiGatewayUrl}${API_ENDPOINTS.dynamicUpdate}`;
       const payload = {
         msgId: messageId,
         msgType: "approveCard",
@@ -579,8 +759,8 @@ export class LansengerClient {
           },
         },
       };
-      const data = await this.postJson(url, payload);
-      if (data.errCode !== 0) return { success: false, error: data.errMsg ?? undefined };
+      const data = await this.withTokenRetry("updateCardStatus", token, (t) => this.postJson(`${url}?app_token=${t}`, payload), (d) => d.errCode);
+      if (data.errCode !== 0) return { success: false, error: this.outboundError(data) };
       return { success: true, rawResponse: data };
     } catch (e: any) {
       return { success: false, error: e.message };
@@ -597,14 +777,14 @@ export class LansengerClient {
    */
   async createCommands(scopeType: number, commands: LansengerCommand[]): Promise<ApiResult> {
     const token = await this.getAppToken();
-    if (!token) return { success: false, error: "No access token" };
+    if (!token) return { success: false, error: this.noTokenError() };
     try {
-      const url = `${this.apiGatewayUrl}${API_ENDPOINTS.commandsCreate}?app_token=${token}`;
+      const url = `${this.apiGatewayUrl}${API_ENDPOINTS.commandsCreate}`;
       const payload = { scopeType, commands };
-      const data = await this.postJson(url, payload);
+      const data = await this.withTokenRetry("createCommands", token, (t) => this.postJson(`${url}?app_token=${t}`, payload), (d) => d.errCode);
       if (data.errCode !== 0) {
         this.log.error(`createCommands: errCode=${data.errCode} errMsg=${data.errMsg ?? "n/a"} scopeType=${scopeType}`);
-        return { success: false, error: data.errMsg ?? undefined };
+        return { success: false, error: this.outboundError(data) };
       }
       this.log.info(`createCommands: registered ${commands.length} command(s) scopeType=${scopeType}`);
       return { success: true };
@@ -616,13 +796,13 @@ export class LansengerClient {
 
   async deleteCommands(scopeType: number): Promise<ApiResult> {
     const token = await this.getAppToken();
-    if (!token) return { success: false, error: "No access token" };
+    if (!token) return { success: false, error: this.noTokenError() };
     try {
-      const url = `${this.apiGatewayUrl}${API_ENDPOINTS.commandsDelete}?app_token=${token}`;
-      const data = await this.postJson(url, { scopeType });
+      const url = `${this.apiGatewayUrl}${API_ENDPOINTS.commandsDelete}`;
+      const data = await this.withTokenRetry("deleteCommands", token, (t) => this.postJson(`${url}?app_token=${t}`, { scopeType }), (d) => d.errCode);
       if (data.errCode !== 0) {
         this.log.error(`deleteCommands: errCode=${data.errCode} errMsg=${data.errMsg ?? "n/a"} scopeType=${scopeType}`);
-        return { success: false, error: data.errMsg ?? undefined };
+        return { success: false, error: this.outboundError(data) };
       }
       this.log.info(`deleteCommands: cleared commands scopeType=${scopeType}`);
       return { success: true };
@@ -636,8 +816,8 @@ export class LansengerClient {
     const token = await this.getAppToken();
     if (!token) return null;
     try {
-      const url = `${this.apiGatewayUrl}${API_ENDPOINTS.commandsFetch}?app_token=${token}`;
-      const data = await this.postJson(url, { scopeType });
+      const url = `${this.apiGatewayUrl}${API_ENDPOINTS.commandsFetch}`;
+      const data = await this.withTokenRetry("fetchCommands", token, (t) => this.postJson(`${url}?app_token=${t}`, { scopeType }), (d) => d.errCode);
       if (data.errCode !== 0) {
         this.log.error(`fetchCommands: errCode=${data.errCode} errMsg=${data.errMsg ?? "n/a"} scopeType=${scopeType}`);
         return null;
@@ -662,9 +842,9 @@ export class LansengerClient {
 
   async updateDynamicCard(msgId: string, headStatusInfo?: Record<string, string>, links?: Array<{ title: string; url: string }>, isLastUpdate?: boolean): Promise<ApiResult> {
     const token = await this.getAppToken();
-    if (!token) return { success: false, error: "No access token" };
+    if (!token) return { success: false, error: this.noTokenError() };
     try {
-      const url = `${this.apiGatewayUrl}${API_ENDPOINTS.dynamicUpdate}?app_token=${token}`;
+      const url = `${this.apiGatewayUrl}${API_ENDPOINTS.dynamicUpdate}`;
       const appCardUpdateMsg: Record<string, unknown> = {};
       if (isLastUpdate) appCardUpdateMsg.isLastUpdate = true;
       if (headStatusInfo) appCardUpdateMsg.headStatusInfo = headStatusInfo;
@@ -674,8 +854,8 @@ export class LansengerClient {
         msgType: "appCard",
         msgData: { appCardUpdateMsg },
       };
-      const data = await this.postJson(url, payload);
-      if (data.errCode !== 0) return { success: false, error: data.errMsg ?? undefined };
+      const data = await this.withTokenRetry("updateDynamicCard", token, (t) => this.postJson(`${url}?app_token=${t}`, payload), (d) => d.errCode);
+      if (data.errCode !== 0) return { success: false, error: this.outboundError(data) };
       return { success: true, rawResponse: data };
     } catch (e: any) {
       return { success: false, error: e.message };
@@ -684,13 +864,11 @@ export class LansengerClient {
 
   async queryGroups(pageOffset: number = 0, pageSize: number = 100): Promise<{ totalGroupIds: number; groupIds: string[] } | { error: string }> {
     const token = await this.getAppToken();
-    if (!token) return { error: "No access token" };
+    if (!token) return { error: this.noTokenError() };
     try {
-      const url = `${this.apiGatewayUrl}/v2/groups/fetch?app_token=${token}&page_offset=${pageOffset}&page_size=${pageSize}`;
-      const resp = await fetch(url, { signal: AbortSignal.timeout(30_000) });
-      if (!resp.ok) return { error: `HTTP error: ${resp.status}` };
-      const data = (await resp.json()) as LansengerApiResponse;
-      if (data.errCode !== 0) return { error: data.errMsg ?? "API error" };
+      const url = `${this.apiGatewayUrl}/v2/groups/fetch`;
+      const data = await this.withTokenRetry("queryGroups", token, (t) => this.getJson(`${url}?app_token=${t}&page_offset=${pageOffset}&page_size=${pageSize}`), (d) => d.errCode);
+      if (data.errCode !== 0) return { error: this.outboundError(data) ?? "API error" };
       const result = data.data ?? {};
       return {
         totalGroupIds: (result as any).totalGroupIds ?? 0,
@@ -712,10 +890,8 @@ export class LansengerClient {
     const token = await this.getAppToken();
     if (!token) return null;
     try {
-      const url = `${this.apiGatewayUrl}/v2/groups/${encodeURIComponent(groupId)}/info/fetch?app_token=${token}`;
-      const resp = await fetch(url, { signal: AbortSignal.timeout(30_000) });
-      if (!resp.ok) return null;
-      const data = (await resp.json()) as LansengerApiResponse;
+      const url = `${this.apiGatewayUrl}/v2/groups/${encodeURIComponent(groupId)}/info/fetch`;
+      const data = await this.withTokenRetry("getGroupInfo", token, (t) => this.getJson(`${url}?app_token=${t}`), (d) => d.errCode);
       if (data.errCode !== 0) {
         this.log.error(`getGroupInfo: errCode=${data.errCode} errMsg=${data.errMsg ?? "n/a"} groupId=${groupId}`);
         return null;
@@ -733,11 +909,9 @@ export class LansengerClient {
     const token = await this.getAppToken();
     if (!token) return null;
     try {
-      let url = `${this.apiGatewayUrl}/v2/groups/${encodeURIComponent(groupId)}/members/fetch?app_token=${token}&page_offset=${pageOffset}`;
+      let url = `${this.apiGatewayUrl}/v2/groups/${encodeURIComponent(groupId)}/members/fetch?page_offset=${pageOffset}`;
       if (pageSize !== undefined) url += `&page_size=${pageSize}`;
-      const resp = await fetch(url, { signal: AbortSignal.timeout(30_000) });
-      if (!resp.ok) return null;
-      const data = (await resp.json()) as LansengerApiResponse;
+      const data = await this.withTokenRetry("getGroupMembers", token, (t) => this.getJson(`${url}&app_token=${t}`), (d) => d.errCode);
       if (data.errCode !== 0) {
         this.log.error(`getGroupMembers: errCode=${data.errCode} errMsg=${data.errMsg ?? "n/a"} groupId=${groupId}`);
         return null;
@@ -758,11 +932,9 @@ export class LansengerClient {
     const token = await this.getAppToken();
     if (!token) return null;
     try {
-      let url = `${this.apiGatewayUrl}/v2/groups/${encodeURIComponent(groupId)}/members/is_in_group?app_token=${token}`;
-      if (staffId) url += `&staff_id=${encodeURIComponent(staffId)}`;
-      const resp = await fetch(url, { signal: AbortSignal.timeout(30_000) });
-      if (!resp.ok) return null;
-      const data = (await resp.json()) as LansengerApiResponse;
+      let url = `${this.apiGatewayUrl}/v2/groups/${encodeURIComponent(groupId)}/members/is_in_group`;
+      if (staffId) url += `?staff_id=${encodeURIComponent(staffId)}`;
+      const data = await this.withTokenRetry("checkMembership", token, (t) => this.getJson(`${url}${staffId ? "&" : "?"}app_token=${t}`), (d) => d.errCode);
       if (data.errCode !== 0) {
         this.log.error(`checkMembership: errCode=${data.errCode} errMsg=${data.errMsg ?? "n/a"} groupId=${groupId}`);
         return null;
@@ -841,14 +1013,25 @@ export class LansengerClient {
   async downloadMedia(mediaId: string): Promise<{ bytes: Buffer; ext?: string; fname?: string } | null> {
     const token = await this.getAppToken();
     if (!token) return null;
-    try {
-      const url = `${this.apiGatewayUrl}${API_ENDPOINTS.fetchMedia}/${mediaId}/fetch?app_token=${token}`;
+    // Attempt returns { errCode, result }: errCode is non-null only when the
+    // server answered with a JSON API error (e.g. token rejected at auth time),
+    // which is the only classification that triggers the one-shot retry.
+    const attempt = async (t: string): Promise<{ errCode: number | null; result: { bytes: Buffer; ext?: string; fname?: string } | null }> => {
+      const url = `${this.apiGatewayUrl}${API_ENDPOINTS.fetchMedia}/${mediaId}/fetch?app_token=${t}`;
       const resp = await fetch(url, { signal: AbortSignal.timeout(300_000) });
-      if (!resp.ok) return null;
+      if (!resp.ok) return { errCode: null, result: null };
+      const contentType = resp.headers.get("content-type") ?? "";
+      if (contentType.includes("json")) {
+        // Gateway answered with an API error payload instead of media bytes.
+        try {
+          const parsed = JSON.parse(await resp.text()) as LansengerApiResponse;
+          if (parsed && typeof parsed.errCode === "number") return { errCode: parsed.errCode, result: null };
+        } catch { /* malformed JSON — treat as fatal below */ }
+        return { errCode: null, result: null };
+      }
       const bytes = Buffer.from(await resp.arrayBuffer());
       let ext: string | undefined;
       let fname: string | undefined;
-      const contentType = resp.headers.get("content-type") ?? "";
       if (contentType.includes("png")) ext = ".png";
       else if (contentType.includes("jpeg") || contentType.includes("jpg")) ext = ".jpg";
       else if (contentType.includes("gif")) ext = ".gif";
@@ -868,7 +1051,11 @@ export class LansengerClient {
           if (dotExt) ext = dotExt;
         }
       }
-      return { bytes, ext, fname: fname || undefined };
+      return { errCode: null, result: { bytes, ext, fname: fname || undefined } };
+    };
+    try {
+      const outcome = await this.withTokenRetry("downloadMedia", token, attempt, (r) => r.errCode);
+      return outcome?.result ?? null;
     } catch {
       return null;
     }
