@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.18.6] - 2026-09-03
+
+### Fixed
+
+- **密钥轮换后出站持续被拒（客户报告）**：服务端重置 AppSecret / 吊销 appToken 后，插件会拿着被拒的旧 token 继续发消息直到缓存过期（最长 ~115min），且刷新失败后所有出站转为沉默的 `No access token`，无任何自愈或提示。现所有出站调用（21 个调用点，含 multipart 上传/媒体下载/群查询等 raw-fetch 路径）统一走一次性 `refresh + retry`：仅对**确定性 token 失效**错误码（默认 40019，可用 `LANSENGER_TOKEN_INVALID_ERRCODES` 扩展）触发，重试恰好一次且并发调用共享同一次刷新（single-flight）；刷新被拒（40018 类）时错误信息附带可操作指引（更新 openclaw.json + `openclaw gateway restart`）。`LANSENGER_TOKEN_INVALID_ERRCODES` 永远无法把 40018 注入重试集合。
+- **密钥失效不可观测**：`lansenger.status` 新增每账号 `token` 子对象（`hasToken/tokenAgeSec/lastRefreshResult/lastRefreshErrCode/lastRefreshAgeSec`），纯增量字段。
+
+### Added
+
+- **密钥轮换 SOP**（`docs/secret-rotation.md`）：平台重置 AppSecret 后的标准操作（config set → gateway restart → 验证），含 SecretRef/env 用户的注意事项与常见误区表；`channels add` 向导的密钥保留问句补充轮换场景提示（三语）。
+- **测试**：`src/token-retry.test.ts`（14 用例：自愈/重试上界/40018 排除/non-token 不重试/single-flight/拒绝指引/缓存语义/raw-fetch 覆盖/status 记账/env 覆盖）；`test/e2e/secret-rotation.e2e.test.ts`（4 用例：token 吊销自愈、轮换未更新配置的失败与恢复、故障期间入站不受扰——真实 WS+HTTP 线协议）。
+- FakeLansengerServer 新增故障注入：`revokeAllTokens()`（吊销已签发 token，模拟服务端 token 缓存清理）、`rotateSecret(new)`（模拟管理平台重置 AppSecret）。
+
+### Compatibility
+
+- CLI 面零变更：`channels add`（含 `--token`）、`config set`、`gateway restart`、`lansenger.start/stop` 语义与参数不变；`lansenger.status` 仅新增字段；`getAppToken()` 公共签名不变；SecretRef/env 配置形态不变。
+- 已知行为变化（有意）：刷新被拒后的 no-token 错误文案从纯 `No access token` 变为 `No access token — appSecret rejected…`（substring 兼容）。
+
 ## [3.18.5] - 2026-09-01
 
 ### Added
