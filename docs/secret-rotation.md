@@ -31,7 +31,7 @@ openclaw channels add --channel lansenger --token "appId:新的appSecret"
 
 > ⚠️ 向导在“已有配置”时会先问 **是否保留现有 App Secret** —— 你是要轮换，请选择**替换**并输入新值。
 
-如果你使用 **SecretRef / 环境变量**（`LANSENGER_APP_SECRET` 等）：密钥解析自**网关进程的环境变量**，更新环境来源（启动脚本 / LaunchAgent plist）后必须重启网关进程，仅改 secrets 存储不生效。
+如果你使用 **SecretRef / 环境变量**（`LANSENGER_APP_SECRET` 等）：密钥解析自**网关进程的环境变量**，更新环境来源（启动脚本 / LaunchAgent plist）后必须重启网关进程，仅改 secrets 存储不生效。环境变量 `LANSENGER_TOKEN_INVALID_ERRCODES` 同样在网关进程启动时读取，修改后需重启。
 
 ### 2. 重启网关
 

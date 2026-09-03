@@ -1162,12 +1162,12 @@ describe("LansengerClient.uploadMedia", () => {
     vi.stubGlobal("fetch", async () => errorApi(40001, "bad"));
     const client = new LansengerClient({ appId: "id", appSecret: "secret" });
     const result = await client.uploadMedia("/tmp/photo.jpg");
-    // v3.18.6: refresh rejections now append a rotation hint — keep the original
-    // intent (no-token error surfaced) via substring match.
+    // v3.18.6: no-token errors keep the original prefix; transient refresh
+    // failures (non-secret-rejection codes like 40001) carry NO rotation hint.
     expect("error" in result).toBe(true);
     if ("error" in result) {
       expect(result.error).toContain("No access token");
-      expect(result.error).toContain("openclaw gateway restart");
+      expect(result.error).not.toContain("gateway restart");
     }
   });
 

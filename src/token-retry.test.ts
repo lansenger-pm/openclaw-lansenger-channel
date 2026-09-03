@@ -301,6 +301,41 @@ describe("raw-fetch call sites heal too", () => {
   });
 });
 
+// 审计修复验证：非拒绝码刷新失败不带轮换 hint；checkMembership URL 形状
+describe("audit fixes", () => {
+  it("transient refresh failures (non-secret-rejection) carry no rotation hint", async () => {
+    responder = (url) => {
+      if (url.includes("apptoken")) return errorApi(50001, "server busy");
+      return successApi({ msgId: "never" });
+    };
+    const client = makeClient();
+    const result = await client.sendText("user-1", "hello");
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("No access token");
+    expect(result.error).not.toContain("gateway restart");
+    const status = client.getTokenStatus();
+    expect(status.lastRefreshResult).toBe("none");
+  });
+
+  it("checkMembership with staffId keeps staff_id in the query string (URL shape regression)", async () => {
+    responder = (url) => {
+      if (url.includes("apptoken")) return successApi({ appToken: "tok-1", expiresIn: 7200 });
+      if (url.includes("is_in_group")) return successApi({ isInGroup: true });
+      return successApi({});
+    };
+    const client = makeClient();
+    const result = await client.checkMembership("g-1", "staff-9");
+    expect(result).toBe(true);
+    const url = calls.find((c) => c.url.includes("is_in_group"))!.url;
+    const query = url.slice(url.indexOf("?"));
+    expect(query).toContain("?staff_id=staff-9");
+    expect(query).toContain("app_token=tok-1");
+    expect(url.indexOf("?")).toBeLessThan(url.indexOf("&staff_id") === -1 ? Infinity : url.indexOf("&staff_id"));
+    // The path must not swallow the staff_id parameter.
+    expect(url).not.toContain("is_in_group&");
+  });
+});
+
 // T1-11 + T1-12
 describe("LANSENGER_TOKEN_INVALID_ERRCODES override", () => {
   it("adds custom codes to the retry set", async () => {

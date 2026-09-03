@@ -31,11 +31,13 @@ describe("E2E: secret rotation self-heal (real client ↔ fake server)", () => {
     await server.stop();
     _clearTestState();
   });
-  beforeEach(() => {
+  beforeEach(async () => {
+    // Stop the previous server first — secrets/revocations must not leak
+    // across cases (audit P2: lifecycle aligned with repo e2e conventions).
+    if (server) await server.stop().catch(() => {});
     server = new FakeLansengerServer({ pingIntervalSec: 1 });
-    return server.start().then(() => {
-      server.apiCalls.length = 0;
-    });
+    await server.start();
+    server.apiCalls.length = 0;
   });
 
   it("T4-1: revokes tokens (secret unchanged) — client self-heals and delivers exactly once, WS stays up", async () => {

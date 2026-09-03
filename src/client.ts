@@ -91,6 +91,17 @@ function resolveTokenInvalidErrCodes(): Set<number> {
 
 const TOKEN_INVALID_ERRCODES = resolveTokenInvalidErrCodes();
 
+/**
+ * Server errCodes meaning the appSecret itself was rejected. Only these set
+ * the rotation hint / "rejected" status — transient refresh errors (rate
+ * limits, server hiccups) must never tell operators to rotate secrets.
+ */
+const SECRET_REJECTION_ERRCODES = new Set<number>([REJECTED_SECRET_ERRCODE]);
+
+function isSecretRejectionErrCode(code: number): boolean {
+  return SECRET_REJECTION_ERRCODES.has(code);
+}
+
 function tokenRejectionHint(errCode: number): string {
   return `appSecret rejected by server (errCode=${errCode}). ` +
     `Update channels.lansenger.appSecret (or channels.lansenger.accounts.<key>.appSecret) in openclaw.json, ` +
@@ -291,10 +302,14 @@ export class LansengerClient {
       const data = (await resp.json()) as LansengerApiResponse;
       if (data.errCode !== 0) {
         this.log.error(`getAppToken: errCode=${data.errCode} errMsg=${data.errMsg ?? "n/a"}`);
-        const hint = tokenRejectionHint(data.errCode);
-        this.log.error(`getAppToken: ${hint}`);
-        this.lastTokenRejectionHint = hint;
-        this.recordTokenRefresh("rejected", data.errCode);
+        if (isSecretRejectionErrCode(data.errCode)) {
+          const hint = tokenRejectionHint(data.errCode);
+          this.log.error(`getAppToken: ${hint}`);
+          this.lastTokenRejectionHint = hint;
+          this.recordTokenRefresh("rejected", data.errCode);
+        } else {
+          this.recordTokenRefresh("none");
+        }
         return null;
       }
       this.appToken = data.data?.appToken ?? null;
@@ -383,7 +398,9 @@ export class LansengerClient {
     const code = classifyErrCode(first);
     if (code === null || !this.isTokenInvalidErrCode(code)) return first;
     this.log.warn?.(`withTokenRetry[${label}]: token rejected (errCode=${code}) — refreshing once and retrying`);
-    this.invalidateToken();
+    // Invalidate only if the cache still holds OUR token — a concurrent caller
+    // may have already refreshed a newer one (P3-2: don't evict fresh tokens).
+    if (this.appToken === token) this.invalidateToken();
     const fresh = await this.getAppToken();
     if (!fresh || fresh === token) return first;
     return attempt(fresh);
@@ -439,7 +456,9 @@ export class LansengerClient {
         const payload = wrap({ formatText: fmtData, msgType: "formatText" });
         if (opts?.refMsgId) payload.refMsgId = opts.refMsgId;
         const data = await this.postJson(`${url}?app_token=${t}`, payload);
-        if (data.errCode !== 0 && opts?.reminder) {
+        // Reminder fallback retries with the SAME (possibly rejected) token —
+        // pointless for token-invalid codes; leave them to withTokenRetry.
+        if (data.errCode !== 0 && opts?.reminder && !this.isTokenInvalidErrCode(data.errCode)) {
           this.log.info(`sendFormatText with reminder failed (${data.errMsg ?? "unknown"}), retrying without reminder`);
           const retryPayload = wrap({ formatText: { formatType: 1, text: content }, msgType: "formatText" });
           if (opts?.refMsgId) retryPayload.refMsgId = opts.refMsgId;
@@ -914,8 +933,8 @@ export class LansengerClient {
     if (!token) return null;
     try {
       let url = `${this.apiGatewayUrl}/v2/groups/${encodeURIComponent(groupId)}/members/is_in_group`;
-      if (staffId) url += `&staff_id=${encodeURIComponent(staffId)}`;
-      const data = await this.withTokenRetry("checkMembership", token, (t) => this.getJson(`${url}?app_token=${t}`), (d) => d.errCode);
+      if (staffId) url += `?staff_id=${encodeURIComponent(staffId)}`;
+      const data = await this.withTokenRetry("checkMembership", token, (t) => this.getJson(`${url}${staffId ? "&" : "?"}app_token=${t}`), (d) => d.errCode);
       if (data.errCode !== 0) {
         this.log.error(`checkMembership: errCode=${data.errCode} errMsg=${data.errMsg ?? "n/a"} groupId=${groupId}`);
         return null;
