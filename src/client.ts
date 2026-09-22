@@ -421,6 +421,65 @@ export class LansengerClient {
   // TEXT MESSAGING
   // ══════════════════════════════════════════════
 
+  /** Exact server rejection observed when a group chatId is misrouted to the
+   *  individual endpoint: errCode=10005 "API服务 无权限||permission denied"
+   *  (server log: "individual message receiver is not bot creator"). */
+  private isCreatorOnlyReject(data: LansengerApiResponse): boolean {
+    if (data.errCode !== 10005) return false;
+    return (data.errMsg ?? "").includes("permission denied");
+  }
+
+  /**
+   * Cold-start safeguard: Lansenger group IDs and user openIds share the same
+   * "orgId-suffix" shape, so when chatTypeCache/ownerId are cold (fresh gateway
+   * start, plugin reload) a group chatId can be misrouted to the individual
+   * endpoint (/v1/bot/messages/create) with userIdList=[groupId]. The server
+   * rejects that with errCode=10005 (see isCreatorOnlyReject) and the message
+   * is silently lost — recovery/announce deliveries hit exactly this window.
+   *
+   * When that exact rejection arrives and we never learned the target as a DM,
+   * retry ONCE via the group endpoint (/v1/messages/group/create) and learn
+   * the corrected chat type on success. First attempt has no side effects
+   * (server rejected before delivery), so the retry cannot duplicate a send.
+   *
+   * Note on the owner guard: ownerId is only learned from inbound DMs, so it
+   * cannot cover the coldest window (fresh start, no DM seen yet). That is safe
+   * — a true owner DM passes the server's creator check on the individual
+   * endpoint and never produces the 10005 rejection this retry reacts to.
+   */
+  private async retryViaGroupEndpoint(
+    op: string,
+    chatId: string,
+    data: LansengerApiResponse,
+    buildGroupPayload: () => Record<string, unknown>,
+  ): Promise<LansengerApiResponse> {
+    if (!this.isCreatorOnlyReject(data)) return data;
+    if (this.chatTypeCache.get(chatId) === false) return data; // learned DM: trust the cache
+    if (this.ownerId && chatId === this.ownerId) return data; // target is the bot owner: cannot be a group
+    const token = await this.getAppToken();
+    if (!token) return data;
+    const groupUrl = `${this.apiGatewayUrl}${API_ENDPOINTS.groupMessage}?app_token=${token}`;
+    this.log.warn?.(
+      `${op}: errCode=10005 permission denied via individual endpoint — cold-start chatType misroute suspected, retrying once via group endpoint chatId=${chatId}`,
+    );
+    let retry: LansengerApiResponse;
+    try {
+      retry = await this.postJson(groupUrl, buildGroupPayload());
+    } catch (e: any) {
+      // Network-level failure on the fallback must not mask the original
+      // 10005 context — the caller reports the original data either way.
+      this.log.warn?.(`${op}: group-endpoint retry transport error (${e?.message ?? "unknown"}) chatId=${chatId}`);
+      return data;
+    }
+    if (retry.errCode === 0) {
+      this.chatTypeCache.set(chatId, true);
+      this.log.info(`${op}: group-endpoint retry succeeded chatId=${chatId} — chatTypeCache learned isGroup=true`);
+    } else {
+      this.log.warn?.(`${op}: group-endpoint retry failed chatId=${chatId} errCode=${retry.errCode} errMsg=${retry.errMsg ?? "n/a"}`);
+    }
+    return retry;
+  }
+
   async sendText(chatId: string, content: string, opts?: { reminder?: ReminderParams; refMsgId?: string }): Promise<ApiResult> {
     const token = await this.getAppToken();
     if (!token) return { success: false, error: this.noTokenError() };
@@ -432,6 +491,14 @@ export class LansengerClient {
       if (opts?.refMsgId) payload.refMsgId = opts.refMsgId;
       const data = await this.withTokenRetry("sendText", token, (t) => this.postJson(`${url}?app_token=${t}`, payload), (d) => d.errCode);
       if (data.errCode !== 0) {
+        const viaGroup = await this.retryViaGroupEndpoint("sendText", chatId, data, () => {
+          const groupPayload: Record<string, unknown> = { groupId: chatId, msgType: "text", msgData: { text: { content } } };
+          if (opts?.refMsgId) groupPayload.refMsgId = opts.refMsgId;
+          return groupPayload;
+        });
+        if (viaGroup.errCode === 0) {
+          return { success: true, messageId: viaGroup.data?.msgId ?? undefined, rawResponse: viaGroup };
+        }
         this.log.error(`sendText: errCode=${data.errCode} errMsg=${data.errMsg ?? "n/a"}`);
         return { success: false, error: this.outboundError(data) };
       }
@@ -468,6 +535,18 @@ export class LansengerClient {
       };
       const data = await this.withTokenRetry("sendFormatText", token, attempt, (d) => d.errCode);
       if (data.errCode !== 0) {
+        const viaGroup = await this.retryViaGroupEndpoint("sendFormatText", chatId, data, () => {
+          const groupPayload: Record<string, unknown> = {
+            groupId: chatId,
+            msgType: "formatText",
+            msgData: { formatText: { formatType: 1, text: content } },
+          };
+          if (opts?.refMsgId) groupPayload.refMsgId = opts.refMsgId;
+          return groupPayload;
+        });
+        if (viaGroup.errCode === 0) {
+          return { success: true, messageId: viaGroup.data?.msgId ?? undefined, rawResponse: viaGroup };
+        }
         this.log.error(`sendFormatText: errCode=${data.errCode} errMsg=${data.errMsg ?? "n/a"}`);
         return { success: false, error: this.outboundError(data) };
       }
@@ -487,7 +566,20 @@ export class LansengerClient {
       if (reminder) textData.reminder = reminder;
       const payload = wrap({ text: textData, msgType: "text" });
       const data = await this.withTokenRetry("sendTextWithMedia", token, (t) => this.postJson(`${url}?app_token=${t}`, payload), (d) => d.errCode);
-      if (data.errCode !== 0) return { success: false, error: this.outboundError(data) };
+      if (data.errCode !== 0) {
+        // NOTE: unlike sendText/sendFormatText, the media fallback deliberately
+        // keeps reminder inside textData — mirrors the known-good group wrap
+        // shape (reminders are already delivered via the group endpoint today).
+        const viaGroup = await this.retryViaGroupEndpoint("sendTextWithMedia", chatId, data, () => ({
+          groupId: chatId,
+          msgType: "text",
+          msgData: { text: textData },
+        }));
+        if (viaGroup.errCode === 0) {
+          return { success: true, messageId: viaGroup.data?.msgId ?? undefined, rawResponse: viaGroup };
+        }
+        return { success: false, error: this.outboundError(data) };
+      }
       return { success: true, messageId: data.data?.msgId ?? undefined, rawResponse: data };
     } catch (e: any) {
       return { success: false, error: e.message };

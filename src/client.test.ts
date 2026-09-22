@@ -350,6 +350,141 @@ describe("LansengerClient with mocked fetch", () => {
     expect(msgCallCount).toBe(2);
   });
 
+  it("cold-start misroute: sendFormatText falls back to group endpoint on 10005 creator-only reject and learns chatType", async () => {
+    const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
+    vi.stubGlobal("fetch", async (url: string | Request, init?: RequestInit) => {
+      const u = typeof url === "string" ? url : url.url;
+      const body = JSON.parse(String(init?.body ?? "{}"));
+      if (u.includes("apptoken")) return successApi({ appToken: "tok", expiresIn: 7200 });
+      calls.push({ url: u, body });
+      if (u.includes("bot/messages/create")) {
+        // Server: "individual message receiver is not bot creator, permission denied"
+        return errorApi(10005, "API服务 无权限||permission denied||magic=891955");
+      }
+      return successApi({ msgId: "group-msg-1" });
+    });
+    const client = new LansengerClient({ appId: "id", appSecret: "secret" });
+    const groupChatId = "2285568-Glhy1fWeXm37FRKxbVBCpDGOA3fGgx";
+    const result = await client.sendFormatText(groupChatId, "hello");
+    expect(result.success).toBe(true);
+    expect(result.messageId).toBe("group-msg-1");
+    expect(calls).toHaveLength(2);
+    expect(calls[0]!.url).toContain("bot/messages/create");
+    expect(calls[0]!.body.userIdList).toEqual([groupChatId]);
+    expect(calls[1]!.url).toContain("messages/group/create");
+    expect(calls[1]!.body.groupId).toBe(groupChatId);
+    // Learning: a second send goes straight to the group endpoint.
+    calls.length = 0;
+    const second = await client.sendFormatText(groupChatId, "hello again");
+    expect(second.success).toBe(true);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.url).toContain("messages/group/create");
+  });
+
+  it("cold-start safeguard: no group fallback when chatTypeCache learned DM (isGroup=false)", async () => {
+    let msgCallCount = 0;
+    vi.stubGlobal("fetch", async (url: string | Request, init?: RequestInit) => {
+      const u = typeof url === "string" ? url : url.url;
+      if (u.includes("apptoken")) return successApi({ appToken: "tok", expiresIn: 7200 });
+      msgCallCount++;
+      return errorApi(10005, "API服务 无权限||permission denied||magic=2");
+    });
+    const client = new LansengerClient({ appId: "id", appSecret: "secret" });
+    (client as unknown as { chatTypeCache: Map<string, boolean> }).chatTypeCache.set("dm-user", false);
+    const result = await client.sendFormatText("dm-user", "hello");
+    expect(result.success).toBe(false);
+    expect(msgCallCount).toBe(1); // no fallback attempted
+  });
+
+  it("cold-start safeguard: no group fallback for non-10005 errors", async () => {
+    let msgCallCount = 0;
+    vi.stubGlobal("fetch", async (url: string | Request, init?: RequestInit) => {
+      const u = typeof url === "string" ? url : url.url;
+      if (u.includes("apptoken")) return successApi({ appToken: "tok", expiresIn: 7200 });
+      msgCallCount++;
+      return errorApi(40001, "some other error");
+    });
+    const client = new LansengerClient({ appId: "id", appSecret: "secret" });
+    const result = await client.sendFormatText("maybe-group", "hello");
+    expect(result.success).toBe(false);
+    expect(msgCallCount).toBe(1); // no fallback attempted
+  });
+
+  it("cold-start misroute: sendText also falls back to group endpoint with matching payload shape", async () => {
+    const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
+    vi.stubGlobal("fetch", async (url: string | Request, init?: RequestInit) => {
+      const u = typeof url === "string" ? url : url.url;
+      const body = JSON.parse(String(init?.body ?? "{}"));
+      if (u.includes("apptoken")) return successApi({ appToken: "tok", expiresIn: 7200 });
+      calls.push({ url: u, body });
+      if (u.includes("bot/messages/create")) return errorApi(10005, "API服务 无权限||permission denied||magic=3");
+      return successApi({ msgId: "group-text-1" });
+    });
+    const client = new LansengerClient({ appId: "id", appSecret: "secret" });
+    const result = await client.sendText("2285568-GroupAbc123", "plain hello", { refMsgId: "ref-9" });
+    expect(result.success).toBe(true);
+    expect(result.messageId).toBe("group-text-1");
+    expect(calls[1]!.url).toContain("messages/group/create");
+    expect(calls[1]!.body).toMatchObject({
+      groupId: "2285568-GroupAbc123",
+      msgType: "text",
+      refMsgId: "ref-9",
+      msgData: { text: { content: "plain hello" } },
+    });
+  });
+
+  it("cold-start safeguard: owner target never falls back even on 10005 creator reject", async () => {
+    let msgCallCount = 0;
+    vi.stubGlobal("fetch", async (url: string | Request, init?: RequestInit) => {
+      const u = typeof url === "string" ? url : url.url;
+      if (u.includes("apptoken")) return successApi({ appToken: "tok", expiresIn: 7200 });
+      msgCallCount++;
+      return errorApi(10005, "API服务 无权限||permission denied||magic=4");
+    });
+    const client = new LansengerClient({ appId: "id", appSecret: "secret" });
+    (client as unknown as { ownerId: string }).ownerId = "owner-open-id";
+    const result = await client.sendFormatText("owner-open-id", "hello");
+    expect(result.success).toBe(false);
+    expect(msgCallCount).toBe(1); // owner guard blocked the fallback
+  });
+
+  it("cold-start safeguard: group retry failure returns the ORIGINAL 10005 and does not poison the cache", async () => {
+    const calls: string[] = [];
+    vi.stubGlobal("fetch", async (url: string | Request, init?: RequestInit) => {
+      const u = typeof url === "string" ? url : url.url;
+      if (u.includes("apptoken")) return successApi({ appToken: "tok", expiresIn: 7200 });
+      calls.push(u);
+      return errorApi(10005, "API服务 无权限||permission denied||magic=5");
+    });
+    const client = new LansengerClient({ appId: "id", appSecret: "secret" });
+    const result = await client.sendFormatText("2285568-GroupXyz789", "hello");
+    expect(result.success).toBe(false);
+    // Both endpoints were tried, but the caller still sees the ORIGINAL error.
+    expect(calls.some((u) => u.includes("bot/messages/create"))).toBe(true);
+    expect(calls.some((u) => u.includes("messages/group/create"))).toBe(true);
+    expect(result.error).toContain("permission denied");
+    // Failure must NOT learn isGroup=true — a later send still probes the
+    // individual endpoint FIRST (a poisoned cache would go straight to group).
+    calls.length = 0;
+    await client.sendFormatText("2285568-GroupXyz789", "hello again");
+    expect(calls[0]).toContain("bot/messages/create");
+    expect(calls.filter((u) => u.includes("messages/group/create"))).toHaveLength(1);
+  });
+
+  it("cold-start safeguard: 10005 without 'permission denied' does not fall back", async () => {
+    let msgCallCount = 0;
+    vi.stubGlobal("fetch", async (url: string | Request, init?: RequestInit) => {
+      const u = typeof url === "string" ? url : url.url;
+      if (u.includes("apptoken")) return successApi({ appToken: "tok", expiresIn: 7200 });
+      msgCallCount++;
+      return errorApi(10005, "API服务 无权限||some other reason||magic=6");
+    });
+    const client = new LansengerClient({ appId: "id", appSecret: "secret" });
+    const result = await client.sendFormatText("maybe-group", "hello");
+    expect(result.success).toBe(false);
+    expect(msgCallCount).toBe(1); // errMsg mismatch blocks the fallback
+  });
+
   it("sendFormatText no retry without reminder", async () => {
     let msgCallCount = 0;
     vi.stubGlobal("fetch", async (url: string | Request, init?: RequestInit) => {
