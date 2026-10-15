@@ -21,6 +21,7 @@ Connecte OpenClaw à Lansenger — une plateforme de messagerie d'entreprise —
 - **@Mentions** — support @tout et @utilisateurs spécifiques dans les chats de groupe
 - **Traitement des médias entrants** — téléchargement d'images/fichiers/vocaux, détection d'extension, chemins de fichiers pour l'agent
 - **Révocation de messages** — révoquer les messages précédemment envoyés (chatType : robot ou groupe uniquement)
+- **Réactions emoji** — réagir à n'importe quel message avec un emoji (TYPE_THUMB / TYPE_OK / TYPE_ADD_ONE / TYPE_FIREWORK / TYPE_LOVE / TYPE_DOUBT ; annulation prise en charge ; nécessite un serveur Lansenger v4.6.17+)
 - **Démarrage automatique** — la passerelle connecte automatiquement tous les comptes de robots configurés au démarrage
 - **Debounce entrant** — fusionner les messages consécutifs rapides du même émetteur via la config OpenClaw `messages.inbound.debounceMs`
 - **Message ack** — envoyer un message « reçu, en cours de traitement... » avant le traitement de l'agent ; auto-révoqué après la réponse ; langue auto-détectée
@@ -60,6 +61,7 @@ Les messages peuvent être envoyés via les **outils agent** (intégrés) ou les
 | `lansenger_send_app_articles` | Envoyer une carte multi-articles |
 | `lansenger_update_dynamic_card` | Mettre à jour le statut d'une carte dynamique en place |
 | `lansenger_revoke_message` | Révoquer un message précédemment envoyé |
+| `lansenger_reply_message` | Réagir à un message avec un emoji (ou annuler la réaction ; serveur v4.6.17+) |
 | `lansenger_query_groups` | Rechercher les groupes disponibles |
 | `lansenger_group_info` | Détails d'un groupe (nom, avatar, propriétaire, etc.) |
 | `lansenger_group_members` | Lister les membres d'un groupe avec noms et rôles |

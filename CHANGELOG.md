@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.18.7] - 2026-10-15
+
+### Added
+
+- **表情回复**（新工具 `lansenger_reply_message` + `client.replyMessage()`）：按 msgId 用表情回应消息，支持 6 个表情（TYPE_THUMB / TYPE_OK / TYPE_ADD_ONE / TYPE_FIREWORK / TYPE_LOVE / TYPE_DOUBT）；`cancel` 撤回回应时同样必须携带 emojiId（服务端对无 emoji 的撤回回 `40060 emojiId is empty`）。需蓝信服务端 v4.6.17+（旧服务端返回 `10000 NOT_SUPPORTED`，工具以 `success:false` + 服务端错误文案呈现）。emoji 白名单与 replyType 在本地预校验，非法值不发出任何 HTTP 请求。
+- **测试**：`src/client.test.ts` 新增 `LansengerClient.replyMessage validation` 6 用例（成功载荷形状 `/v1/messages/reply/create` + `{replyType,msgId,emojiId}`、cancel 仍带 emoji 且 replyType=2、服务端错误映射（NOT_SUPPORTED）、emoji 白名单/空值/非法 replyType 本地拒绝且零请求）。
+
+### Compatibility
+
+- 纯增量：新增一个代理工具与一个 client 方法，既有工具、配置与 WS 行为零变更；旧服务端（<4.6.17）表现为该工具返回失败并附服务端错误文案，不影响其他工具。
+
 ## [3.18.6] - 2026-09-03
 
 ### Fixed

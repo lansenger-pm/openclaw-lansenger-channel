@@ -71,17 +71,18 @@ function mockNoChatId() {
 }
 
 describe("registerLansengerTools", () => {
-  it("registers all 15 tools", () => {
+  it("registers all 16 tools", () => {
     mockRunning();
     const api = makeMockApi();
     registerLansengerTools(api);
     const names = Object.keys(api._tools);
-    expect(names.length).toBe(15);
+    expect(names.length).toBe(16);
     expect(names).toContain("lansenger_send_file");
     expect(names).toContain("lansenger_send_text");
     expect(names).toContain("lansenger_send_format_text");
     expect(names).toContain("lansenger_send_image_url");
     expect(names).toContain("lansenger_revoke_message");
+    expect(names).toContain("lansenger_reply_message");
     expect(names).toContain("lansenger_send_link_card");
     expect(names).toContain("lansenger_send_app_articles");
     expect(names).toContain("lansenger_send_app_card");

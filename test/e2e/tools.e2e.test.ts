@@ -53,10 +53,10 @@ describe("E2E: agent tools (real tools ↔ real wire)", () => {
     return JSON.parse(typeof text === "string" ? text : JSON.stringify(text));
   }
 
-  it("registers all 15 lansenger_* tools", () => {
-    expect(tools.size).toBe(15);
+  it("registers all 16 lansenger_* tools", () => {
+    expect(tools.size).toBe(16);
     for (const name of ["lansenger_send_text", "lansenger_send_format_text", "lansenger_send_app_card",
-      "lansenger_send_approve_card", "lansenger_revoke_message", "lansenger_query_groups",
+      "lansenger_send_approve_card", "lansenger_revoke_message", "lansenger_reply_message", "lansenger_query_groups",
       "lansenger_group_info", "lansenger_group_members", "lansenger_download_media"]) {
       expect(tools.has(name), name).toBe(true);
     }

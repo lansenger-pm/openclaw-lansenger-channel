@@ -21,6 +21,7 @@
 - **@提及** — 支援群組聊天中 @所有人 和 @指定使用者
 - **入站媒體處理** — 下載圖片/檔案/語音，偵測副檔名，向代理提供檔案路徑
 - **訊息撤回** — 撤回已發送的訊息（chatType 僅支援 bot 與 group）
+- **表情回覆** — 用表情回應任意訊息（TYPE_THUMB / TYPE_OK / TYPE_ADD_ONE / TYPE_FIREWORK / TYPE_LOVE / TYPE_DOUBT；支援取消；需藍信伺服器 v4.6.17+）
 - **自動啟動** — 網關啟動時自動連接所有已設定的機械人帳戶
 - **入站防抖合併** — 利用 OpenClaw 的 `messages.inbound.debounceMs` 配置，合併同一發送者的連續快速訊息
 - **確認訊息** — 在代理處理前發送「收到，正在處理...」確認訊息，代理回覆後自動撤回，語言自動偵測
@@ -60,6 +61,7 @@
 | `lansenger_send_app_articles` | 發送多文章卡片 |
 | `lansenger_update_dynamic_card` | 原地更新動態卡片狀態 |
 | `lansenger_revoke_message` | 撤回已發送的訊息 |
+| `lansenger_reply_message` | 用表情回應訊息（或取消回應；伺服器 v4.6.17+） |
 | `lansenger_query_groups` | 查詢可用羣組 |
 | `lansenger_group_info` | 查詢羣組詳情（名稱、頭像、羣主等） |
 | `lansenger_group_members` | 查詢羣成員列表（姓名、角色、頭像） |
