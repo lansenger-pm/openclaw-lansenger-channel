@@ -19,6 +19,7 @@ Lansenger (蓝信) channel plugin for OpenClaw — WebSocket inbound, HTTP API o
 - **@Mentions** — support @all and @specific users in group chats
 - **Inbound media processing** — download images/files/voice, detect extension, provide file paths to agent
 - **Message revocation** — revoke previously sent messages (chatType: bot or group only)
+- **Emoji replies** — react to any message with an emoji (TYPE_THUMB / TYPE_OK / TYPE_ADD_ONE / TYPE_FIREWORK / TYPE_LOVE / TYPE_DOUBT; cancel supported; requires Lansenger server v4.6.17+)
 - **Auto-start** — gateway automatically connects all configured bot accounts on boot
 - **Inbound debounce** — merge rapid consecutive messages from the same sender using OpenClaw's `messages.inbound.debounceMs` config
 - **Ack message** — send a brief "received, processing..." acknowledgment before the agent starts; auto-revoked after agent reply; language auto-detected
@@ -58,6 +59,7 @@ Messages can be sent via **agent tools** (built-in) or **CLI commands** (optiona
 | `lansenger_send_app_articles` | Send multi-article card |
 | `lansenger_update_dynamic_card` | Update dynamic card status in-place |
 | `lansenger_revoke_message` | Revoke a previously sent message |
+| `lansenger_reply_message` | React to a message with an emoji (or cancel the reaction; server v4.6.17+) |
 | `lansenger_query_groups` | Query available groups |
 | `lansenger_group_info` | Get detailed group info (name, avatar, owner, etc.) |
 | `lansenger_group_members` | List group members with names and roles |

@@ -21,6 +21,7 @@
 - **@提及** — 支持群聊中 @所有人 和 @指定用户
 - **入站媒体处理** — 下载图片/文件/语音，检测文件扩展名，向代理提供文件路径
 - **消息撤回** — 撤回已发送的消息（chatType 仅支持 bot 和 group）
+- **表情回复** — 用表情回应任意消息（TYPE_THUMB / TYPE_OK / TYPE_ADD_ONE / TYPE_FIREWORK / TYPE_LOVE / TYPE_DOUBT；支持取消；需蓝信服务端 v4.6.17+）
 - **自动启动** — 网关启动时自动连接所有已配置的机器人账户
 - **入站防抖合并** — 利用 OpenClaw 的 `messages.inbound.debounceMs` 配置，合并同一发送者的连续快速消息
 - **确认消息** — 在代理处理前发送"收到，正在处理..."确认消息，代理回复后自动撤回，语言自动检测
@@ -60,6 +61,7 @@
 | `lansenger_send_app_articles` | 发送多文章卡片 |
 | `lansenger_update_dynamic_card` | 原地更新动态卡片状态 |
 | `lansenger_revoke_message` | 撤回已发送的消息 |
+| `lansenger_reply_message` | 用表情回应消息（或取消回应；服务端 v4.6.17+） |
 | `lansenger_query_groups` | 查询可用群组 |
 | `lansenger_group_info` | 查询群组详情（名称、头像、群主等） |
 | `lansenger_group_members` | 查询群成员列表（姓名、角色、头像） |
