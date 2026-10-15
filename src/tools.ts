@@ -108,6 +108,21 @@ const RevokeMessageSchema = {
   required: ["messageIds"],
 };
 
+const ReplyMessageSchema = {
+  type: "object",
+  properties: {
+    messageId: { type: "string", description: "Message ID to react to." },
+    emojiId: {
+      type: "string",
+      enum: ["TYPE_THUMB", "TYPE_OK", "TYPE_ADD_ONE", "TYPE_FIREWORK", "TYPE_LOVE", "TYPE_DOUBT"],
+      description: "Emoji reaction to set (or to clear when cancel=true).",
+    },
+    cancel: { type: "boolean", description: "Set true to retract the emoji reaction instead of adding it. The same emojiId is still required (the server rejects an emojiless cancel with 40060)." },
+    appId: { type: "string", description: "Lansenger App ID. Auto-detected from active session. Only needed when overriding the default account." },
+  },
+  required: ["messageId", "emojiId"],
+};
+
 const SendLinkCardSchema = {
   type: "object",
   properties: {
@@ -475,6 +490,22 @@ export function registerLansengerTools(api: any) {
         return jsonResult({ error: "chatType='group' requires senderId" });
       }
       const result = await client.revokeMessage(messageIds, chatType, senderId);
+      return jsonResult({ success: result.success });
+    },
+  );
+
+  registerLansengerTool(
+    api,
+    "lansenger_reply_message",
+    "React to a Lansenger (蓝信) message with an emoji (requires Lansenger server v4.6.17+). Supported emojiId values: TYPE_THUMB (点赞), TYPE_OK (OK), TYPE_ADD_ONE (+1), TYPE_FIREWORK (烟花), TYPE_LOVE (爱心), TYPE_DOUBT (疑问). Pass cancel=true to retract the reaction — emojiId is still required when cancelling.",
+    ReplyMessageSchema,
+    async (client, _account, params, _defaultTo) => {
+      const messageId = params.messageId;
+      const emojiId = params.emojiId;
+      if (!messageId) return jsonResult({ error: "messageId is required" });
+      if (!emojiId) return jsonResult({ error: "emojiId is required (also required when cancel=true)" });
+      const replyType = params.cancel ? 2 : 1;
+      const result = await client.replyMessage(messageId, emojiId, replyType);
       return jsonResult({ success: result.success });
     },
   );

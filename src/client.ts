@@ -116,6 +116,7 @@ const API_ENDPOINTS = {
   uploadMedia: "/v1/app/medias/create",
   fetchMedia: "/v1/medias",
   revokeMessage: "/v1/messages/revoke",
+  replyCreate: "/v1/messages/reply/create",
   dynamicUpdate: "/v1/messages/dynamic/update",
   commandsCreate: "/v1/bot/commands/create",
   commandsFetch: "/v1/bot/commands/fetch",
@@ -128,6 +129,11 @@ export type ApiResult = {
   error?: string | undefined;
   rawResponse?: unknown;
 };
+
+// ── Emoji reply (Lansenger server v4.6.17+) ──────────────────────────────
+const REPLY_EMOJI_IDS = ["TYPE_THUMB", "TYPE_OK", "TYPE_ADD_ONE", "TYPE_FIREWORK", "TYPE_LOVE", "TYPE_DOUBT"] as const;
+const REPLY_TYPE_REPLY = 1; // set the emoji reaction
+const REPLY_TYPE_CANCEL = 2; // retract it — emojiId is still required by the server (40060)
 
 export function mediaTypeFromPath(filePath: string): number {
   const ext = path.extname(filePath).toLowerCase();
@@ -607,6 +613,28 @@ export class LansengerClient {
       const payload: Record<string, unknown> = { chatType, messageIds };
       if (senderId) payload.senderId = senderId;
       const data = await this.withTokenRetry("revokeMessage", token, (t) => this.postJson(`${url}?app_token=${t}`, payload), (d) => d.errCode);
+      if (data.errCode !== 0) return { success: false, error: this.outboundError(data) };
+      return { success: true, rawResponse: data };
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
+  }
+
+  async replyMessage(messageId: string, emojiId: string, replyType: number = REPLY_TYPE_REPLY): Promise<ApiResult> {
+    if (!messageId) return { success: false, error: "messageId is required" };
+    if (!emojiId) return { success: false, error: "emojiId is required (also required when cancelling)" };
+    if (!(REPLY_EMOJI_IDS as readonly string[]).includes(emojiId)) {
+      return { success: false, error: `invalid emojiId '${emojiId}' (expected one of ${REPLY_EMOJI_IDS.join(", ")})` };
+    }
+    if (replyType !== REPLY_TYPE_REPLY && replyType !== REPLY_TYPE_CANCEL) {
+      return { success: false, error: `replyType must be ${REPLY_TYPE_REPLY} (reply) or ${REPLY_TYPE_CANCEL} (cancel)` };
+    }
+    const token = await this.getAppToken();
+    if (!token) return { success: false, error: this.noTokenError() };
+    try {
+      const url = `${this.apiGatewayUrl}${API_ENDPOINTS.replyCreate}`;
+      const payload = { replyType, msgId: messageId, emojiId };
+      const data = await this.withTokenRetry("replyMessage", token, (t) => this.postJson(`${url}?app_token=${t}`, payload), (d) => d.errCode);
       if (data.errCode !== 0) return { success: false, error: this.outboundError(data) };
       return { success: true, rawResponse: data };
     } catch (e: any) {

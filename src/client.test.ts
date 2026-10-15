@@ -293,6 +293,77 @@ describe("LansengerClient.revokeMessage validation", () => {
   });
 });
 
+describe("LansengerClient.replyMessage validation", () => {
+  function stubReplyApi(overrides: { reply?: () => Response } = {}) {
+    const calls: Array<{ url: string; body: any }> = [];
+    vi.stubGlobal("fetch", async (url: string | Request, init?: any) => {
+      const u = typeof url === "string" ? url : url.url;
+      if (u.includes("apptoken")) return successApi({ appToken: "tok", expiresIn: 7200 });
+      if (u.includes("messages/reply")) {
+        calls.push({ url: u, body: JSON.parse((init as any)?.body ?? "{}") });
+        return overrides.reply ? overrides.reply() : successApi({});
+      }
+      return successApi({});
+    });
+    return calls;
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("posts replyType=1 with msgId and emojiId to messages/reply/create", async () => {
+    const calls = stubReplyApi();
+    const client = new LansengerClient({ appId: "id", appSecret: "secret" });
+    const result = await client.replyMessage("m1", "TYPE_OK");
+    expect(result.success).toBe(true);
+    expect(calls[0]!.url).toContain("/v1/messages/reply/create?");
+    expect(calls[0]!.body).toEqual({ replyType: 1, msgId: "m1", emojiId: "TYPE_OK" });
+  });
+
+  it("cancel keeps emojiId and sends replyType=2 (server rejects emojiless cancel with 40060)", async () => {
+    const calls = stubReplyApi();
+    const client = new LansengerClient({ appId: "id", appSecret: "secret" });
+    const result = await client.replyMessage("m1", "TYPE_OK", 2);
+    expect(result.success).toBe(true);
+    expect(calls[0]!.body).toEqual({ replyType: 2, msgId: "m1", emojiId: "TYPE_OK" });
+  });
+
+  it("maps server errors to ApiResult failure (NOT_SUPPORTED on pre-4.6.17 servers)", async () => {
+    stubReplyApi({ reply: () => errorApi(10000, "NOT_SUPPORTED") });
+    const client = new LansengerClient({ appId: "id", appSecret: "secret" });
+    const result = await client.replyMessage("m1", "TYPE_THUMB");
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("NOT_SUPPORTED");
+  });
+
+  it("rejects emoji outside the whitelist locally before any HTTP call", async () => {
+    const calls = stubReplyApi();
+    const client = new LansengerClient({ appId: "id", appSecret: "secret" });
+    const result = await client.replyMessage("m1", "TYPE_NOPE");
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("invalid emojiId");
+    expect(calls).toHaveLength(0);
+  });
+
+  it("rejects empty messageId/emojiId locally before any HTTP call", async () => {
+    const calls = stubReplyApi();
+    const client = new LansengerClient({ appId: "id", appSecret: "secret" });
+    expect((await client.replyMessage("", "TYPE_OK")).success).toBe(false);
+    expect((await client.replyMessage("m1", "")).success).toBe(false);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("rejects replyType outside 1/2 locally before any HTTP call", async () => {
+    const calls = stubReplyApi();
+    const client = new LansengerClient({ appId: "id", appSecret: "secret" });
+    const result = await client.replyMessage("m1", "TYPE_OK", 3 as any);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("replyType");
+    expect(calls).toHaveLength(0);
+  });
+});
+
 describe("LansengerClient with mocked fetch", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", async (url: string | Request, init?: RequestInit) => {
