@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.18.8] - 2026-10-23
+
+### Fixed
+
+- **webchat/跨会话发送不可用（OpenClaw 2026.9.x，PR #38）**：工具上下文与渠道运行时不共享模块实例——`lansenger_send_*` 等工具执行时 `runningAccounts` 为空（实机复现：WebChat/dashboard 会话调用工具恒报 `Lansenger account not configured or not running.`，而渠道 WS 正常 connected；OpenClaw 2026.7.1/2026.8.1 无此问题，属宿主 2026.9.x 工具解析行为变更）。现 `resolveToolClient` 优先运行实例，未命中时回落 `resolveAccount(cfg, accountId)` + `makeClient` 构建临时 HTTP 客户端（出站本就是纯 HTTP，不建 WS）；`resolveAccount(cfg, undefined)` 同时解析配置默认账号，未配 bindings 的部署也能用缺省账号。ctx 读取全部改为可选链，容忍宿主版本差异。
+- **跨会话投递目标缺失（PR #38）**：`defaultTo` 不再无条件取 `ctx.deliveryContext.to`。现仅当会话渠道为 `lansenger`/`lanxin` 时沿用会话目标（会话内行为不变）；跨会话（webchat 等）回落 `account.homeChannel`（owner staffId，首次 DM 自动写入配置）。显式 `params.to` 仍最高优先。
+- **发送失败原因被丢弃（PR #38）**：9 个 send 类工具（send_file/send_text/send_format_text/send_image_url/send_link_card/send_app_articles/send_app_card/send_approve_card 及失败透传链路）返回值补上 `error: result.error ?? null`，服务端拒绝（如群策略 sendMsgStatus=false）时 agent/用户可直接看到 errCode/errMsg，不再只有裸 `success:false`。
+
+### Added
+
+- **测试**：`src/tools.test.ts` 新增 10 个 PR #38 回归用例（配置回落解析 accountId 归因、bindings 归因、无凭证/无 config 退化、homeChannel 跨会话目标、lansenger 会话目标不回归、显式 to 优先、3 类 send 工具 error 透传）。总用例 583（582 通过 + 1 skip）。
+
+### Compatibility
+
+- OpenClaw 2026.7.1 / 2026.8.1 双版本全量验证：tsc 0 error + 583 用例全绿 + build 成功；实机 2026.9.5 + 插件 3.18.7 复现缺陷且确认 PR 修复有效（webchat 会话发送 `{success:true, messageId}`）。
+- 行为变化（有意）：多账号部署未配 bindings 时，工具回落到配置默认账号（第一个有 appId+appSecret 的账号）；此前恒报错。服务端策略（如个人机器人仅可 DM 创建者）仍由蓝信服务端强制。
+- 已知遗留：`openclaw.plugin.json` contracts.tools 未声明 `lansenger_reply_message`（3.18.7 引入，宿主 2026.9.x 会告警 plugin tool undeclared），拟随后续版本补声明。
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
+
 ## [3.18.7] - 2026-10-15
 
 ### Added

@@ -15,7 +15,7 @@
 │        ├─ client.ts    LansengerClient：WS 长连接（心跳/重连）    │
 │        │                  + 全部出站 HTTP API + appToken 缓存    │
 │        ├─ channel.ts   渠道适配器：账号解析/策略/出站路由/审批卡   │
-│        ├─ tools.ts     15 个 lansenger_* agent 工具             │
+│        ├─ tools.ts     16 个 lansenger_* agent 工具             │
 │        └─ setup-wizard.ts  openclaw channels add 交互向导        │
 └────────────────────────────────────────────────────────────────┘
      │ WS 纯入站（服务端推送，客户端只 ping）          ▲ HTTP 出站
@@ -133,7 +133,7 @@ grep -E 'auto-started|gateway: (started|adopting|disconnecting)|WS connected' /t
 | `src/client.ts` | WS 客户端 + HTTP API + token 缓存 | `LansengerClient`、`MAX_CONNECTION_AGE_MS` |
 | `src/runtime.ts` | 账号生命周期 + 入站管线 + 巡检 + 网关方法 | `startLansengerGateway`、`gatewayStartAccount/Stop`、`_clearTestState` |
 | `src/channel.ts` | 渠道适配器（账号解析/策略/路由/审批） | `lansengerPlugin`、`resolveAccount` |
-| `src/tools.ts` | 15 个 agent 工具 | — |
+| `src/tools.ts` | 16 个 agent 工具 | — |
 | `src/setup-wizard.ts` | channels add 向导 | `lansengerSetupWizard` |
 | `src/lifecycle-fix.test.ts` | 生命周期回归套件（P1/P2/N1/N2） | — |
 | `test/e2e/` | E2E 功能测试（假蓝信网关 + 真实协议，23 用例） | `FakeLansengerServer` |
