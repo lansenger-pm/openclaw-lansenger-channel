@@ -744,3 +744,139 @@ describe("happy path: lansenger_download_media", () => {
     expect(parsed.fileName).toBe("report.pdf");
   });
 });
+
+// ══════════════════════════════════════════════
+// PR #38 regression: cross-session (webchat) sends + API error pass-through
+// ══════════════════════════════════════════════
+
+import { vi as _vi } from "vitest";
+const channelModule = await import("./channel.js");
+const makeClientSpy = _vi.spyOn(channelModule, "makeClient");
+
+describe("PR38: config fallback when runtime module instance is isolated", () => {
+  let api: any;
+  const fallbackAccount = { ...mockAccount, appId: "fb-id", appSecret: "fb-secret", homeChannel: "owner-1" };
+
+  beforeEach(() => {
+    api = makeMockApi();
+    // Simulate OpenClaw 2026.9.x: tool executes in a module instance where the
+    // channel runtime registry is EMPTY even though the channel is connected.
+    mockNotRunning();
+    registerLansengerTools(api);
+  });
+  afterEach(() => { vi.restoreAllMocks(); makeClientSpy.mockClear(); });
+
+  it("falls back to a config-resolved temp client when running registry is empty (explicit appId)", async () => {
+    const resolveSpy = vi.spyOn(channelModule, "resolveAccount").mockReturnValue(fallbackAccount as any);
+    const localClient = Object.create(mockClient);
+    vi.spyOn(channelModule, "makeClient").mockReturnValue(localClient as any);
+    const sendSpy = vi.spyOn(localClient, "sendText").mockResolvedValue({ success: true, messageId: "m-fb" });
+    const tools: Record<string, any> = {};
+    const ctx = { agentAccountId: "test-account", config: { bindings: [] } };
+    const api2 = { registerTool: (def: any) => { const r = (def as any)(ctx); for (const t of (Array.isArray(r) ? r : [r])) tools[t.name] = t; } };
+    registerLansengerTools(api2);
+    const result = await tools["lansenger_send_text"].execute("tc1", { appId: "fb-id", content: "hello", to: "chat-9" });
+    expect(parseResult(result).success).toBe(true);
+    expect(resolveSpy).toHaveBeenCalledWith(expect.anything(), "fb-id");
+    expect(sendSpy).toHaveBeenCalledWith("chat-9", "hello", undefined);
+  });
+
+  it("falls back via bindings when agentId matches (no explicit appId, no agentAccountId)", async () => {
+    const ctx = { agentId: "test", config: { bindings: [{ agentId: "test", match: { channel: "lansenger", accountId: "test-account" } }] } };
+    const resolveSpy = vi.spyOn(channelModule, "resolveAccount").mockReturnValue(fallbackAccount as any);
+    const localClient = Object.create(mockClient);
+    vi.spyOn(channelModule, "makeClient").mockReturnValue(localClient as any);
+    vi.spyOn(localClient, "sendText").mockResolvedValue({ success: true, messageId: "m-fb2" });
+    const tools: Record<string, any> = {};
+    const api2 = { config: ctx.config, registerTool: (def: any) => { const r = (def as any)(ctx); for (const t of (Array.isArray(r) ? r : [r])) tools[t.name] = t; } };
+    registerLansengerTools(api2);
+    const result = await tools["lansenger_send_text"].execute("tc1", { content: "hi", to: "chat-2" });
+    expect(parseResult(result).success).toBe(true);
+    expect(resolveSpy).toHaveBeenCalledWith(expect.anything(), "test-account");
+  });
+
+  it("still errors when fallback cannot resolve credentials", async () => {
+    vi.spyOn(channelModule, "resolveAccount").mockReturnValue({ ...fallbackAccount, appId: "", appSecret: "" } as any);
+    const result = await api._tools["lansenger_send_text"].execute("tc1", { appId: "fb-id", content: "x", to: "chat-3" });
+    expect(parseResult(result).error).toContain("not configured or not running");
+  });
+
+  it("returns null resolution when ctx has no config (very old host)", async () => {
+    const tools: Record<string, any> = {};
+    const api2 = { registerTool: (def: any) => { const r = (def as any)({ agentId: "x" }); for (const t of (Array.isArray(r) ? r : [r])) tools[t.name] = t; } };
+    registerLansengerTools(api2);
+    const result = await tools["lansenger_send_text"].execute("tc1", { appId: "fb-id", content: "x", to: "chat-4" });
+    expect(parseResult(result).error).toContain("not configured or not running");
+  });
+});
+
+describe("PR38: defaultTo homeChannel fallback for cross-session sends", () => {
+  let api: any;
+
+  beforeEach(() => { api = makeMockApi(); mockRunning(); registerLansengerTools(api); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it("uses homeChannel as target when session is not lansenger (webchat) and to omitted", async () => {
+    const ownerClient = Object.create(mockClient);
+    vi.spyOn(channelModule, "makeClient").mockReturnValue(ownerClient as any);
+    const sendSpy = vi.spyOn(ownerClient, "sendText").mockResolvedValue({ success: true, messageId: "m-home" });
+    const tools: Record<string, any> = {};
+    const ctx = { agentAccountId: "test-account", config: { bindings: [] }, deliveryContext: { channel: "webchat" } };
+    const api2 = { registerTool: (def: any) => { const r = (def as any)(ctx); for (const t of (Array.isArray(r) ? r : [r])) tools[t.name] = t; } };
+    mockNotRunning();
+    vi.spyOn(channelModule, "resolveAccount").mockReturnValue({ ...mockAccount, homeChannel: "owner-staff-1" } as any);
+    vi.spyOn(channelModule, "makeClient").mockReturnValue(ownerClient as any);
+    registerLansengerTools(api2);
+    const result = await tools["lansenger_send_text"].execute("tc1", { content: "push" });
+    expect(parseResult(result).success).toBe(true);
+    expect(sendSpy).toHaveBeenCalledWith("owner-staff-1", "push", undefined);
+  });
+
+  it("keeps session deliveryContext.to for lansenger-channel sessions (no behavior change)", async () => {
+    const sendSpy = vi.spyOn(mockClient, "sendText").mockResolvedValue({ success: true, messageId: "m-sess" });
+    const tools: Record<string, any> = {};
+    const ctx = { agentAccountId: "test-account", deliveryContext: { channel: "lansenger", to: "in-chat-77" } };
+    const api2 = { registerTool: (def: any) => { const r = (def as any)(ctx); for (const t of (Array.isArray(r) ? r : [r])) tools[t.name] = t; } };
+    registerLansengerTools(api2);
+    await tools["lansenger_send_text"].execute("tc1", { content: "reply" });
+    expect(sendSpy).toHaveBeenCalledWith("in-chat-77", "reply", undefined);
+  });
+
+  it("explicit params.to wins over homeChannel", async () => {
+    const sendSpy = vi.spyOn(mockClient, "sendText").mockResolvedValue({ success: true, messageId: "m-explicit" });
+    const tools: Record<string, any> = {};
+    const ctx = { agentAccountId: "test-account", deliveryContext: { channel: "webchat" } };
+    const api2 = { registerTool: (def: any) => { const r = (def as any)(ctx); for (const t of (Array.isArray(r) ? r : [r])) tools[t.name] = t; } };
+    registerLansengerTools(api2);
+    await tools["lansenger_send_text"].execute("tc1", { content: "x", to: "explicit-chat" });
+    expect(sendSpy).toHaveBeenCalledWith("explicit-chat", "x", undefined);
+  });
+});
+
+describe("PR38: API error pass-through on send tools", () => {
+  let api: any;
+  beforeEach(() => { api = makeMockApi(); mockRunning(); registerLansengerTools(api); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it("send_text surfaces API error detail", async () => {
+    vi.spyOn(mockClient, "sendText").mockResolvedValue({ success: false, error: "API服务 无权限||permission denied" });
+    const result = await api._tools["lansenger_send_text"].execute("tc1", { appId: "test-id", content: "x", to: "chat-1" });
+    const parsed = parseResult(result);
+    expect(parsed.success).toBe(false);
+    expect(parsed.error).toBe("API服务 无权限||permission denied");
+  });
+
+  it("send_format_text surfaces API error detail", async () => {
+    vi.spyOn(mockClient, "sendFormatText").mockResolvedValue({ success: false, error: "group policy" });
+    const result = await api._tools["lansenger_send_format_text"].execute("tc1", { appId: "test-id", content: "x", to: "chat-1" });
+    expect(parseResult(result).error).toBe("group policy");
+  });
+
+  it("send_file surfaces API error detail", async () => {
+    const { fileURLToPath } = await import("node:url");
+    vi.spyOn(mockClient, "sendFile").mockResolvedValue({ success: false, error: "upload rejected" });
+    const p = fileURLToPath(import.meta.url);
+    const result = await api._tools["lansenger_send_file"].execute("tc1", { appId: "test-id", filePath: p, to: "chat-1" });
+    expect(parseResult(result).error).toBe("upload rejected");
+  });
+});
