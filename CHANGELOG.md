@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.18.9] - 2026-10-23
+
+### Fixed
+
+- **OpenClaw 2026.10.6 兼容：`plugin-sdk/command-auth` 子路径被移除**——宿主 2026.10.x 不再从 `openclaw/plugin-sdk/command-auth` 导出（运行时直接加载失败：`Package subpath not defined by exports`），网关启动即加载不到插件。改从 `openclaw/plugin-sdk/command-surface` 导入 `normalizeCommandBody`（2026.7.1/2026.8.1/2026.10.6 三版本均存在且行为一致）。8.1 缺该子路径 d.ts，新增 `src/types/openclaw-plugin-sdk-shim.d.ts` 环境声明补类型（宿主自带 d.ts 时优先用宿主的）。
+
+### Compatibility
+
+- 2026.7.1 / 2026.8.1 双版本全量回归：tsc 0 error + 583 用例（582 通过 + 1 skip）+ build 成功；2026.10.6 实机验证见下。
+- 实机 2026.10.6 + 本插件：doctor 修复状态迁移后网关可启动、渠道 WS connected、webchat 会话 `lansenger_send_text` 返回 `{success:true, messageId, error:null}`。
+
 ## [3.18.8] - 2026-10-23
 
 ### Fixed

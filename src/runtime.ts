@@ -12,7 +12,7 @@ import type { ResolvedAccount } from "./channel.js";
 import { errorShape } from "openclaw/plugin-sdk/gateway-runtime";
 import { listNativeCommandSpecsForConfig } from "openclaw/plugin-sdk/native-command-registry";
 import { resolveNativeCommandsEnabled } from "openclaw/plugin-sdk/native-command-config-runtime";
-import { normalizeCommandBody } from "openclaw/plugin-sdk/command-auth";
+import { normalizeCommandBody } from "openclaw/plugin-sdk/command-surface";
 import { pendingApprovalCards, pendingApprovalCallbacks, resolveLansengerApprovers } from "./channel.js";
 import { BUILTIN_COMMAND_I18N } from "./command-i18n.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
