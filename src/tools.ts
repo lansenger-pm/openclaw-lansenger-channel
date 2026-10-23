@@ -2,6 +2,7 @@ import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import { getRunningClientByAccountId, getRunningAccountByAccountId } from "./runtime.js";
 import type { LansengerClient, ApproveCardData } from "./client.js";
+import { makeClient, resolveAccount } from "./channel.js";
 import type { ResolvedAccount } from "./channel.js";
 
 function resolveTarget(to: string | undefined, sessionTo?: string): string {
@@ -24,10 +25,10 @@ function resolveToolClient(
   const paramAppId = params?.appId;
   let accountId: string | undefined;
   if (paramAppId) accountId = paramAppId;
-  else if (ctx.agentAccountId) accountId = ctx.agentAccountId;
+  else if (ctx?.agentAccountId) accountId = ctx.agentAccountId;
   else {
-    const agentId = ctx.agentId;
-    const bindings = ctx.config?.bindings as Array<{ agentId: string; match?: { channel?: string; accountId?: string } }> | undefined;
+    const agentId = ctx?.agentId;
+    const bindings = ctx?.config?.bindings as Array<{ agentId: string; match?: { channel?: string; accountId?: string } }> | undefined;
     if (agentId && bindings) {
       for (const b of bindings) {
         if (b.agentId === agentId && b.match?.channel === "lansenger") {
@@ -37,11 +38,25 @@ function resolveToolClient(
       }
     }
   }
-  if (!accountId) return null;
-  const account = getRunningAccountByAccountId(accountId);
-  const client = getRunningClientByAccountId(accountId);
-  if (!account || !client) return null;
-  return { client, account };
+  // 1) Prefer a running channel client (channel runtime instance).
+  if (accountId) {
+    const runAcc = getRunningAccountByAccountId(accountId);
+    const runClient = getRunningClientByAccountId(accountId);
+    if (runAcc && runClient) return { client: runClient, account: runAcc };
+  }
+  // 2) Fallback: build a temporary HTTP client from config. Cross-session callers
+  //    (e.g. webchat/main) may not share the channel runtime module instance, so
+  //    the runningAccounts map can be empty here even though the channel is up.
+  //    resolveAccount(cfg, undefined) also resolves the configured default
+  //    account, letting tools work without an explicit binding.
+  const cfg = ctx?.config;
+  if (cfg) {
+    const account = resolveAccount(cfg, accountId ?? undefined);
+    if (account?.appId && account?.appSecret) {
+      return { client: makeClient(account), account };
+    }
+  }
+  return null;
 }
 
 const SendFileSchema = {
@@ -370,8 +385,15 @@ function registerLansengerTool(
     async execute(_toolCallId: string, params: any) {
       const tc = resolveToolClient(ctx, params);
       if (!tc) return jsonResult({ error: "Lansenger account not configured or not running." });
-      // Session target from the framework — reliable, no concurrency issues
-      const defaultTo = ctx.deliveryContext?.to ?? "";
+      // Session target from the framework — reliable, no concurrency issues.
+      // Cross-session calls (e.g. from webchat/main) have no Lansenger delivery
+      // target: fall back to the account's homeChannel (owner staffId) so the
+      // tools work from any session. Explicit params.to always wins.
+      const sessionChannel = String(ctx.deliveryContext?.channel ?? "");
+      const sessionTo = sessionChannel === "lansenger" || sessionChannel === "lanxin"
+        ? (ctx.deliveryContext?.to ?? "")
+        : "";
+      const defaultTo = sessionTo || tc.account?.homeChannel || "";
       return handler(tc.client, tc.account, params, defaultTo);
     },
   }));
@@ -410,7 +432,7 @@ export function registerLansengerTools(api: any) {
         }
       }
       const result = await client.sendFile(to, resolved, caption, undefined, undefined, resolvedCover, videoWidth, videoHeight, videoDuration);
-      return jsonResult({ success: result.success, messageId: result.messageId ?? null });
+      return jsonResult({ success: result.success, messageId: result.messageId ?? null, error: result.error ?? null });
     },
   );
 
@@ -433,13 +455,13 @@ export function registerLansengerTools(api: any) {
           return jsonResult({ error: `File not found: ${filePath}` });
         }
         const result = await client.sendFile(to, resolved, content);
-        return jsonResult({ success: result.success, messageId: result.messageId ?? null });
+        return jsonResult({ success: result.success, messageId: result.messageId ?? null, error: result.error ?? null });
       }
       const reminder = (params.reminderAll || (params.reminderUserIds && params.reminderUserIds.length > 0) || (params.reminderBotIds && params.reminderBotIds.length > 0))
         ? { all: Boolean(params.reminderAll), userIds: params.reminderUserIds ?? [], botIds: params.reminderBotIds ?? [] }
         : undefined;
       const result = await client.sendText(to, content, reminder ? { reminder } : undefined);
-      return jsonResult({ success: result.success, messageId: result.messageId ?? null });
+      return jsonResult({ success: result.success, messageId: result.messageId ?? null, error: result.error ?? null });
     },
   );
 
@@ -456,7 +478,7 @@ export function registerLansengerTools(api: any) {
         ? { all: Boolean(params.reminderAll), userIds: params.reminderUserIds ?? [], botIds: params.reminderBotIds ?? [] }
         : undefined;
       const result = await client.sendFormatText(to, content, reminder ? { reminder } : undefined);
-      return jsonResult({ success: result.success, messageId: result.messageId ?? null });
+      return jsonResult({ success: result.success, messageId: result.messageId ?? null, error: result.error ?? null });
     },
   );
 
@@ -472,7 +494,7 @@ export function registerLansengerTools(api: any) {
       if (!imageUrl) return jsonResult({ error: "imageUrl is required" });
       if (!to) return jsonResult({ error: "No target specified. Provide a 'to' parameter (chat ID)." });
       const result = await client.sendImageUrl(to, imageUrl, caption);
-      return jsonResult({ success: result.success, messageId: result.messageId ?? null });
+      return jsonResult({ success: result.success, messageId: result.messageId ?? null, error: result.error ?? null });
     },
   );
 
@@ -528,7 +550,7 @@ export function registerLansengerTools(api: any) {
         fromName: params.fromName ?? "",
         fromIconLink: params.fromIconLink ?? "",
       });
-      return jsonResult({ success: result.success, messageId: result.messageId ?? null });
+      return jsonResult({ success: result.success, messageId: result.messageId ?? null, error: result.error ?? null });
     },
   );
 
@@ -543,7 +565,7 @@ export function registerLansengerTools(api: any) {
       if (!articles || articles.length === 0) return jsonResult({ error: "articles is required" });
       if (!to) return jsonResult({ error: "No target specified. Provide a 'to' parameter (chat ID)." });
       const result = await client.sendAppArticles(to, articles);
-      return jsonResult({ success: result.success, messageId: result.messageId ?? null });
+      return jsonResult({ success: result.success, messageId: result.messageId ?? null, error: result.error ?? null });
     },
   );
 
@@ -578,7 +600,7 @@ export function registerLansengerTools(api: any) {
         };
       }
       const result = await client.sendAppCard(to, cardData as any);
-      return jsonResult({ success: result.success, messageId: result.messageId ?? null });
+      return jsonResult({ success: result.success, messageId: result.messageId ?? null, error: result.error ?? null });
     },
   );
 
@@ -619,7 +641,7 @@ export function registerLansengerTools(api: any) {
         expireTime: params.expireTime,
       };
       const result = await client.sendApproveCard(to, cardData);
-      return jsonResult({ success: result.success, messageId: result.messageId ?? null });
+      return jsonResult({ success: result.success, messageId: result.messageId ?? null, error: result.error ?? null });
     },
   );
 
