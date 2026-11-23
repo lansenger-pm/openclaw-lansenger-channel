@@ -1,4 +1,4 @@
-import type { OpenClawPluginApi } from "openclaw/plugin-sdk/channel-core";
+import type { OpenClawPluginApi, OpenClawConfig } from "openclaw/plugin-sdk/channel-core";
 import type { ChannelGatewayContext, ChannelAccountSnapshot } from "openclaw/plugin-sdk/channel-contract";
 import { createSubsystemLogger } from "openclaw/plugin-sdk/logging-core";
 import { createAccountStatusSink, waitUntilAbort } from "openclaw/plugin-sdk/channel-outbound";
@@ -34,6 +34,7 @@ function sdkLogger(): ClientLogger {
 }
 
 type RunningAccount = {
+  /** Stable resolved account id (config key when available), never the host-only appId id. */
   accountId: string | null;
   account: ResolvedAccount;
   client: LansengerClient;
@@ -233,8 +234,10 @@ export function collectRunningKeysForIdentity(identity: {
   if (targets.size === 0) return [];
   const keys: string[] = [];
   for (const [key, entry] of runningAccounts) {
+    const entryAccountId = entry.account?.accountId ?? entry.accountId;
     if (
       targets.has(key) ||
+      (entryAccountId && targets.has(entryAccountId)) ||
       (entry.accountId && targets.has(entry.accountId)) ||
       (entry.account.appId && targets.has(entry.account.appId))
     ) {
@@ -249,8 +252,27 @@ export function collectRunningKeysForIdentity(identity: {
  * but a different appId - i.e. the operator switched the bot identity.
  */
 export function isStaleSibling(entry: RunningAccount, account: ResolvedAccount): boolean {
-  if (!account.accountId || !entry.accountId) return false;
-  return entry.accountId === account.accountId && entry.account.appId !== account.appId;
+  const entryAccountId = entry.account?.accountId ?? entry.accountId;
+  if (!account.accountId || !entryAccountId) return false;
+  return entryAccountId === account.accountId && entry.account.appId !== account.appId;
+}
+
+/**
+ * A start/heal call must not act on a snapshot that is no longer the current
+ * config. `healAccount` replays the account object captured when the connection
+ * started; after an appId switch that snapshot is stale and must not resurrect
+ * the old bot or evict the new live connection.
+ */
+export function isAccountSnapshotCurrent(cfg: OpenClawConfig | undefined, account: ResolvedAccount): boolean {
+  // Test/legacy gateway contexts may omit cfg. Without a config we cannot
+  // prove the snapshot stale, so preserve the pre-existing behavior.
+  if (!cfg) return true;
+  if (!account.appId) return false;
+  const current = resolveAccount(cfg, account.accountId ?? account.appId ?? undefined);
+  // No configured identity (empty config, synthetic test account, or env-only
+  // creds unavailable in this process): we cannot prove the snapshot stale.
+  if (!current.appId) return true;
+  return current.appId === account.appId;
 }
 
 /**
@@ -260,18 +282,39 @@ export function isStaleSibling(entry: RunningAccount, account: ResolvedAccount):
  * gatewayStartAccount) must call this, otherwise the old socket survives next to
  * the new one and keeps serving with a stale ResolvedAccount snapshot.
  */
-export async function evictStaleSiblings(account: ResolvedAccount, key: string): Promise<string[]> {
+export async function evictStaleSiblings(
+  cfg: OpenClawConfig | undefined,
+  account: ResolvedAccount,
+  key: string,
+): Promise<string[]> {
   const evicted: string[] = [];
+  if (!isAccountSnapshotCurrent(cfg, account)) {
+    const currentAppId = cfg
+      ? resolveAccount(cfg, account.accountId ?? account.appId ?? undefined).appId
+      : "";
+    log.warn(
+      `start: skip stale-sibling eviction — account snapshot no longer current ` +
+      `(key=${key} accountId=${account.accountId ?? "n/a"} snapshotAppId=${account.appId || "n/a"} ` +
+      `currentAppId=${currentAppId || "n/a"})`,
+    );
+    return evicted;
+  }
   for (const [otherKey, entry] of [...runningAccounts]) {
     if (otherKey === key) continue;
     if (!isStaleSibling(entry, account)) continue;
-    evicted.push(otherKey);
-    log.info(
-      `start: evicting stale sibling connection (oldKey=${otherKey} newKey=${key} ` +
-      `accountId=${account.accountId} oldAppId=${entry.account.appId} newAppId=${account.appId})`,
-    );
-    await teardownRunningEntry(otherKey);
-    cancelSyncRetry(otherKey);
+    // Serialize with healAccount/startAccount for the OLD key. Re-check after
+    // acquiring the lock: a concurrent heal may have replaced the entry.
+    await withStartLock(otherKey, async () => {
+      const current = runningAccounts.get(otherKey);
+      if (!current || !isStaleSibling(current, account)) return;
+      evicted.push(otherKey);
+      log.info(
+        `start: evicting stale sibling connection (oldKey=${otherKey} newKey=${key} ` +
+        `accountId=${account.accountId} oldAppId=${current.account.appId} newAppId=${account.appId})`,
+      );
+      await teardownRunningEntry(otherKey);
+      cancelSyncRetry(otherKey);
+    });
   }
   return evicted;
 }
@@ -287,34 +330,68 @@ async function teardownRunningEntry(key: string): Promise<boolean> {
   return true;
 }
 
+export type HomeChannelIdentity = {
+  appId: string;
+  /** Only present when the plugin itself wrote this homeChannel value. */
+  homeChannel?: string;
+};
+
+export type HomeChannelIdentityMap = Record<string, HomeChannelIdentity>;
+
+/**
+ * Normalize the on-disk identity map. Older builds stored a bare appId string;
+ * keep that format readable while migrating to {appId, homeChannel}.
+ */
+export function normalizeHomeChannelIdentity(raw: unknown): HomeChannelIdentityMap {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: HomeChannelIdentityMap = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value === "string" && value) {
+      out[key] = { appId: value };
+      continue;
+    }
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    const record = value as Record<string, unknown>;
+    if (typeof record.appId !== "string" || !record.appId) continue;
+    out[key] = {
+      appId: record.appId,
+      ...(typeof record.homeChannel === "string" && record.homeChannel
+        ? { homeChannel: record.homeChannel }
+        : {}),
+    };
+  }
+  return out;
+}
+
 /**
  * Decide whether the auto-configure flow should (over)write homeChannel.
  *
  * - empty/missing value -> write (first DM)
- * - existing value + the recorded bot identity differs from the current appId
- *   -> write (the operator switched the bot; the old value points at the OLD
- *      bot's owner and must not keep receiving pushes)
- * - otherwise -> keep the existing value untouched
+ * - existing value that this plugin wrote for a PREVIOUS appId -> write
+ * - otherwise -> keep the value untouched (manual/unknown values are never
+ *   clobbered just because the operator switched bots)
  */
 export function shouldOverwriteHomeChannel(params: {
   rawHomeChannel?: string | null;
-  recordedAppId?: string | null;
+  recorded?: HomeChannelIdentity | null;
   currentAppId?: string | null;
 }): boolean {
   if (!params.rawHomeChannel) return true;
-  if (!params.recordedAppId || !params.currentAppId) return false;
-  return params.recordedAppId !== params.currentAppId;
+  const recorded = params.recorded;
+  if (!recorded || !params.currentAppId) return false;
+  if (recorded.appId === params.currentAppId) return false;
+  return Boolean(recorded.homeChannel) && recorded.homeChannel === params.rawHomeChannel;
 }
 
 const HOME_CHANNEL_IDENTITY_FILE = path.join(os.homedir(), ".openclaw", "lansenger-homechannel-identity.json");
-let homeChannelIdentityCache: Record<string, string> | null = null;
+const SINGLE_ACCOUNT_IDENTITY_KEY = "__default__";
+let homeChannelIdentityCache: HomeChannelIdentityMap | null = null;
 
-async function readHomeChannelIdentity(): Promise<Record<string, string>> {
+async function readHomeChannelIdentity(): Promise<HomeChannelIdentityMap> {
   if (homeChannelIdentityCache) return homeChannelIdentityCache;
   try {
     const raw = await fs.readFile(HOME_CHANNEL_IDENTITY_FILE, "utf8");
-    const parsed = JSON.parse(raw);
-    homeChannelIdentityCache = parsed && typeof parsed === "object" ? (parsed as Record<string, string>) : {};
+    homeChannelIdentityCache = normalizeHomeChannelIdentity(JSON.parse(raw));
   } catch {
     homeChannelIdentityCache = {};
   }
@@ -322,11 +399,11 @@ async function readHomeChannelIdentity(): Promise<Record<string, string>> {
 }
 
 /** Test-only: seed the identity map without touching disk. */
-export function _setHomeChannelIdentityForTest(map: Record<string, string>): void {
-  homeChannelIdentityCache = map;
+export function _setHomeChannelIdentityForTest(map: Record<string, string | HomeChannelIdentity>): void {
+  homeChannelIdentityCache = normalizeHomeChannelIdentity(map);
 }
 
-async function writeHomeChannelIdentity(map: Record<string, string>): Promise<void> {
+async function writeHomeChannelIdentity(map: HomeChannelIdentityMap): Promise<void> {
   homeChannelIdentityCache = map;
   if (process.env.LANSENGER_TEST_NO_PERSIST === "1") return;
   try {
@@ -338,9 +415,17 @@ async function writeHomeChannelIdentity(map: Record<string, string>): Promise<vo
 }
 
 async function _startAccountImpl(api: OpenClawPluginApi, account: ResolvedAccount, key: string): Promise<boolean> {
+  if (!isAccountSnapshotCurrent(api.config, account)) {
+    const current = resolveAccount(api.config, account.accountId ?? account.appId ?? undefined);
+    log.warn(
+      `start: skip stale account snapshot (key=${key} accountId=${account.accountId ?? "n/a"} ` +
+      `snapshotAppId=${account.appId || "n/a"} currentAppId=${current.appId || "n/a"})`,
+    );
+    return false;
+  }
   // Evict stale siblings first (same accountId, different appId = bot identity
   // switched); see evictStaleSiblings.
-  await evictStaleSiblings(account, key);
+  await evictStaleSiblings(api.config, account, key);
   if (runningAccounts.has(key)) {
     const entry = runningAccounts.get(key)!;
     if (entry.client.isWsAlive()) {
@@ -571,10 +656,16 @@ export function startLansengerGateway(api: OpenClawPluginApi): void {
     // against the new config here used to find nothing and leave the old socket
     // orphaned - the "homeChannel does not update until gateway restart" defect.
     const resolved = accountId ? resolveAccount(api.config, accountId) : undefined;
-    const keys = collectRunningKeysForIdentity({
-      accountId: accountId ?? resolved?.accountId,
-      appId: resolved?.appId,
-    });
+    // No accountId means "stop the gateway": stop every running account. This
+    // preserves the documented `openclaw gateway call lansenger.stop` command and
+    // avoids the previous behavior where an empty identity lookup silently left
+    // every socket alive.
+    const keys = accountId
+      ? collectRunningKeysForIdentity({
+          accountId: resolved?.accountId ?? accountId,
+          appId: resolved?.appId ?? accountId,
+        })
+      : Array.from(runningAccounts.keys());
     if (keys.length === 0) {
       opts.respond(false, undefined, errorShape("NOT_LINKED", "Lansenger not running"));
       return;
@@ -923,8 +1014,9 @@ export async function gatewayStartAccount(ctx: ChannelGatewayContext<ResolvedAcc
     accountStatusSinks.set(key, statusSink);
     accountOwners.set(key, ownerToken);
     // Host-driven reloads start accounts through this path (not
-    // _startAccountImpl), so the eviction must run here too.
-    await evictStaleSiblings(account, key);
+    // _startAccountImpl), so the eviction must run here too. Use ctx.cfg: it is
+    // the current runtime config for this start (api.config may lag a reload).
+    await evictStaleSiblings(ctx.cfg, account, key);
     const existing = runningAccounts.get(key);
     if (existing) {
       const configChanged = accountConfigSignature(existing.account) !== accountConfigSignature(account);
@@ -1022,9 +1114,13 @@ export async function gatewayStartAccount(ctx: ChannelGatewayContext<ResolvedAcc
       throw new Error("Failed to connect to Lansenger WebSocket");
     }
 
-    runningAccounts.set(key, { accountId: ctx.accountId, account, client, debouncer });
+    // Store the stable resolved account id (config key) rather than the host id,
+    // which is the appId. Stop/eviction identity matching must survive an appId
+    // switch; getRunningClientByAccountId still falls back to entry.account.appId.
+    const stableAccountId = account.accountId ?? ctx.accountId;
+    runningAccounts.set(key, { accountId: stableAccountId, account, client, debouncer });
     statusSink({ connected: true, lastConnectedAt: Date.now(), lastError: null });
-    log.info(`gateway: started (key=${key} accountId=${ctx.accountId})`);
+    log.info(`gateway: started (key=${key} accountId=${stableAccountId})`);
 
     // Register native approval runtime context so the framework can route
     // approval cards through our nativeRuntime.deliverPending path.
@@ -1081,13 +1177,17 @@ export async function gatewayStopAccount(ctx: ChannelGatewayContext<ResolvedAcco
   // config (host resolves the account from the new config), leaving an orphaned
   // socket that keeps serving with a stale snapshot (old homeChannel).
   const keys = collectRunningKeysForIdentity({
-    accountId: ctx.accountId ?? ctx.account?.accountId ?? null,
-    appId: ctx.account?.appId ?? null,
+    accountId: ctx.account?.accountId ?? ctx.accountId ?? null,
+    appId: ctx.account?.appId ?? ctx.accountId ?? null,
   });
   if (keys.length === 0) {
-    // Nothing matched by identity (e.g. legacy/custom key): fall back to the
-    // historical key so a stop request is never silently dropped.
-    keys.push(ctx.account?.appId || ctx.accountId || "__default__");
+    // Nothing matched by identity (e.g. legacy/custom key): try every historical
+    // key so a stop request is never silently dropped.
+    const fallbacks = new Set<string>();
+    for (const candidate of [ctx.accountId, ctx.account?.appId, ctx.account?.accountId, "__default__"]) {
+      if (candidate) fallbacks.add(candidate);
+    }
+    keys.push(...fallbacks);
   }
   for (const key of keys) {
     // Sink + ownership are cleared INSIDE the lock and only when we actually
@@ -1370,24 +1470,28 @@ async function handleDmPolicy(
     const section = (api.config.channels as any)?.["lansenger"];
     if (section?.configWrites !== false) {
       const isMultiAccount = !!section?.accounts;
-      const accountKey = account.accountId || account.appId;
+      const configAccountKey = account.accountId || account.appId;
+      // Single-account configs have no stable config key: account.accountId is
+      // the appId itself, so keying the identity by it would make every appId
+      // switch look like a brand-new account. Use a stable synthetic key.
+      const identityKey = isMultiAccount ? configAccountKey : SINGLE_ACCOUNT_IDENTITY_KEY;
       const rawHomeChannel: string | undefined = isMultiAccount
-        ? section?.accounts?.[accountKey]?.homeChannel
+        ? section?.accounts?.[configAccountKey]?.homeChannel
         : section?.homeChannel;
       const identityMap = await readHomeChannelIdentity();
-      const recordedAppId = account.appId ? identityMap[accountKey] : undefined;
+      const recorded = identityMap[identityKey];
       // A homeChannel written by a previous appId points at the OLD bot's owner.
       // Allow the first DM of the NEW bot identity to overwrite it; otherwise an
       // operator switching appId would silently keep pushing to the old user.
-      const identityChanged = Boolean(recordedAppId) && recordedAppId !== account.appId;
+      const identityChanged = Boolean(recorded && recorded.appId !== account.appId);
       const shouldWrite = shouldOverwriteHomeChannel({
         rawHomeChannel,
-        recordedAppId,
+        recorded,
         currentAppId: account.appId,
       });
       if (shouldWrite) {
         const configPath = isMultiAccount
-          ? `channels.lansenger.accounts.${accountKey}.homeChannel`
+          ? `channels.lansenger.accounts.${configAccountKey}.homeChannel`
           : "channels.lansenger.homeChannel";
         try {
           execFileSync("openclaw", ["config", "set", configPath, event.senderId], {
@@ -1398,16 +1502,12 @@ async function handleDmPolicy(
             (identityChanged ? " (appId identity changed)" : ""),
           );
           if (account.appId) {
-            identityMap[accountKey] = account.appId;
+            identityMap[identityKey] = { appId: account.appId, homeChannel: event.senderId };
             await writeHomeChannelIdentity(identityMap);
           }
         } catch (e: any) {
           log.warn(`autoConfigureHomeChannel: ${e.message}`);
         }
-      } else if (!recordedAppId && account.appId) {
-        // Initialize the identity marker; keep the existing value untouched.
-        identityMap[accountKey] = account.appId;
-        await writeHomeChannelIdentity(identityMap);
       }
     }
     }
