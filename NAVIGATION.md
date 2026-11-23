@@ -30,6 +30,7 @@ openclaw-lansenger-channel/
 │   ├── runtime.test.ts      # 运行时单测（入站管线/策略/投递）
 │   ├── channel.test.ts      # 适配器单测（resolveAccount 等）
 │   ├── lifecycle-fix.test.ts# ★ 生命周期回归套件（P1/P2/N1/N2 防回归）
+│   ├── runtime-identity.test.ts # ★ appId 切换身份/stop/homeChannel 防回归
 │   └── *.test.ts            # 其余单测
 ├── skills/                  # 随插件分发的 SKILL（lansenger-messaging / lansenger-setup）
 ├── docs/

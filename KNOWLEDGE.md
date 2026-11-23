@@ -65,6 +65,15 @@ abort 清理（P2 修复后）：按 client 引用身份判断，只拆自己创
 - `listAccountIds`（channel.ts）：对外**用 appId 作为账号 key** 通告给宿主。
 - `resolveAccount`（channel.ts）：解析顺序 = 配置键字面匹配 → **appId 反查** → 首个有凭证账号（回退）→ 顶层 → 空。
 - `inspectAccount`：同样含 appId 反查。**三处语义必须保持一致**。
+- `runningAccounts` 条目存**稳定 accountId**（`account.accountId`，即配置键），不是宿主传入的 appId。宿主/CLI 的 `ctx.accountId` 通常是 appId；身份匹配必须同时看 `entry.account.accountId`、`entry.accountId`、`entry.account.appId` 和连接 key。
+- `lansenger.stop` 不传 `accountId` = 停所有运行账号；传了则按上述身份集合停止，禁止只按当前 `account.appId` 派生 key。
+- `healAccount` 重放的是连接建立时的 account snapshot；`_startAccountImpl` 必须先过 `isAccountSnapshotCurrent`，否则改 appId 后巡检会把旧 bot 拉回来，或反向 evict 新连接。
+
+### 2.3.1 appId 切换与 homeChannel
+
+- `~/.openclaw/lansenger-homechannel-identity.json` 按稳定账号键记录 `{ appId, homeChannel }`；单账号模式用固定键 `__default__`。
+- 只有“当前值 = 该记录里插件上次自动写入的值”且 appId 已变化时才覆盖；手工改过的 homeChannel 不覆盖，避免把群/管理账号通知目标冲掉。
+- 升级前已存在的旧 homeChannel 没有可信的“自动写入值”记录，默认保守保留；需要刷新时先清空该账号 homeChannel，再让首条 DM 写入。
 
 ### 2.4 服务端行为（排查时必须知道）
 
@@ -94,6 +103,7 @@ msgType：text / formatText（Markdown，reminder 失败自动降级）/ linkCar
 | 6 | 账号标识三处一致（含 appId 反查） | N2：主账号被宿主双启动 |
 | 7 | debounce `onFlush` 必须走 `makeDualContractOnFlush`（运行时自适应双契约），禁止手写任一版本专属签名 | 单版本签名在另一版本上运行时 TypeError |
 | 8 | devDependency `openclaw` 保持 `>=2026.7.1 <2026.9.0`（双源可解析）；改 SDK 交互后双版本各跑一遍测试 | 装不上依赖 / 单版本验证遗漏 |
+| 9 | 连接身份匹配用稳定 `account.accountId`（配置键），不能把宿主传入的 appId 当稳定身份；start/heal 前校验 snapshot 仍是当前 config | 改 appId 后旧连接残留，patrol 复活旧 bot / 误踢新连接 |
 
 ## 4. 排障手册
 
