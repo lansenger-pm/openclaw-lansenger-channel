@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.18.10] - 2026-11-23
+
+### Fixed
+
+- **修改 appId 后旧连接不退出 / homeChannel 不更新（PR #39）**：连接 key 一直是 appId-first，改 appId 后宿主用新 appId 停连接，旧 key 条目永远找不到，旧 socket 会继续用旧 `ResolvedAccount` 快照服务到网关重启。现 `collectRunningKeysForIdentity` / `isStaleSibling` 同时按连接 key、稳定 `account.accountId`（配置键）、`entry.accountId`、`entry.account.appId` 匹配；`runningAccounts` 统一存稳定 accountId，host 路径把 appId 当 `ctx.accountId` 的情况也能正确停止。
+- **`lansenger.stop` 无参数调用回归（PR #39）**：不传 `accountId` 时之前会因空 identity 返回 `NOT_LINKED` 而留下所有 socket；现在按文档语义停止全部运行账号。传 `accountId` 时仍按身份集合停止，并保留历史 key 回退，避免 stop 请求被静默丢弃。
+- **巡检用旧快照复活旧 bot / 误踢新连接（PR #39）**：`healAccount` 重放的是连接建立时的 account snapshot；新增 `isAccountSnapshotCurrent()`，`_startAccountImpl`、`evictStaleSiblings` 在改 appId 后拒绝旧快照，且旧 key 清理加 `withStartLock` 二次校验，避免与巡检竞态。
+- **homeChannel 自动覆盖误伤手工配置（PR #39）**：identity 文件改为 `{ appId, homeChannel }`；只有“当前值 = 插件上次自动写入的值”且 appId 已变化时才覆盖。手工配置的群/管理账号不再被首条 DM 冲掉；单账号模式使用固定 `__default__` 键，旧扁平格式自动兼容读取。
+
+### Added
+
+- **测试**：`src/runtime-identity.test.ts` 扩到 32 个回归用例，覆盖真实 host-path 条目形状、无参/多账号 stop、旧快照拒绝、homeChannel 覆盖矩阵与单账号/旧格式迁移；测试不再触发真实网络/WS。
+- **知识库**：`KNOWLEDGE.md` 增加连接身份与 homeChannel 归属红线；`NAVIGATION.md` 补测试入口。
+
+### Compatibility
+
+- OpenClaw 2026.7.1 / 2026.8.1 双版本：`tsc --noEmit` 0 error、`npm test` **615 passed + 1 skipped**、`npm run build` 成功。
+- 实机 OpenClaw 2026.11.1：网关重启后两个蓝信账号均 connected，外部 ESTABLISHED 连接数 = 2（等于账号数）。
+- 行为变化（有意）：`lansenger.stop` 不传 `accountId` 现在停止全部运行账号；手工 homeChannel 永不被 appId 切换自动覆盖。
+- 已知遗留：升级前已经存在、且没有 identity 记录的旧 homeChannel 仍保守保留；需要刷新时先清空该账号 homeChannel，再让新 bot 的首条 DM 写入。
+
 ## [3.18.9] - 2026-10-23
 
 ### Fixed
